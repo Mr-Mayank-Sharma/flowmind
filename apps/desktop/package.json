@@ -1,5 +1,5 @@
 {
-  "name": "@flowmind/desktop",
+  "name": "flowmind-desktop",
   "version": "0.1.0",
   "description": "FlowMind AI OS — Native Desktop Application",
   "main": "main.js",
@@ -12,10 +12,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "ELECTRON_IS_DEV=1 electron .",
-    "build": "electron-builder",
-    "dist:linux": "electron-builder --linux",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win"
+    "build": "mkdir -p dist && electron-builder",
+    "dist:linux": "mkdir -p dist && electron-builder --linux",
+    "dist:mac": "mkdir -p dist && electron-builder --mac",
+    "dist:win": "mkdir -p dist && electron-builder --win"
   },
   "build": {
     "appId": "ai.flowmind.desktop",
@@ -43,8 +43,12 @@
     ],
     "linux": {
       "target": ["AppImage", "deb"],
+      "artifactName": "flowmind-${version}-${arch}.${ext}",
       "category": "Utility",
       "icon": "public/icon.svg",
+      "deb": {
+        "packageName": "flowmind-desktop"
+      },
       "desktop": {
         "Name": "FlowMind AI OS",
         "Comment": "Open-source AI Operating System",
