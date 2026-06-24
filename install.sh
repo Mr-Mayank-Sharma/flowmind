@@ -134,7 +134,9 @@ rm -rf apps/web/.next 2>/dev/null || true
 # ── Build packages ──────────────────────────────────────────────────
 cmd "Building packages..."
 pnpm db:generate
-pnpm build
+pnpm --filter @flowmind/api build
+pnpm --filter @flowmind/cli build
+pnpm --filter @flowmind/web build
 
 # ── Database setup ──────────────────────────────────────────────────
 cmd "Setting up database..."
@@ -144,13 +146,8 @@ export DATABASE_URL
 pnpm db:migrate 2>/dev/null || warn "DB migration skipped (manual: pnpm db:migrate)"
 pnpm db:seed 2>/dev/null || warn "DB seed skipped (manual: pnpm db:seed)"
 
-# ── Build Next.js for standalone ────────────────────────────────────
-cmd "Building Next.js standalone..."
-pnpm --filter @flowmind/web build 2>/dev/null || warn "Web build skipped"
-
 # ── CLI link ────────────────────────────────────────────────────────
 cmd "Linking CLI..."
-pnpm --filter @flowmind/cli build 2>/dev/null || true
 npm link --silent 2>/dev/null || true
 if command -v flowmind &>/dev/null; then
   log "CLI available: flowmind"
@@ -158,11 +155,10 @@ fi
 
 # ── Desktop app (optional) ──────────────────────────────────────────
 if command -v electron &>/dev/null; then
-  cmd "Building desktop app..."
+  cmd "Building desktop app (AppImage)..."
   cd "$INSTALL_DIR/apps/desktop"
-  npm install --silent 2>/dev/null || true
-  npx electron-builder --linux --config.extraMetadata.main=main.js 2>/dev/null || warn "Desktop build skipped (run: cd apps/desktop && npm run build)"
-  log "Desktop app built"
+  npx electron-builder --linux --target AppImage 2>/dev/null || warn "Desktop AppImage build skipped"
+  log "Desktop AppImage built"
 fi
 
 # ── Create desktop entry (Linux) ────────────────────────────────────
@@ -266,10 +262,17 @@ echo "  ╚═══════════════════════
 echo ""
 
 # Check if desktop app is available
-DESKTOP_APP="$DIR/apps/desktop/node_modules/.bin/electron"
-if [ -f "$DESKTOP_APP" ] && command -v Xorg &>/dev/null; then
-  echo "  Starting Desktop App..."
-  nohup "$DESKTOP_APP" "$DIR/apps/desktop" > /tmp/flowmind-desktop.log 2>&1 &
+DESKTOP_APPIMAGE="$DIR/apps/desktop/dist/FlowMind AI OS-0.1.0.AppImage"
+DESKTOP_ELECTRON="$DIR/apps/desktop/node_modules/.bin/electron"
+DESKTOP_DIST="$DIR/apps/desktop/dist/linux-unpacked/flowmind-desktop"
+if [ -f "$DESKTOP_APPIMAGE" ] && command -v Xorg &>/dev/null; then
+  echo "  Starting Desktop App (AppImage)..."
+  nohup "$DESKTOP_APPIMAGE" > /tmp/flowmind-desktop.log 2>&1 &
+  echo "  Desktop app launched. Look for FlowMind in your system tray."
+  exit 0
+elif [ -f "$DESKTOP_ELECTRON" ]; then
+  echo "  Starting Desktop App (Electron)..."
+  nohup "$DESKTOP_ELECTRON" "$DIR/apps/desktop" > /tmp/flowmind-desktop.log 2>&1 &
   echo "  Desktop app launched. Look for FlowMind in your system tray."
   exit 0
 fi
@@ -293,13 +296,14 @@ chmod +x "$INSTALL_DIR/flowmind.sh"
 cat > "$INSTALL_DIR/flowmind-desktop.sh" << 'DESKTOP_LAUNCHER'
 #!/usr/bin/env bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
+APPIMAGE="$DIR/apps/desktop/dist/FlowMind AI OS-0.1.0.AppImage"
 ELECTRON="$DIR/apps/desktop/node_modules/.bin/electron"
-if [ -f "$ELECTRON" ]; then
+if [ -f "$APPIMAGE" ]; then
+  exec "$APPIMAGE"
+elif [ -f "$ELECTRON" ]; then
   exec "$ELECTRON" "$DIR/apps/desktop"
 else
-  echo "Desktop app not built. Install deps first:"
-  echo "  cd $DIR/apps/desktop && npm install"
-  echo "Then run: flowmind-desktop.sh"
+  echo "Desktop app not built. Run the install script first."
   exit 1
 fi
 DESKTOP_LAUNCHER
