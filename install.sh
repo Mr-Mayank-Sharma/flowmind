@@ -99,8 +99,8 @@ fi
 
 if command -v psql &>/dev/null; then
   log "PostgreSQL $(psql --version | head -1)"
-  su - postgres -c "psql -c \"CREATE USER flowmind WITH PASSWORD 'flowmind' CREATEDB;\" 2>/dev/null" || true
-  su - postgres -c "psql -c \"CREATE DATABASE flowmind OWNER flowmind;\" 2>/dev/null" || true
+  sudo -u postgres psql -c "CREATE USER flowmind WITH PASSWORD 'flowmind' CREATEDB;" 2>/dev/null || true
+  sudo -u postgres psql -c "CREATE DATABASE flowmind OWNER flowmind;" 2>/dev/null || true
 fi
 
 # ── Clone / Update ──────────────────────────────────────────────────
