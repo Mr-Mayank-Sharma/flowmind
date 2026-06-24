@@ -57,7 +57,7 @@ function detectFrameworks() {
 
   const processIndex = procLines.reduce((acc, line) => {
     const parts = line.trim().split(/\s+/);
-    const pid = parseInt(parts[1]);
+    const pid = parseInt(parts[1] ?? "");
     if (!isNaN(pid) && parts.length > 10) {
       const cmd = parts.slice(10).join(" ").toLowerCase();
       acc.push({ pid, cmd });
@@ -120,8 +120,8 @@ function getDiskUsage(): { percent: number; usedGb: string; totalGb: string } {
   const raw = run("df -BG / 2>/dev/null | tail -1", "");
   if (!raw) return { percent: 50, usedGb: "256", totalGb: "512" };
   const parts = raw.split(/\s+/);
-  const used = parseInt(parts[2]) || 256;
-  const total = parseInt(parts[1]) || 512;
+  const used = parseInt(parts[2] ?? "") || 256;
+  const total = parseInt(parts[1] ?? "") || 512;
   return {
     percent: Math.round((used / total) * 100),
     usedGb: String(used),
@@ -135,11 +135,11 @@ function getGPUInfo(): { index: number; name: string; utilization: number; memor
   return raw.split("\n").filter(Boolean).map((line) => {
     const parts = line.split(", ");
     return {
-      index: parseInt(parts[0]) || 0,
+      index: parseInt(parts[0] ?? "") || 0,
       name: parts[1] || "Unknown GPU",
-      utilization: parseInt(parts[2]) || 0,
+      utilization: parseInt(parts[2] ?? "") || 0,
       memoryUtil: parts[3] ? Math.round((parseInt(parts[3].replace(" MiB", "")) / (parseInt((parts[4] || "1").replace(" MiB", "")) || 1)) * 100) : 0,
-      temperature: parseInt(parts[5]) || 0,
+      temperature: parseInt(parts[5] ?? "") || 0,
       vramTotal: parts[4] || "0 MiB",
       vramUsed: parts[3] || "0 MiB",
     };
@@ -150,8 +150,8 @@ function getNetworkUsage(): { upMbps: string; downMbps: string } {
   const raw = run("cat /proc/net/dev 2>/dev/null | grep -E 'eth0|wlan0|enp|wlp' | head -1", "");
   if (!raw) return { upMbps: "0.0", downMbps: "0.0" };
   const parts = raw.trim().split(/\s+/);
-  const rxBytes = parseInt(parts[1]) || 0;
-  const txBytes = parseInt(parts[9]) || 0;
+  const rxBytes = parseInt(parts[1] ?? "") || 0;
+  const txBytes = parseInt(parts[9] ?? "") || 0;
   return {
     downMbps: (rxBytes / 1024 / 1024).toFixed(1),
     upMbps: (txBytes / 1024 / 1024).toFixed(1),
@@ -217,7 +217,7 @@ export const systemRouter = router({
         networkUpMbps: net.upMbps,
         networkDownMbps: net.downMbps,
         processes: procCount,
-        loadAvg: `${loadAvg[0].toFixed(2)}, ${loadAvg[1].toFixed(2)}, ${loadAvg[2].toFixed(2)}`,
+        loadAvg: `${(loadAvg[0] ?? 0).toFixed(2)}, ${(loadAvg[1] ?? 0).toFixed(2)}, ${(loadAvg[2] ?? 0).toFixed(2)}`,
         uptime: uptimeStr,
         servicesRunning,
         servicesTotal: frameworks.length,

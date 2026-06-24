@@ -104,7 +104,7 @@ export const pipelineRouter = router({
         data: {
           pipelineId: input.id,
           status: "PENDING",
-          input: input.input || {},
+          input: (input.input || {}) as any,
         },
       });
 
