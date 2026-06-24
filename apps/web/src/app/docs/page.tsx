@@ -15,7 +15,7 @@ const quickLinks = [
 
 const installSteps = [
   { title: "Prerequisites", cmd: "", items: ["Node.js 22+", "pnpm 9+", "PostgreSQL 16", "Python 3.11+", "Ollama (optional)"] },
-  { title: "Quick Install (Recommended)", cmd: "curl -fsSL https://flowmind.ai/install.sh | bash",
+  { title: "Quick Install (Recommended)", cmd: "curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash",
     items: ["Installs all dependencies", "Sets up PostgreSQL database", "Builds all packages", "Creates systemd services", "Links CLI globally"] },
   { title: "Manual Install", cmd: "", items: ["git clone https://github.com/Mr-Mayank-Sharma/flowmind.git", "cd flowmind && pnpm install", "pnpm db:generate && pnpm db:migrate && pnpm db:seed", "pnpm build"] },
   { title: "Start Services", cmd: "bash ~/.flowmind/flowmind.sh",
@@ -153,7 +153,7 @@ export default function DocsPage() {
             </div>
             <div className="bg-background rounded-lg p-4 font-mono text-sm">
               <span className="text-muted-foreground"># FlowMind AI OS — Install on any Linux/macOS machine</span><br />
-              <span className="text-emerald-400">curl -fsSL</span> https://flowmind.ai/install.sh <span className="text-emerald-400">| bash</span>
+              <span className="text-emerald-400">curl -fsSL</span> https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh <span className="text-emerald-400">| bash</span>
             </div>
             <p className="text-xs text-muted-foreground mt-3">
               This installs Node.js, pnpm, PostgreSQL, Ollama, clones the repo, builds everything,

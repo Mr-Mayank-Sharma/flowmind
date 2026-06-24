@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 
-const INSTALL_CMD = "curl -fsSL https://flowmind.ai/install.sh | bash"
+const INSTALL_CMD = "curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash"
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -54,7 +54,7 @@ const platforms = {
   windows: {
     name: "Windows",
     icon: Terminal,
-    install: "wsl --install -d Ubuntu && curl -fsSL https://flowmind.ai/install.sh | bash",
+    install: "wsl --install -d Ubuntu && curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash",
     steps: [
       "Install WSL 2 with Ubuntu from Microsoft Store",
       "Open Ubuntu terminal",

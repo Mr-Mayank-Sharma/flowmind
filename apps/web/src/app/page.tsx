@@ -9,7 +9,7 @@ import {
 import { useTheme } from "next-themes"
 
 const INSTALL_METHODS = {
-  curl: { label: "curl", cmd: "curl -fsSL https://flowmind.ai/install.sh | bash" },
+  curl: { label: "curl", cmd: "curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash" },
   npm: { label: "npm", cmd: "npm install -g @flowmind/cli" },
   pnpm: { label: "pnpm", cmd: "pnpm add -g @flowmind/cli" },
   brew: { label: "brew", cmd: "brew install flowmind/tap/flowmind" },
@@ -80,7 +80,7 @@ const stats = [
 
 const faqs = [
   { q: "What is FlowMind?", a: "FlowMind is an open-source AI Operating System that lets you manage local and cloud AI models, build autonomous agents, create visual pipelines, and monitor your entire AI infrastructure — all from a beautiful web UI or your terminal." },
-  { q: "How do I install FlowMind?", a: "Run the one-command install: curl -fsSL https://flowmind.ai/install.sh | bash. It installs everything — Node.js, pnpm, PostgreSQL, Ollama, the web dashboard, API server, and CLI." },
+  { q: "How do I install FlowMind?", a: "Run the one-command install: curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash. It installs everything — Node.js, pnpm, PostgreSQL, Ollama, the web dashboard, API server, and CLI." },
   { q: "Do I need extra AI subscriptions?", a: "No. FlowMind works with local models via Ollama out of the box. You can optionally connect cloud providers (OpenAI, Anthropic, Google) by adding API keys in the settings." },
   { q: "Can I use my existing AI subscriptions?", a: "Yes. FlowMind supports OpenAI, Anthropic Claude, and Google Gemini. Just add your API key in the Model Hub settings and all models become available immediately." },
   { q: "Is it only for the terminal?", a: "No. FlowMind has three interfaces: a web dashboard (localhost:3000), a desktop app (Electron with system tray), and a CLI with interactive REPL. Use whichever you prefer." },
