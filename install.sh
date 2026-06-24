@@ -105,9 +105,17 @@ fi
 
 # ── Clone / Update ──────────────────────────────────────────────────
 if [ -d "$INSTALL_DIR" ]; then
-  cmd "Updating existing installation..."
-  cd "$INSTALL_DIR"
-  git pull --ff-only
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    cmd "Updating existing installation..."
+    cd "$INSTALL_DIR"
+    git pull --ff-only
+  else
+    warn "~/.flowmind exists but is not a git repo. Removing and re-cloning..."
+    rm -rf "$INSTALL_DIR"
+    cmd "Cloning FlowMind..."
+    git clone --depth 1 "$REPO" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+  fi
 else
   cmd "Cloning FlowMind..."
   git clone --depth 1 "$REPO" "$INSTALL_DIR"
