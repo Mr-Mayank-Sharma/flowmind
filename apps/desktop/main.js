@@ -109,7 +109,7 @@ async function startServices() {
   } else {
     // Production: use standalone Next.js
     log("Starting Web UI (production)...");
-    webProcess = spawn("node", ["server.js"], {
+    webProcess = spawn("node", ["apps/web/server.js"], {
       cwd: WEB_STANDALONE,
       env: { ...env, PORT: String(WEB_PORT) },
       stdio: ["ignore", "pipe", "pipe"],

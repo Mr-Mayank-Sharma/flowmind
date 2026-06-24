@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const publicRoutes = ["/login", "/forgot-password"];
+const publicRoutes = ["/login", "/forgot-password", "/install", "/docs"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname === "/") return NextResponse.next();
+  if (pathname === "/" || pathname === "/install.sh" || pathname.startsWith("/install.sh")) return NextResponse.next();
 
   const isPublic =
     publicRoutes.some((route) => pathname === route || pathname.startsWith(route)) ||

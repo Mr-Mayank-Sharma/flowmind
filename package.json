@@ -14,6 +14,9 @@
     "cli": "pnpm --filter @flowmind/cli start",
     "flowmind": "pnpm --filter @flowmind/cli start",
     "cli:dev": "pnpm --filter @flowmind/cli dev",
+    "desktop": "pnpm --filter @flowmind/desktop start",
+    "desktop:dev": "pnpm --filter @flowmind/desktop dev",
+    "desktop:build": "pnpm --filter @flowmind/desktop build",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

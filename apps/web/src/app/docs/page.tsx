@@ -17,7 +17,7 @@ const installSteps = [
   { title: "Prerequisites", cmd: "", items: ["Node.js 22+", "pnpm 9+", "PostgreSQL 16", "Python 3.11+", "Ollama (optional)"] },
   { title: "Quick Install (Recommended)", cmd: "curl -fsSL https://flowmind.ai/install.sh | bash",
     items: ["Installs all dependencies", "Sets up PostgreSQL database", "Builds all packages", "Creates systemd services", "Links CLI globally"] },
-  { title: "Manual Install", cmd: "", items: ["git clone https://github.com/anomalyco/flowmind.git", "cd flowmind && pnpm install", "pnpm db:generate && pnpm db:migrate && pnpm db:seed", "pnpm build"] },
+  { title: "Manual Install", cmd: "", items: ["git clone https://github.com/Mr-Mayank-Sharma/flowmind.git", "cd flowmind && pnpm install", "pnpm db:generate && pnpm db:migrate && pnpm db:seed", "pnpm build"] },
   { title: "Start Services", cmd: "bash ~/.flowmind/flowmind.sh",
     items: ["Web UI at http://localhost:3000", "API at http://localhost:3001", "Runtime at http://localhost:8001"] },
 ]

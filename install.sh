@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="https://github.com/anomalyco/flowmind.git"
+REPO="https://github.com/Mr-Mayank-Sharma/flowmind.git"
 INSTALL_DIR="${FLOWMIND_DIR:-$HOME/.flowmind}"
 NODE_MIN="22"
 PG_VERSION="16"

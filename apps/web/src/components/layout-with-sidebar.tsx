@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/sidebar"
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 import { useSidebarStore } from "@/hooks/sidebar-store"
 
-const noSidebarRoutes = ["/login", "/forgot-password", "/"]
+const noSidebarRoutes = ["/login", "/forgot-password", "/", "/install", "/docs"]
 
 export function LayoutWithSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname()
