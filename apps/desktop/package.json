@@ -4,6 +4,11 @@
   "description": "FlowMind AI OS — Native Desktop Application",
   "main": "main.js",
   "private": true,
+  "homepage": "https://github.com/Mr-Mayank-Sharma/flowmind",
+  "author": {
+    "name": "FlowMind",
+    "email": "hello@flowmind.ai"
+  },
   "scripts": {
     "start": "electron .",
     "dev": "ELECTRON_IS_DEV=1 electron .",
