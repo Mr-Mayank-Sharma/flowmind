@@ -126,6 +126,11 @@ fi
 cmd "Installing dependencies..."
 pnpm install
 
+# ── Clean stale caches ──────────────────────────────────────────────
+cmd "Cleaning stale build caches..."
+find . -name "*.tsbuildinfo" -delete 2>/dev/null || true
+rm -rf apps/web/.next 2>/dev/null || true
+
 # ── Build packages ──────────────────────────────────────────────────
 cmd "Building packages..."
 pnpm db:generate
