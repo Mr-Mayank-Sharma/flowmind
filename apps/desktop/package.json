@@ -1,0 +1,68 @@
+{
+  "name": "@flowmind/desktop",
+  "version": "0.1.0",
+  "description": "FlowMind AI OS — Native Desktop Application",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "ELECTRON_IS_DEV=1 electron .",
+    "build": "electron-builder",
+    "dist:linux": "electron-builder --linux",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "ai.flowmind.desktop",
+    "productName": "FlowMind AI OS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "public/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../..",
+        "to": "project",
+        "filter": [
+          "**/*",
+          "!**/node_modules/**",
+          "!**/.next/**",
+          "!**/dist/**",
+          "!**/.git/**"
+        ]
+      }
+    ],
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility",
+      "icon": "public/icon.svg",
+      "desktop": {
+        "Name": "FlowMind AI OS",
+        "Comment": "Open-source AI Operating System",
+        "Categories": "Utility;Development;AI",
+        "Terminal": false,
+        "Type": "Application"
+      }
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.developer-tools",
+      "icon": "public/icon.svg"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "public/icon.svg"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

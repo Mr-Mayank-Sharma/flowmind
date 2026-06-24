@@ -1,0 +1,32 @@
+{
+  "name": "flowmind",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FlowMind AI Platform — Next-generation AI Workflow Orchestration",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "db:generate": "pnpm --filter @flowmind/db db:generate",
+    "db:migrate": "pnpm --filter @flowmind/db db:migrate",
+    "db:seed": "pnpm --filter @flowmind/db db:seed",
+    "cli": "pnpm --filter @flowmind/cli start",
+    "flowmind": "pnpm --filter @flowmind/cli start",
+    "cli:dev": "pnpm --filter @flowmind/cli dev",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "prettier": "^3.2.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=22.x",
+    "pnpm": ">=9.x"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

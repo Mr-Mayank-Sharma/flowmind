@@ -1,0 +1,15 @@
+[Unit]
+Description=FlowMind Python Agent Runtime
+After=network.target
+
+[Service]
+Type=simple
+User=flowmind
+WorkingDirectory=/opt/flowmind/packages/agent-runtime
+ExecStart=/usr/bin/python3 -m uvicorn src.main:app --host 127.0.0.1 --port 8001
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONPATH=/opt/flowmind/packages/agent-runtime
+
+[Install]
+WantedBy=multi-user.target

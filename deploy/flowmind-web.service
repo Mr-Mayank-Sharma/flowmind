@@ -1,0 +1,16 @@
+[Unit]
+Description=FlowMind AI Web UI
+After=network.target flowmind-api.service
+Wants=flowmind-api.service
+
+[Service]
+Type=simple
+User=flowmind
+WorkingDirectory=/opt/flowmind
+ExecStart=/usr/local/bin/pnpm --filter @flowmind/web start --port 3000
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

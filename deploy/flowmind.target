@@ -1,0 +1,12 @@
+[Unit]
+Description=FlowMind AI OS — all services
+Requires=flowmind-api.service flowmind-web.service flowmind-runtime.service
+After=flowmind-api.service flowmind-web.service flowmind-runtime.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

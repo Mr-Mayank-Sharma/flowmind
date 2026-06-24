@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: 239 84% 67%;
+  --color-primary-foreground: 0 0% 100%;
+  --color-secondary: 225 50% 45%;
+  --color-secondary-foreground: 0 0% 100%;
+  --color-surface: 0 0% 100%;
+  --color-background: 228 20% 97%;
+  --color-border: 0 0% 88%;
+  --color-text-primary: 0 0% 13%;
+  --color-text-secondary: 0 0% 38%;
+  --color-success: 122 47% 33%;
+  --color-warning: 22 100% 45%;
+  --color-error: 349 65% 47%;
+  --color-ai-badge: 291 52% 40%;
+  --color-local-badge: 24 100% 47%;
+  --color-muted: 228 20% 97%;
+  --color-muted-foreground: 0 0% 38%;
+  --color-accent: 225 50% 45% / 0.1;
+  --color-accent-foreground: 0 0% 13%;
+  --color-ring: 239 84% 67%;
+  --radius: 0.5rem;
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-dropdown: 0 4px 6px -1px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+}
+
+.dark {
+  --color-primary: 239 84% 67%;
+  --color-primary-foreground: 0 0% 100%;
+  --color-secondary: 225 45% 74%;
+  --color-secondary-foreground: 0 0% 100%;
+  --color-surface: 240 21% 15%;
+  --color-background: 240 25% 10%;
+  --color-border: 240 12% 21%;
+  --color-text-primary: 240 20% 92%;
+  --color-text-secondary: 240 12% 63%;
+  --color-success: 122 50% 50%;
+  --color-warning: 32 100% 50%;
+  --color-error: 349 70% 57%;
+  --color-ai-badge: 291 50% 68%;
+  --color-local-badge: 34 100% 67%;
+  --color-muted: 240 21% 15%;
+  --color-muted-foreground: 240 12% 63%;
+  --color-accent: 239 84% 67% / 0.1;
+  --color-accent-foreground: 240 20% 92%;
+  --color-ring: 239 84% 67%;
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.2), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --shadow-dropdown: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--color-border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--color-text-secondary) / 0.5);
+}
+
+/* Glass morphism */
+.glass {
+  background: hsl(var(--color-surface) / 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.glass-strong {
+  background: hsl(var(--color-surface) / 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(var(--color-primary)), hsl(var(--color-secondary)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow effect for active elements */
+.glow {
+  box-shadow: 0 0 20px hsl(var(--color-primary) / 0.15), 0 0 40px hsl(var(--color-primary) / 0.05);
+}
+
+.glow-sm {
+  box-shadow: 0 0 10px hsl(var(--color-primary) / 0.1);
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: none;
+  ring: 2px solid hsl(var(--color-ring));
+  ring-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: hsl(var(--color-primary) / 0.2);
+  color: hsl(var(--color-text-primary));
+}
+
+/* Card hover effect */
+.card-hover {
+  transition: all 0.2s ease;
+}
+.card-hover:hover {
+  border-color: hsl(var(--color-primary) / 0.3);
+  box-shadow: 0 0 20px hsl(var(--color-primary) / 0.08);
+}
+
+/* Loading shimmer */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--color-surface)) 0%,
+    hsl(var(--color-border) / 0.5) 50%,
+    hsl(var(--color-surface)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

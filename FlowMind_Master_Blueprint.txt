@@ -1,0 +1,1608 @@
+﻿FLOWMIND AI PLATFORM
+Master Technical & Business Blueprint
+The Next-Generation AI Workflow Orchestration Platform
+
+
+Version 1.0  |  Classification: Confidential
+2025 — All Rights Reserved
+
+
+
+Integrating the best of: Hermes Agent  ·  OpenClaw  ·  n8n  ·  OpenCode  ·  MCP Protocol  ·  Ollama  ·  Stripe  ·  SSO/SAML
+
+Chapter 0 — Executive Summary
+FlowMind is a unified, production-grade AI platform that combines the capabilities of autonomous self-learning agents, multi-channel communication gateways, visual workflow orchestration, intelligent coding assistance, and enterprise-grade security into a single coherent product. It is designed to be run locally, on-premise, or in the cloud — with zero external API vendor lock-in.
+
+The platform is built from first principles, drawing architectural inspiration from four battle-tested open-source systems:
+    • Hermes Agent (NousResearch) — closed learning loop, skill creation, cron automation, subagent parallelism
+    • OpenClaw — multi-channel gateway, local-first philosophy, real-time canvas, model failover
+    • n8n — visual pipeline builder with triggers, conditions, parallel branches, and 400+ integrations
+    • OpenCode — AI-powered code assistant with terminal TUI and deep editor integration
+
+FlowMind is NOT a wrapper around third-party AI services. Every connector, every integration, every protocol handler is built and owned by the platform itself. The only external dependency is the LLM inference layer — and even that is made optional via Ollama local inference.
+
+Product Name
+FlowMind AI Platform
+Architecture
+Monorepo — Next.js 14 frontend, Node.js/Fastify API, Python agent runtime, PostgreSQL + Redis + Qdrant
+Primary Language
+TypeScript (frontend + API), Python (agent/ML runtime), Rust (performance-critical MCP tools)
+Deployment
+Docker Compose (local), Kubernetes (production), bare-metal Ollama node (inference)
+License Model
+Free (local), Pro ($19/mo), Team ($49/seat/mo), Enterprise (custom)
+Auth
+Email/Password, OAuth2, SAML 2.0 SSO, RBAC with org-level ACL
+LLM Backends
+OpenAI, Anthropic, Google Gemini, Mistral, Ollama (local), custom OpenAI-compatible endpoints
+Target Users
+Developers, AI teams, enterprises, indie builders, power users
+Key Differentiator
+Self-learning skill loop, real MCP execution, visual pipelines, full local inference — all in one platform
+
+Chapter 1 — Product Vision & Feature Matrix
+1.1 Product Vision
+FlowMind exists to make AI agency accessible, auditable, and powerful. Users should be able to:
+    • Chat with an AI that actually learns from them across sessions
+    • Automate complex workflows visually without writing infrastructure code
+    • Run all of this on their own hardware if they choose
+    • Integrate with every tool they already use — not just a curated subset
+    • Trust the system — every action is logged, every decision is explainable
+
+1.2 Complete Feature Matrix
+Feature Area
+Capability
+Inspired By
+Priority
+Chat Interface
+Full conversational AI with streaming, tool calls, artifact rendering, code execution
+Claude.ai, OpenCode
+P0
+Chat Interface
+Multi-turn memory with vector search across sessions
+Hermes Agent
+P0
+Chat Interface
+File upload, image analysis, PDF reading
+Claude.ai
+P0
+Chat Interface
+Canvas mode for live collaborative documents
+OpenClaw
+P1
+Self-Learning
+Autonomous skill creation after complex tasks
+Hermes Agent
+P0
+Self-Learning
+Skill improvement during active use
+Hermes Agent
+P0
+Self-Learning
+FTS5 + vector session search with LLM summarization
+Hermes Agent
+P0
+Self-Learning
+Dialectic user modeling (preference & style learning)
+Hermes Agent / Honcho
+P1
+Self-Learning
+Periodic memory consolidation nudges
+Hermes Agent
+P1
+Agent Runtime
+Multi-agent orchestration with subagent spawning
+Hermes Agent
+P0
+Agent Runtime
+Real MCP tool execution with OAuth flows
+MCP Protocol
+P0
+Agent Runtime
+Context Engine injection into agent prompts
+FlowMind Original
+P0
+Agent Runtime
+Real self-healing retry with exponential backoff
+FlowMind Original
+P0
+Agent Runtime
+Parallel workstream delegation
+Hermes Agent
+P1
+Workflow Builder
+Visual drag-and-drop pipeline canvas (n8n-style)
+n8n
+P0
+Workflow Builder
+400+ trigger nodes (webhooks, cron, events)
+n8n
+P0
+Workflow Builder
+Condition/parallel branch inspector with wiring UI
+n8n
+P1
+Workflow Builder
+Pipeline versioning and rollback
+n8n
+P1
+Workflow Builder
+AI node that calls FlowMind agent mid-pipeline
+FlowMind Original
+P0
+Automation
+Built-in cron scheduler (natural language + cron syntax)
+Hermes Agent
+P0
+Automation
+Event-driven triggers from any connected channel
+OpenClaw
+P0
+Automation
+Scheduled reports, backups, and audits
+Hermes Agent
+P1
+Local Models
+Ollama backend for local inference
+OpenClaw / Ollama
+P0
+Local Models
+Cloud fallback badge on locally-installed models
+FlowMind Original
+P0
+Local Models
+Model failover with automatic retry on cloud
+OpenClaw
+P0
+Local Models
+Per-request model routing (local vs cloud)
+FlowMind Original
+P1
+Code Assistant
+AI coding TUI + editor integration (VS Code, JetBrains)
+OpenCode
+P0
+Code Assistant
+Code execution sandbox (Docker, E2B)
+OpenCode
+P0
+Code Assistant
+Multi-file codebase reasoning with AST context
+OpenCode
+P1
+Code Assistant
+Git-aware diff generation and PR description
+OpenCode
+P1
+Multi-Channel
+WhatsApp, Telegram, Slack, Discord, Signal gateway
+OpenClaw
+P0
+Multi-Channel
+iMessage, Matrix, IRC, Microsoft Teams
+OpenClaw
+P1
+Multi-Channel
+Voice memo transcription and TTS response
+OpenClaw
+P1
+Multi-Channel
+Cross-platform conversation continuity
+OpenClaw
+P0
+MCP Layer
+Real MCP tool execution engine
+MCP Protocol
+P0
+MCP Layer
+OAuth 2.0 flows for GitHub, Slack, Google, Notion
+MCP Protocol
+P0
+MCP Layer
+MCP server registry and discovery
+FlowMind Original
+P1
+MCP Layer
+Custom MCP server builder
+FlowMind Original
+P2
+Settings
+API key management (per-user, per-org)
+FlowMind Original
+P0
+Settings
+Billing and subscription management (Stripe)
+FlowMind Original
+P0
+Settings
+Org/workspace management
+FlowMind Original
+P0
+Settings
+Model provider configuration
+FlowMind Original
+P0
+Enterprise
+SSO/SAML 2.0 authentication
+Enterprise Standard
+P0
+Enterprise
+Role-based access control (RBAC)
+Enterprise Standard
+P0
+Enterprise
+Audit log with immutable event trail
+Enterprise Standard
+P0
+Enterprise
+Data residency and encryption controls
+Enterprise Standard
+P1
+Billing
+Stripe checkout — Free, Pro, Team, Enterprise tiers
+FlowMind Original
+P0
+Billing
+Usage metering and billing alerts
+FlowMind Original
+P1
+Billing
+Team seat management and invoice generation
+FlowMind Original
+P1
+
+Chapter 2 — System Architecture
+2.1 High-Level Architecture Overview
+FlowMind follows a layered, event-driven microservices architecture. The platform is decomposed into independently deployable services that communicate via a shared message bus (BullMQ over Redis) and a typed internal RPC layer (tRPC).
+
+Layer
+Service
+Technology
+Responsibility
+Presentation
+Web App
+Next.js 14 (App Router)
+Chat UI, Pipeline Builder, Settings, Billing
+Presentation
+CLI Tool
+Node.js + Ink (React TUI)
+Terminal interface, code assistant TUI
+API Gateway
+API Server
+Fastify + tRPC
+Auth, routing, rate limiting, streaming SSE
+Agent Runtime
+Agent Orchestrator
+Python (asyncio)
+Prompt construction, tool dispatch, memory
+Agent Runtime
+Skill Engine
+Python
+Skill CRUD, self-improvement loop, skill versioning
+Agent Runtime
+Context Engine
+Python + Qdrant
+RAG retrieval, session search, user modeling
+Workflow Engine
+Pipeline Runner
+Node.js (BullMQ workers)
+DAG execution, condition eval, parallel branching
+Workflow Engine
+Trigger Manager
+Node.js
+Cron, webhook, event triggers
+MCP Layer
+MCP Executor
+Node.js / Rust
+Real tool execution, OAuth token management
+Gateway
+Channel Gateway
+Node.js
+WhatsApp, Telegram, Slack, Discord, Signal adapters
+Inference
+LLM Router
+Python
+Provider selection, failover, cost routing
+Inference
+Ollama Proxy
+Go
+Local model management, cloud fallback logic
+Storage
+PostgreSQL
+PostgreSQL 16
+Users, orgs, pipelines, skills, audit logs
+Storage
+Redis
+Redis 7
+Sessions, BullMQ queues, pub/sub, rate limits
+Storage
+Qdrant
+Qdrant 1.x
+Vector embeddings for memory and context
+Storage
+S3-compatible
+MinIO (local) / S3
+File uploads, artifacts, exports
+Billing
+Billing Service
+Node.js + Stripe SDK
+Subscriptions, usage metering, webhooks
+Auth
+Auth Service
+Node.js + Passport.js
+JWT, OAuth2, SAML 2.0, RBAC enforcement
+
+2.2 Repository Structure (Monorepo)
+The entire platform lives in a single monorepo managed by Turborepo with pnpm workspaces:
+
+flowmind/ ├── apps/ │   ├── web/                    # Next.js 14 frontend (App Router) │   ├── api/                    # Fastify API gateway + tRPC router │   ├── cli/                    # Node.js CLI + Ink TUI │   └── docs/                   # Docusaurus documentation site ├── packages/ │   ├── agent-runtime/          # Python agent orchestrator (pyproject.toml) │   ├── skill-engine/           # Skill CRUD and self-improvement │   ├── context-engine/         # RAG, Qdrant, session search │   ├── workflow-engine/        # BullMQ pipeline runner │   ├── mcp-executor/           # Real MCP tool execution │   ├── channel-gateway/        # Multi-channel messaging adapters │   ├── llm-router/             # Provider routing and failover │   ├── ollama-proxy/           # Local model management │   ├── billing/                # Stripe integration │   ├── auth/                   # JWT, OAuth2, SAML, RBAC │   ├── db/                     # Prisma schema + migrations │   ├── ui/                     # Shared React component library │   └── shared/                 # Types, constants, utils (TypeScript) ├── infra/ │   ├── docker/                 # Dockerfiles per service │   ├── k8s/                    # Kubernetes manifests │   ├── terraform/              # Infrastructure as code │   └── compose/                # Docker Compose files (local dev) ├── tools/ │   ├── codegen/                # tRPC + Prisma code generation │   └── scripts/                # Dev, migration, seed scripts ├── .env.example ├── turbo.json ├── pnpm-workspace.yaml └── README.md
+
+2.3 Data Flow Architecture
+User Request Flow (Chat):
+    1. User sends message via Web UI or CLI
+    2. API Gateway authenticates JWT, checks rate limits, routes to Agent Orchestrator via tRPC
+    3. Agent Orchestrator queries Context Engine (Qdrant RAG + FTS5 session search)
+    4. Retrieved context is injected into system prompt using Context Engine templates
+    5. LLM Router selects optimal provider (local Ollama first, cloud fallback)
+    6. Agent receives streamed response, identifies tool calls
+    7. MCP Executor runs real tool calls with OAuth token management
+    8. Results are streamed back to client via SSE
+    9. Memory consolidation job is queued in BullMQ for background processing
+    10. Skill Engine evaluates if new skill should be created from this interaction
+
+2.4 Event Bus & Queue Architecture
+All async operations flow through BullMQ on Redis with dedicated queues per concern:
+    • agent-tasks — LLM inference requests, tool execution jobs
+    • memory-consolidation — session summarization, embedding generation
+    • skill-improvement — automated skill refinement jobs
+    • pipeline-execution — workflow DAG execution steps
+    • trigger-events — cron and webhook trigger processing
+    • channel-outbound — message delivery to gateway channels
+    • billing-events — Stripe webhook processing, usage metering
+    • notifications — system alerts, quota warnings, completion events
+
+2.5 Security Architecture
+    • All inter-service communication is mTLS in production (k8s)
+    • JWT tokens are short-lived (15 min access, 7 day refresh)
+    • SAML assertions validated with org-specific IdP metadata
+    • All API keys encrypted at rest with AES-256 using per-org keys
+    • RBAC enforced at middleware level, not just UI
+    • Audit log events are append-only (immutable via PostgreSQL triggers)
+    • MCP OAuth tokens stored in encrypted column, auto-rotated
+    • Rate limiting per user/org/endpoint via Redis sliding window
+
+Chapter 3 — Database Schema & Data Models
+3.1 Core Entities (PostgreSQL via Prisma)
+
+Key tables and relationships:
+
+// prisma/schema.prisma (condensed)  model User {   id            String    @id @default(cuid())   email         String    @unique   passwordHash  String?   name          String?   avatarUrl     String?   role          UserRole  @default(USER)   orgId         String?   org           Org?      @relation(fields: [orgId], references: [id])   sessions      Session[]   skills        Skill[]   pipelines     Pipeline[]   memories      Memory[]   apiKeys       ApiKey[]   tier          Tier      @default(FREE)   stripeId      String?   createdAt     DateTime  @default(now()) }  model Org {   id            String    @id @default(cuid())   name          String   slug          String    @unique   samlConfig    Json?     // IdP metadata for SSO   members       OrgMember[]   pipelines     Pipeline[]   mcpTokens     McpToken[]   billingId     String?   tier          Tier      @default(FREE) }  model OrgMember {   id     String     @id @default(cuid())   orgId  String   userId String   role   OrgRole    @default(MEMBER)  // OWNER | ADMIN | MEMBER | VIEWER   org    Org        @relation(fields: [orgId], references: [id])   user   User       @relation(fields: [userId], references: [id]) }  model Session {   id        String    @id @default(cuid())   userId    String   user      User      @relation(fields: [userId], references: [id])   title     String?   messages  Message[]   summary   String?   // LLM-generated summary for FTS   embedding Float[]   // pgvector or synced to Qdrant   createdAt DateTime  @default(now())   updatedAt DateTime  @updatedAt }  model Message {   id          String      @id @default(cuid())   sessionId   String   session     Session     @relation(fields: [sessionId], references: [id])   role        MessageRole // USER | ASSISTANT | SYSTEM | TOOL   content     String   toolCalls   Json?   toolResults Json?   model       String?   provider    String?   tokensIn    Int?   tokensOut   Int?   createdAt   DateTime    @default(now()) }  model Skill {   id           String    @id @default(cuid())   userId       String?   orgId        String?   name         String   description  String   trigger      String    // natural language trigger   code         String    // Python or JS implementation   version      Int       @default(1)   successRate  Float     @default(0)   useCount     Int       @default(0)   lastImproved DateTime?   embedding    Float[]   isPublic     Boolean   @default(false)   createdAt    DateTime  @default(now()) }  model Memory {   id         String   @id @default(cuid())   userId     String   user       User     @relation(fields: [userId], references: [id])   content    String   type       MemType  // FACT | PREFERENCE | GOAL | CONTEXT   importance Float    @default(0.5)   embedding  Float[]   source     String?  // sessionId that generated this memory   createdAt  DateTime @default(now()) }  model Pipeline {   id          String        @id @default(cuid())   userId      String?   orgId       String?   name        String   description String?   graph       Json          // DAG: {nodes, edges}   triggers    Trigger[]   runs        PipelineRun[]   isActive    Boolean       @default(false)   version     Int           @default(1)   createdAt   DateTime      @default(now()) }  model Trigger {   id         String      @id @default(cuid())   pipelineId String   pipeline   Pipeline    @relation(fields: [pipelineId], references: [id])   type       TriggerType // CRON | WEBHOOK | MANUAL | EVENT | CHANNEL   config     Json        // cron expression, webhook URL, event type, etc.   isActive   Boolean     @default(true) }  model PipelineRun {   id         String      @id @default(cuid())   pipelineId String   pipeline   Pipeline    @relation(fields: [pipelineId], references: [id])   status     RunStatus   // PENDING | RUNNING | SUCCESS | FAILED | RETRYING   startedAt  DateTime    @default(now())   endedAt    DateTime?   logs       RunLog[]   error      String?   attempt    Int         @default(1) }  model McpToken {   id          String   @id @default(cuid())   userId      String?   orgId       String?   provider    String   // github | slack | google | notion | etc.   accessToken String   // AES-256 encrypted   refreshToken String?   expiresAt   DateTime?   scopes      String[]   createdAt   DateTime @default(now()) }  model ApiKey {   id        String   @id @default(cuid())   userId    String   user      User     @relation(fields: [userId], references: [id])   name      String   keyHash   String   // SHA-256 of the actual key   provider  String   // openai | anthropic | google | etc.   lastUsed  DateTime?   createdAt DateTime @default(now()) }  model AuditLog {   id        String   @id @default(cuid())   userId    String?   orgId     String?   action    String   // PIPELINE_CREATED | MCP_TOOL_EXECUTED | etc.   resource  String   resourceId String?   metadata  Json?   ip        String?   createdAt DateTime @default(now()) }
+
+Chapter 4 — Agent Runtime & Self-Learning Engine
+4.1 Agent Orchestrator
+The Agent Orchestrator is a Python asyncio service that manages the full lifecycle of an AI interaction — from receiving a user request to delivering a final streamed response.
+
+4.1.1 Agent Orchestrator Architecture
+    • AgentSession — stateful object per conversation, holds working memory and tool context
+    • PromptBuilder — assembles system prompt from: base template + user profile + skill list + retrieved context + tool definitions
+    • ToolDispatcher — routes tool calls to MCP Executor or built-in tools with retry logic
+    • StreamManager — handles SSE streaming back to the API gateway
+    • MemoryWriter — queues memory consolidation jobs after each interaction
+
+4.1.2 Context Engine Injection
+Before every LLM call, the Context Engine retrieves relevant context and injects it into the prompt:
+    11. User message is embedded using the configured embedding model
+    12. Qdrant nearest-neighbor search retrieves top-K relevant memories
+    13. FTS5 SQLite index (synced from PostgreSQL) searches past session summaries
+    14. Retrieved context is ranked by relevance score and recency
+    15. Top results are formatted and injected into the system prompt as a structured block
+    16. User modeling data (preferences, goals, communication style) is appended
+
+# packages/context-engine/retrieval.py async def retrieve_context(user_id: str, query: str, limit: int = 10) -> ContextBlock:     embedding = await embed(query)          # Vector search in Qdrant     vector_results = await qdrant.search(         collection_name=f"memories_{user_id}",         query_vector=embedding,         limit=limit,         score_threshold=0.72     )          # FTS search in SQLite (session summaries)     fts_results = await fts_search(user_id, query, limit=5)          # Merge, deduplicate, rank     merged = rank_and_merge(vector_results, fts_results)          return ContextBlock(         memories=merged[:limit],         user_model=await get_user_model(user_id)     )
+
+4.2 Self-Learning Skill Engine
+Inspired by Hermes Agent, the Skill Engine is the core differentiator of FlowMind — it makes the agent permanently smarter over time.
+
+4.2.1 Skill Creation Loop
+    17. After completing a complex multi-step task, the agent evaluates if a new skill should be created
+    18. If the task took more than N tool calls or required novel reasoning, skill creation is triggered
+    19. Skill Synthesizer generates: name, description, trigger pattern, and executable code
+    20. Generated skill is validated (syntax check, safety scan) then stored in the DB
+    21. Skill is embedded and added to the retrieval index so future agents can find it
+    22. Agent is nudged in subsequent sessions to use and improve the skill
+
+4.2.2 Skill Self-Improvement
+Every time a skill is used, its outcome is tracked. The improvement engine runs weekly:
+    • Skills with < 70% success rate are queued for improvement
+    • LLM analyzes failure cases from execution logs
+    • Improved skill code is generated and diff-validated
+    • A/B testing determines if the new version outperforms the old
+    • New version is promoted if it wins, old version is archived
+
+4.2.3 User Modeling (Honcho-compatible)
+    • Communication style preferences (formal/casual, verbose/concise)
+    • Expertise domains (programming languages, tools, topics)
+    • Goal tracking (short-term tasks, long-term objectives)
+    • Behavioral patterns (working hours, preferred output formats)
+    • Feedback signals (explicit thumbs up/down, implicit corrections)
+
+4.3 Self-Healing Retry with Exponential Backoff
+Every LLM call and tool execution is wrapped in a resilient retry handler:
+
+# packages/agent-runtime/resilience.py import asyncio, random from typing import TypeVar, Callable, Awaitable  T = TypeVar("T")  async def with_retry(     fn: Callable[[], Awaitable[T]],     max_attempts: int = 5,     base_delay: float = 1.0,     max_delay: float = 60.0,     jitter: bool = True,     retryable_errors: tuple = (RateLimitError, TimeoutError, ServiceUnavailableError) ) -> T:     attempt = 0     while attempt < max_attempts:         try:             return await fn()         except retryable_errors as e:             attempt += 1             if attempt >= max_attempts:                 raise             delay = min(base_delay * (2 ** (attempt - 1)), max_delay)             if jitter:                 delay += random.uniform(0, delay * 0.1)             await asyncio.sleep(delay)         except Exception as e:             # Non-retryable: log and re-raise immediately             logger.error(f"Non-retryable error: {e}")             raise  # Tool execution with self-healing class ToolExecutor:     async def execute(self, tool_call: ToolCall) -> ToolResult:         return await with_retry(             lambda: self._execute_internal(tool_call),             max_attempts=3,             base_delay=2.0         )
+
+4.4 Cron Scheduler
+FlowMind has a built-in cron system inspired by Hermes Agent, using BullMQ's repeat functionality:
+    • Natural language scheduling: 'every weekday at 9am' parsed by LLM to cron expression
+    • Standard cron syntax also supported: '0 9 * * 1-5'
+    • Delivery to any connected channel (Telegram, Slack, Email, Webhook)
+    • Missed-run recovery: if a job was scheduled during downtime, it runs immediately on startup
+    • Admin UI to view, pause, edit, and delete scheduled jobs
+    • Per-user cron quota enforcement (Free: 3, Pro: 20, Team: unlimited)
+
+Chapter 5 — Real MCP Tool Execution Layer
+5.1 MCP Protocol Implementation
+FlowMind implements the Model Context Protocol (MCP) natively — not as a wrapper around a third-party service, but as a first-class protocol handler built into the platform.
+
+5.1.1 MCP Executor Architecture
+    • McpServer Registry — catalog of available MCP servers with capabilities, versions, and auth requirements
+    • McpConnection Pool — persistent connections to active MCP servers (SSE and stdio transports)
+    • McpToolRouter — maps tool names to server connections and validates schemas
+    • McpResultParser — normalizes tool results into a standard internal format
+    • McpAuditLogger — records every tool execution in the audit log
+
+5.1.2 Real OAuth 2.0 Flows (GitHub, Slack, Google, Notion, Linear, Jira)
+    23. User initiates OAuth from Settings → Connections page
+    24. FlowMind redirects to provider's authorization URL with PKCE
+    25. Provider redirects back to FlowMind callback endpoint
+    26. Authorization code is exchanged for access + refresh tokens
+    27. Tokens are encrypted with AES-256 and stored in McpToken table
+    28. Token refresh is handled automatically before expiry
+    29. Scopes are stored and displayed to user for transparency
+
+// packages/mcp-executor/oauth.ts export const OAUTH_PROVIDERS: Record<string, OAuthConfig> = {   github: {     authUrl: "https://github.com/login/oauth/authorize",     tokenUrl: "https://github.com/login/oauth/access_token",     scopes: ["repo", "read:user", "read:org"],     pkce: false, // GitHub doesn't support PKCE yet   },   slack: {     authUrl: "https://slack.com/oauth/v2/authorize",     tokenUrl: "https://slack.com/api/oauth.v2.access",     scopes: ["channels:read", "chat:write", "users:read"],     pkce: true,   },   google: {     authUrl: "https://accounts.google.com/o/oauth2/v2/auth",     tokenUrl: "https://oauth2.googleapis.com/token",     scopes: ["openid", "email", "profile", "https://www.googleapis.com/auth/drive"],     pkce: true,   },   notion: {     authUrl: "https://api.notion.com/v1/oauth/authorize",     tokenUrl: "https://api.notion.com/v1/oauth/token",     scopes: [], // Notion uses workspace-level auth     pkce: false,   } };
+
+5.2 Built-in MCP Tools (No External Dependency)
+Tool Name
+Category
+Description
+flowmind.files.read
+Filesystem
+Read files from user's workspace
+flowmind.files.write
+Filesystem
+Write and create files
+flowmind.files.search
+Filesystem
+Full-text search across workspace
+flowmind.code.execute
+Code
+Run code in sandboxed Docker container
+flowmind.code.lint
+Code
+Lint and format code with language-specific tools
+flowmind.git.diff
+Git
+Show git diff for a repository
+flowmind.git.commit
+Git
+Commit staged changes with a message
+flowmind.git.pr
+Git
+Create a pull request on GitHub/GitLab
+flowmind.web.fetch
+Web
+Fetch and parse web page content
+flowmind.web.search
+Web
+Search the web (self-hosted Searxng)
+flowmind.db.query
+Database
+Execute SQL query on connected databases
+flowmind.email.send
+Communication
+Send email via SMTP or Mailgun
+flowmind.slack.message
+Communication
+Post message to Slack channel
+flowmind.github.issue
+Project
+Create or update GitHub issue
+flowmind.notion.page
+Project
+Create or update Notion page
+flowmind.memory.search
+AI
+Search agent memories via vector + FTS
+flowmind.skill.run
+AI
+Execute a stored FlowMind skill
+flowmind.pipeline.trigger
+AI
+Trigger a workflow pipeline by ID
+flowmind.image.generate
+Media
+Generate image (local Stable Diffusion or API)
+flowmind.audio.transcribe
+Media
+Transcribe audio file (local Whisper)
+
+Chapter 6 — Chat Interface (Production-Ready AI Chat)
+6.1 Overview
+The FlowMind chat interface is designed to be the most capable, developer-friendly AI chat experience available. It is not a simple chat box — it is a full AI development environment accessible through a browser.
+
+6.2 Chat Features
+6.2.1 Core Chat
+    • Streaming responses with token-level SSE
+    • Multi-turn conversation with full history context
+    • Conversation branching (fork a conversation from any message)
+    • Message regeneration with different models or parameters
+    • Message editing with automatic response regeneration
+    • Conversation search (vector + keyword)
+    • Conversation sharing with public/private/team visibility
+
+6.2.2 Artifact Rendering
+    • Code blocks with syntax highlighting and one-click copy
+    • Live code execution: paste Python/JS and run it in the sandbox
+    • Markdown rendering with LaTeX math support
+    • Mermaid diagram rendering (flowcharts, sequence, ER diagrams)
+    • HTML/React/SVG preview in a sandboxed iframe
+    • CSV/JSON data table rendering with sorting and filtering
+    • Image rendering and analysis
+    • PDF viewer embedded in chat
+
+6.2.3 File & Media Handling
+    • Drag-and-drop file upload (images, PDFs, code, documents)
+    • Multi-file upload per message
+    • Image analysis (describe, OCR, analyze charts)
+    • PDF reading and Q&A
+    • Audio transcription (Whisper, local or API)
+    • Document editing assistance (docx, xlsx, pptx)
+
+6.2.4 Tool Use in Chat
+    • Real-time tool call visualization (shows tool name, input, output as it executes)
+    • Tool approval mode: user must approve each tool before execution (optional, per-user setting)
+    • Tool call history panel: expandable log of every tool call in the session
+    • Inline web search results with citations
+    • Code execution results displayed inline with stdout/stderr
+
+6.2.5 Model & Provider Selection
+    • Per-conversation model selection from any configured provider
+    • Model comparison mode: run same prompt on two models side-by-side
+    • Local model badge: shows cloud fallback icon when Ollama model is not available locally
+    • Cost estimator: shows token count and estimated cost before sending
+
+6.2.6 Canvas Mode (OpenClaw-inspired)
+    • Switch any conversation to Canvas mode for collaborative document creation
+    • AI and user edit the same live document
+    • Real-time rendering with diff highlighting
+    • Export canvas as Markdown, PDF, or DOCX
+
+6.3 Chat API Implementation
+// apps/api/src/routers/chat.ts import { z } from "zod"; import { router, protectedProcedure } from "../trpc"; import { AgentOrchestrator } from "@flowmind/agent-runtime";  export const chatRouter = router({   sendMessage: protectedProcedure     .input(z.object({       sessionId: z.string(),       content: z.string(),       files: z.array(z.object({ url: z.string(), type: z.string() })).optional(),       model: z.string().optional(),       tools: z.array(z.string()).optional(),     }))     .mutation(async ({ input, ctx }) => {       const orchestrator = new AgentOrchestrator(ctx.user.id);              // Returns an async generator for streaming       const stream = orchestrator.streamResponse({         sessionId: input.sessionId,         message: input.content,         files: input.files,         model: input.model ?? ctx.user.defaultModel,         enabledTools: input.tools ?? ctx.user.enabledTools,       });              return stream; // Fastify SSE handler picks this up     }),    getSessions: protectedProcedure     .input(z.object({ cursor: z.string().optional(), limit: z.number().default(20) }))     .query(async ({ input, ctx }) => {       return ctx.db.session.findMany({         where: { userId: ctx.user.id },         orderBy: { updatedAt: "desc" },         take: input.limit,         cursor: input.cursor ? { id: input.cursor } : undefined,         select: { id: true, title: true, createdAt: true, updatedAt: true }       });     }), });
+
+Chapter 7 — Visual Workflow Pipeline Engine
+7.1 Pipeline Architecture
+The workflow engine is a visual DAG (Directed Acyclic Graph) executor inspired by n8n's architecture but built entirely within FlowMind. It runs on BullMQ workers and supports complex branching, parallel execution, and AI-native nodes.
+
+7.2 Node Types
+Node Category
+Node Type
+Description
+Triggers
+Cron Trigger
+Schedule pipeline on a time-based expression
+Triggers
+Webhook Trigger
+HTTP webhook that starts a pipeline
+Triggers
+Channel Event
+Message from WhatsApp, Slack, etc.
+Triggers
+Manual Trigger
+Run-now button from UI
+Triggers
+Event Trigger
+Internal FlowMind event (pipeline complete, tool error)
+Actions
+HTTP Request
+Make any HTTP API call with auth configuration
+Actions
+Database Query
+Execute SQL on connected PostgreSQL / MySQL
+Actions
+Send Email
+SMTP or Mailgun email delivery
+Actions
+Send Message
+Post to any connected channel
+Actions
+File Operation
+Read, write, move, delete files
+Actions
+Code Execute
+Run arbitrary Python or JS in sandbox
+AI Nodes
+AI Agent
+Run FlowMind agent with a prompt and tools
+AI Nodes
+Summarize
+Summarize text with selected model
+AI Nodes
+Classify
+Classify text into categories
+AI Nodes
+Extract Data
+Structured extraction with JSON schema
+AI Nodes
+Embed
+Generate vector embedding for text
+Flow Control
+Condition
+If/else branching on field value or expression
+Flow Control
+Switch
+Multi-way branch on a value
+Flow Control
+Merge
+Combine parallel branches back into one
+Flow Control
+Loop
+Iterate over an array of items
+Flow Control
+Wait
+Pause execution for a fixed duration
+Integrations
+GitHub
+Issues, PRs, commits, webhooks
+Integrations
+Slack
+Messages, channels, users
+Integrations
+Notion
+Pages, databases, blocks
+Integrations
+Google Sheets
+Read and write spreadsheet data
+Integrations
+Stripe
+Payments, subscriptions, customers
+Integrations
+Jira
+Issues, sprints, projects
+Integrations
+Linear
+Issues, projects, cycles
+Integrations
+Airtable
+Records, tables, views
+Integrations
+Salesforce
+Contacts, leads, opportunities
+
+7.3 Condition & Parallel Branch UX
+The pipeline canvas uses React Flow for the node editor with custom node types:
+    • Condition node: opens an inspector panel with field selector + operator + value. Output sockets are labeled TRUE and FALSE
+    • Switch node: dynamic output sockets, one per case value plus a DEFAULT fallback
+    • Parallel node: forks execution to multiple branches simultaneously. BullMQ jobs are created for each branch
+    • Merge node: waits for all parallel branches to complete before continuing (barrier synchronization)
+    • Inspector panel: click any node to open a right-side panel showing all configuration, including wiring visualization
+
+7.4 Pipeline Execution Engine
+// packages/workflow-engine/src/executor.ts export class PipelineExecutor {   async execute(pipelineId: string, input: Record<string, unknown>) {     const pipeline = await db.pipeline.findUnique({ where: { id: pipelineId } });     const run = await db.pipelineRun.create({ data: { pipelineId, status: "RUNNING" } });          const graph = new DAG(pipeline.graph);     const startNodes = graph.getStartNodes();          // Execute start nodes, then traverse     await Promise.all(startNodes.map(node => this.executeNode(node, input, run.id, graph)));   }    async executeNode(node: PipelineNode, input: any, runId: string, graph: DAG) {     const handler = NodeHandlerRegistry.get(node.type);          const result = await withRetry(       () => handler.execute(node.config, input),       { maxAttempts: node.config.retries ?? 3, baseDelay: 2000 }     );          await db.runLog.create({ data: { runId, nodeId: node.id, output: result } });          // Determine next nodes based on result (handles condition branching)     const nextNodes = graph.getNextNodes(node.id, result);          if (node.type === "parallel") {       await Promise.all(nextNodes.map(n => this.executeNode(n, result, runId, graph)));     } else {       for (const next of nextNodes) {         await this.executeNode(next, result, runId, graph);       }     }   } }
+
+Chapter 8 — Local Model Inference & Ollama Integration
+8.1 Ollama Backend
+FlowMind includes first-class support for Ollama — the local model inference engine. Users can run powerful open-source models (Llama 3.3, Mistral, Phi-4, DeepSeek, Qwen) locally with zero API costs.
+
+8.1.1 Ollama Integration Architecture
+    • OllamaProxy service (Go) — lightweight proxy between FlowMind API and Ollama daemon
+    • Model Manager UI — browse, download, and delete models from the Settings page
+    • Auto-detection — FlowMind pings localhost:11434 on startup to discover Ollama
+    • Health monitoring — OllamaProxy reports model availability in real time
+    • Multi-GPU routing — if multiple GPUs are detected, large models are auto-layered
+
+8.1.2 Cloud Fallback Badge System
+When a user has a local model configured but Ollama is not running or the model is not loaded:
+    • Chat model selector shows a cloud icon badge overlaid on the local model entry
+    • Tooltip explains: 'Local model unavailable — will use [cloud provider] as fallback'
+    • User can configure the fallback provider per local model in Settings
+    • Fallback is applied automatically and transparently during inference
+    • After the request, a notification shows: 'This response used [Anthropic/OpenAI] as fallback'
+
+// apps/web/src/components/ModelSelector.tsx export function ModelBadge({ model }: { model: ModelConfig }) {   const { isLocalAvailable } = useOllamaStatus(model.ollamaName);      return (     <div className="relative inline-flex items-center">       <ModelIcon model={model} />       {model.isLocal && !isLocalAvailable && (         <Tooltip content={`${model.fallbackProvider} fallback active`}>           <CloudIcon className="absolute -top-1 -right-1 w-4 h-4 text-amber-500" />         </Tooltip>       )}     </div>   ); }
+
+8.2 LLM Router
+The LLM Router selects the optimal inference backend for each request based on configurable rules:
+Priority
+Rule
+Action
+1
+Model explicitly specified in request
+Use specified model/provider
+2
+Local Ollama model requested and available
+Route to Ollama
+3
+Local Ollama model requested but unavailable
+Use configured cloud fallback, show badge
+4
+Cost routing enabled and request is simple
+Route to cheapest capable model
+5
+Primary cloud provider rate limited
+Failover to secondary provider
+6
+All primary providers unavailable
+Use emergency fallback (configurable)
+7
+No fallback available
+Return error with retry-after header
+
+Chapter 9 — Multi-Channel Communication Gateway
+9.1 Gateway Architecture (OpenClaw-inspired)
+The Channel Gateway makes FlowMind accessible from any messaging platform the user already uses. All channels share a unified message model and route through the same agent runtime.
+
+Channel
+Protocol
+Capabilities
+Status
+WhatsApp
+Baileys (unofficial) / Cloud API
+Text, voice, media, reactions
+P0
+Telegram
+Telegram Bot API
+Text, voice, media, inline keyboards
+P0
+Slack
+Slack Events API (OAuth)
+Text, blocks, slash commands, modals
+P0
+Discord
+Discord.js (OAuth)
+Text, embeds, slash commands, threads
+P0
+Signal
+signal-cli
+Text, media
+P1
+iMessage
+BlueBubbles / AppleScript (macOS)
+Text, media
+P1
+Microsoft Teams
+Teams Bot Framework
+Adaptive cards, meetings
+P1
+Matrix
+matrix-js-sdk
+Text, media, federation
+P1
+IRC
+node-irc
+Text
+P2
+Email
+SMTP + IMAP
+Text, HTML, attachments
+P1
+Web Widget
+Embeddable JS snippet
+Full chat UI embeddable in any website
+P0
+REST API
+FlowMind REST API
+Programmatic access for custom integrations
+P0
+
+9.2 Message Normalization
+Every inbound message from any channel is normalized into a ChannelMessage object before reaching the agent:
+interface ChannelMessage {   id: string;   channelType: "whatsapp" | "telegram" | "slack" | "discord" | "email" | ...;   channelId: string;         // Channel-specific conversation ID   userId: string;            // FlowMind user ID (mapped from channel user ID)   text: string;              // Extracted text content   files?: ChannelFile[];     // Normalized file attachments   voiceUrl?: string;         // Audio to transcribe   replyTo?: string;          // Message being replied to   metadata: Record<string, unknown>;  // Channel-specific extras   receivedAt: Date; }
+
+Chapter 10 — Settings Page, API Keys & Organization Management
+10.1 Settings Page Structure
+The Settings page is a comprehensive control center organized into tabs:
+
+Tab
+Sections
+Key Actions
+Profile
+Name, email, avatar, password, timezone, language
+Edit profile, change password, delete account
+Appearance
+Theme (light/dark/system), font size, chat density
+Toggle settings with live preview
+AI & Models
+Default model, provider priority, cost limits, temperature defaults
+Configure per-provider API keys, set routing rules
+Local Models
+Ollama connection, installed models, cloud fallback config
+Pull/delete models, configure fallback per model
+Memory
+Skill library, memory manager, user model viewer
+Delete memories, edit skills, clear history
+API Keys
+User-scoped provider API keys (OpenAI, Anthropic, Google, etc.)
+Add/rotate/delete keys, test connectivity
+Connections
+OAuth connections (GitHub, Slack, Google, Notion)
+Authorize/revoke connections, view scopes
+Cron Jobs
+Scheduled automation list
+Create/edit/pause/delete cron jobs
+Notifications
+Email, push, channel notification preferences
+Configure per-event notification delivery
+Organization
+Org profile, members list, roles
+Invite members, change roles, view audit log
+Billing
+Current plan, usage metrics, invoices, payment method
+Upgrade/downgrade, add seats, view usage
+Security
+Active sessions, MFA setup, API tokens
+Revoke sessions, enable TOTP/WebAuthn MFA
+Danger Zone
+Data export, account deletion
+Export all data, permanently delete account
+
+10.2 API Key Management
+API keys are stored securely with the following design:
+    • On creation: key is shown once in full, then only the last 4 characters are shown
+    • Key is hashed with SHA-256 before storage — only the hash is in the DB
+    • Key name and provider are stored in plaintext for UI display
+    • Keys are tested on save — invalid keys are rejected with clear error messages
+    • Usage tracking: last-used timestamp is updated on each API call
+    • Key rotation: generate a new key, grace period for old key, then revoke
+
+10.3 Organization & RBAC
+Role
+Permissions
+Owner
+Full access to everything including billing and org deletion
+Admin
+All member permissions + invite/remove members + manage pipelines
+Member
+Create and run own pipelines, use shared pipelines, configure own settings
+Viewer
+Read-only access to pipelines and chat — cannot create or edit
+API Token
+Scoped programmatic access — permissions specified at creation time
+
+Chapter 11 — Billing, Stripe Checkout & Subscription Tiers
+11.1 Subscription Tiers
+Feature
+Free
+Pro ($19/mo)
+Team ($49/seat/mo)
+Enterprise (Custom)
+Chat sessions
+100/mo
+Unlimited
+Unlimited
+Unlimited
+AI model access
+OpenAI GPT-4o-mini, local Ollama
+All providers
+All providers
+All providers
+Pipeline nodes
+50 nodes
+500 nodes
+Unlimited
+Unlimited
+Cron jobs
+3
+20
+Unlimited
+Unlimited
+Workspace channels
+1 (Web only)
+3
+Unlimited
+Unlimited
+MCP connections
+2
+10
+Unlimited
+Unlimited
+Storage
+1 GB
+20 GB
+100 GB/seat
+Custom
+Skill library
+10 skills
+500 skills
+Unlimited
+Unlimited
+Memory retention
+30 days
+1 year
+Unlimited
+Unlimited
+SSO/SAML
+No
+No
+Yes
+Yes
+RBAC
+No
+No
+Yes
+Yes
+Audit log
+No
+7 days
+90 days
+Custom retention
+SLA
+None
+99.5%
+99.9%
+99.99%
+Support
+Community
+Email
+Priority email
+Dedicated CSM
+
+11.2 Stripe Integration
+FlowMind uses Stripe for all payment processing. The integration covers:
+    • Stripe Checkout for new subscriptions (redirect flow, embeds are not supported in all regions)
+    • Stripe Customer Portal for self-serve plan changes, cancellation, payment method updates
+    • Stripe webhooks for subscription lifecycle events (created, updated, deleted, past due)
+    • Usage-based metering for Enterprise tier via Stripe Meters API
+    • Team seat add/remove via Stripe subscription item quantity updates
+    • Invoice generation and PDF download from the Billing settings tab
+
+// packages/billing/src/stripe.ts export class BillingService {   async createCheckoutSession(userId: string, tier: Tier): Promise<string> {     const user = await db.user.findUnique({ where: { id: userId } });     const priceId = PRICE_IDS[tier]; // mapped from env vars      const session = await stripe.checkout.sessions.create({       customer_email: user.email,       mode: "subscription",       line_items: [{ price: priceId, quantity: 1 }],       success_url: `${env.APP_URL}/settings/billing?success=1`,       cancel_url: `${env.APP_URL}/settings/billing?cancelled=1`,       metadata: { userId, tier },       subscription_data: {         trial_period_days: tier === "PRO" ? 14 : 0,         metadata: { userId }       }     });      return session.url;   }    async handleWebhook(event: Stripe.Event) {     switch (event.type) {       case "customer.subscription.created":       case "customer.subscription.updated":         await this.syncSubscription(event.data.object as Stripe.Subscription);         break;       case "customer.subscription.deleted":         await this.downgradeToFree(event.data.object as Stripe.Subscription);         break;       case "invoice.payment_failed":         await this.notifyPaymentFailed(event.data.object as Stripe.Invoice);         break;     }   } }
+
+Chapter 12 — SSO/SAML & Enterprise Authentication
+12.1 Authentication Methods
+Method
+Implementation
+Tier
+Email + Password
+bcrypt hashed, email verification, TOTP MFA
+All tiers
+Google OAuth
+Google Identity Platform
+All tiers
+GitHub OAuth
+GitHub App OAuth
+All tiers
+Microsoft OAuth
+Azure AD
+Pro+
+SAML 2.0 SSO
+passport-saml, per-org IdP config
+Team / Enterprise
+WebAuthn / Passkey
+SimpleWebAuthn library
+Pro+
+API Token
+Long-lived scoped tokens for automation
+All tiers
+
+12.2 SAML 2.0 Implementation
+Enterprise organizations configure their IdP (Okta, Azure AD, Google Workspace, OneLogin) in the Organization Settings:
+    30. Admin navigates to Settings → Organization → SSO
+    31. Uploads IdP metadata XML or enters metadata URL
+    32. FlowMind generates SP metadata (Entity ID, ACS URL, SLO URL)
+    33. Admin configures their IdP with the SP metadata
+    34. Test login button validates the SAML flow end-to-end
+    35. Once validated, SSO is enforced for all org members (configurable)
+    36. JIT (Just-In-Time) provisioning creates FlowMind accounts on first SSO login
+
+12.3 Enterprise Audit Log
+Every privileged action generates an immutable audit event:
+    • User login/logout, failed authentication attempts
+    • Pipeline creation, modification, deletion, execution
+    • MCP tool execution with full input/output (optional, configurable)
+    • Organization member changes (invite, role change, removal)
+    • API key creation, rotation, deletion
+    • Settings changes (model config, billing, SSO)
+    • Data export and deletion requests
+Audit logs are exportable as CSV or JSON for compliance reporting (SOC2, HIPAA, ISO 27001).
+
+Chapter 13 — AI Code Assistant (OpenCode-inspired)
+13.1 Overview
+FlowMind includes a full-featured AI code assistant accessible via the web chat, CLI TUI, and editor plugins. It provides deep codebase understanding, not just completion.
+
+13.2 Code Assistant Features
+13.2.1 Terminal TUI
+    • Ink (React for terminals) TUI with multiline editing
+    • Syntax-highlighted code blocks in terminal
+    • Slash commands: /edit, /explain, /fix, /test, /doc, /review, /refactor
+    • Interrupt and redirect: Ctrl+C stops current generation, allows new instruction
+    • Streaming output with real-time diff highlighting
+
+13.2.2 Codebase Understanding
+    • Tree-sitter AST parsing for 40+ languages
+    • Symbol index: functions, classes, interfaces, types
+    • Semantic search across codebase with vector embeddings
+    • File dependency graph for impact analysis
+    • Git history awareness: understands recent changes and blame
+
+13.2.3 Code Operations
+    • Multi-file edits with atomic apply-or-reject
+    • PR description generation from git diff
+    • Test generation: writes unit tests for selected functions
+    • Documentation generation: JSDoc, docstring, README
+    • Code review: analyzes staged changes and provides feedback
+    • Refactoring: extract function, rename symbol, simplify logic
+
+13.2.4 Editor Integration
+    • VS Code extension: sidebar chat, inline code lens, diff view
+    • JetBrains plugin: IDEA, PyCharm, WebStorm support
+    • Neovim plugin: LSP-style integration with nvim-cmp
+    • All editors share the same FlowMind agent backend
+
+Chapter 14 — Running FlowMind Locally (Developer Setup Guide)
+14.1 Prerequisites
+Tool
+Version
+Purpose
+Node.js
+22.x LTS
+Frontend, API, workflow engine, gateway
+pnpm
+9.x
+Package manager for monorepo
+Python
+3.11+
+Agent runtime, context engine
+uv
+latest
+Python package manager (fast)
+Docker
+24+
+PostgreSQL, Redis, Qdrant, sandbox execution
+Docker Compose
+2.x
+Local service orchestration
+Ollama
+latest (optional)
+Local model inference
+Git
+2.40+
+Version control
+
+14.2 Quick Start (5 minutes)
+# 1. Clone the repository git clone https://github.com/your-org/flowmind.git cd flowmind  # 2. Copy environment variables cp .env.example .env # Edit .env with your API keys (minimum: DATABASE_URL, REDIS_URL, one LLM provider key)  # 3. Start infrastructure services docker compose -f infra/compose/local.yml up -d # Starts: PostgreSQL, Redis, Qdrant, MinIO  # 4. Install all dependencies pnpm install  # 5. Run database migrations pnpm db:migrate pnpm db:seed  # Optional: seed demo data  # 6. Install Python agent runtime cd packages/agent-runtime uv sync cd ../..  # 7. Start all services in development mode pnpm dev # Starts all apps and packages in watch mode via Turborepo  # 8. Open the web app open http://localhost:3000  # 9. (Optional) Start Ollama for local models ollama serve ollama pull llama3.3  # or any model you want
+
+14.3 Environment Variables
+Variable
+Description
+Required
+DATABASE_URL
+PostgreSQL connection string
+Yes
+REDIS_URL
+Redis connection string
+Yes
+QDRANT_URL
+Qdrant vector DB URL
+Yes
+JWT_SECRET
+Secret for JWT signing (min 32 chars)
+Yes
+ENCRYPTION_KEY
+AES-256 key for API key encryption
+Yes
+OPENAI_API_KEY
+OpenAI API key (or any other provider)
+One provider required
+ANTHROPIC_API_KEY
+Anthropic API key
+Optional
+GOOGLE_AI_API_KEY
+Google Gemini API key
+Optional
+OLLAMA_URL
+Ollama server URL (default: http://localhost:11434)
+Optional
+STRIPE_SECRET_KEY
+Stripe secret key
+Required for billing
+STRIPE_WEBHOOK_SECRET
+Stripe webhook signing secret
+Required for billing
+S3_ENDPOINT
+MinIO or S3 endpoint URL
+Required for file uploads
+S3_ACCESS_KEY
+S3 access key
+Required for file uploads
+S3_SECRET_KEY
+S3 secret key
+Required for file uploads
+TELEGRAM_BOT_TOKEN
+Telegram bot token
+Optional (for gateway)
+SLACK_CLIENT_ID
+Slack app client ID
+Optional (for gateway)
+SLACK_CLIENT_SECRET
+Slack app client secret
+Optional (for gateway)
+GITHUB_CLIENT_ID
+GitHub OAuth app client ID
+Optional (for MCP OAuth)
+GITHUB_CLIENT_SECRET
+GitHub OAuth app client secret
+Optional (for MCP OAuth)
+
+14.4 Service Ports (Local Development)
+Service
+Port
+URL
+Web App (Next.js)
+3000
+http://localhost:3000
+API Gateway (Fastify)
+3001
+http://localhost:3001
+Agent Runtime (Python)
+8000
+http://localhost:8000
+Workflow Engine
+3002
+http://localhost:3002
+Channel Gateway
+3003
+http://localhost:3003
+Ollama Proxy
+3004
+http://localhost:3004
+PostgreSQL
+5432
+postgres://localhost:5432/flowmind
+Redis
+6379
+redis://localhost:6379
+Qdrant
+6333
+http://localhost:6333
+MinIO (S3)
+9000
+http://localhost:9000
+MinIO Console
+9001
+http://localhost:9001
+
+Chapter 15 — Production Deployment
+15.1 Docker Compose (Single Server)
+For a single-server deployment (up to ~1000 users), use the production Docker Compose configuration:
+# infra/compose/production.yml version: "3.9" services:   web:     image: flowmind/web:latest     environment: [APP_URL, API_URL]     ports: ["3000:3000"]     depends_on: [api]    api:     image: flowmind/api:latest     environment: [DATABASE_URL, REDIS_URL, JWT_SECRET, ...]     ports: ["3001:3001"]     depends_on: [postgres, redis, qdrant]    agent:     image: flowmind/agent:latest     environment: [QDRANT_URL, OPENAI_API_KEY, ...]     ports: ["8000:8000"]    postgres:     image: postgres:16-alpine     volumes: ["pgdata:/var/lib/postgresql/data"]     environment: [POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD]    redis:     image: redis:7-alpine     volumes: ["redisdata:/data"]    qdrant:     image: qdrant/qdrant:latest     volumes: ["qdrantdata:/qdrant/storage"]    traefik:     image: traefik:v3     ports: ["80:80", "443:443"]     volumes: ["./traefik.yml:/traefik.yml", "/var/run/docker.sock:/var/run/docker.sock"]
+
+15.2 Kubernetes (Enterprise/Scale)
+For enterprise deployments, FlowMind ships with Helm charts and Kustomize overlays:
+    • Horizontal pod autoscaling for API and workflow workers
+    • PodDisruptionBudgets for zero-downtime deployments
+    • NetworkPolicies for service-to-service isolation
+    • External Secrets Operator integration for secrets management (Vault, AWS SM)
+    • Prometheus + Grafana monitoring stack included
+    • Loki for centralized log aggregation
+
+15.3 Infrastructure Requirements
+Component
+Minimum (100 users)
+Recommended (1000 users)
+Enterprise (10k+ users)
+Web/API servers
+2 vCPU, 4 GB RAM
+4 vCPU, 8 GB RAM (x3)
+8 vCPU, 16 GB RAM (x6+)
+Agent runtime
+4 vCPU, 8 GB RAM
+8 vCPU, 16 GB RAM (x2)
+16 vCPU, 32 GB RAM (x4+)
+PostgreSQL
+2 vCPU, 4 GB RAM, 100 GB SSD
+4 vCPU, 16 GB RAM, 500 GB SSD
+RDS/Cloud SQL with read replicas
+Redis
+1 vCPU, 2 GB RAM
+2 vCPU, 8 GB RAM
+Redis Cluster, 16 GB+
+Qdrant
+2 vCPU, 8 GB RAM, 50 GB SSD
+4 vCPU, 16 GB RAM, 200 GB SSD
+Qdrant Cloud or dedicated cluster
+Ollama (GPU node)
+NVIDIA RTX 3080 (10 GB VRAM)
+NVIDIA A10G (24 GB VRAM)
+A100/H100 cluster
+
+Chapter 16 — Design System & Frontend Architecture
+16.1 Technology Stack
+    • Next.js 14 with App Router — React Server Components for performance
+    • TypeScript — strict mode, full type safety
+    • Tailwind CSS — utility-first styling with custom design tokens
+    • shadcn/ui — accessible component library (Radix UI primitives)
+    • React Flow — pipeline canvas with custom node types
+    • Zustand — lightweight global state management
+    • tRPC — fully typed API client (no code generation needed)
+    • React Query (TanStack) — server state, caching, optimistic updates
+    • Framer Motion — animations and transitions
+
+16.2 Design Tokens
+Token
+Light Mode
+Dark Mode
+Usage
+--color-primary
+#1A237E
+#7986CB
+Primary brand color, CTAs
+--color-secondary
+#3949AB
+#9FA8DA
+Secondary actions, accents
+--color-surface
+#FFFFFF
+#1E1E2E
+Card and panel backgrounds
+--color-background
+#F4F5F9
+#12121F
+Page background
+--color-border
+#E0E0E0
+#2D2D3F
+Borders and dividers
+--color-text-primary
+#212121
+#E8E8F0
+Main text
+--color-text-secondary
+#616161
+#A0A0B8
+Secondary/muted text
+--color-success
+#2E7D32
+#4CAF50
+Success states
+--color-warning
+#E65100
+#FF9800
+Warning states
+--color-error
+#C62828
+#F44336
+Error states
+--color-ai-badge
+#7B1FA2
+#CE93D8
+AI-generated content indicator
+--color-local-badge
+#EF6C00
+#FFB74D
+Local model cloud fallback badge
+
+16.3 Application Layout
+The web app follows a three-panel layout:
+    • Left sidebar — Navigation (Chat, Pipelines, Skills, Settings), workspace switcher, user menu
+    • Main panel — Context-dependent: chat thread, pipeline canvas, settings tabs, billing
+    • Right panel — Contextual inspector: tool calls, memory panel, pipeline node config
+
+The layout is fully responsive — on mobile, the sidebar collapses to a bottom tab bar and the right panel becomes a modal sheet.
+
+Chapter 17 — Implementation Roadmap & Phases
+Phase 1 — Foundation (Weeks 1–6)
+    • Monorepo setup, CI/CD pipeline, Docker Compose local environment
+    • PostgreSQL schema, Prisma setup, initial migrations
+    • Authentication: email/password, Google OAuth, JWT refresh
+    • Basic chat UI with streaming responses (OpenAI + Anthropic)
+    • LLM Router with simple provider fallback
+    • File upload to S3/MinIO, image and PDF reading
+    • Settings page: profile, API key management, model selection
+
+Phase 2 — Agent Core (Weeks 7–12)
+    • Agent Orchestrator with tool dispatch
+    • Context Engine: Qdrant setup, memory storage, RAG retrieval
+    • Skill Engine: basic skill CRUD and retrieval
+    • Real MCP tool execution layer with built-in tools
+    • Self-healing retry with exponential backoff on all LLM calls
+    • Artifact rendering: code, Mermaid, HTML preview
+    • Ollama integration with cloud fallback badge
+
+Phase 3 — Workflow Engine (Weeks 13–18)
+    • React Flow pipeline canvas with basic node types
+    • BullMQ pipeline runner with DAG execution
+    • Cron and webhook triggers
+    • Condition and parallel branch nodes with inspector UI
+    • Pipeline versioning and run history
+    • AI node (calls FlowMind agent mid-pipeline)
+
+Phase 4 — Channels & OAuth (Weeks 19–24)
+    • Channel Gateway: Telegram, Slack, Discord, WhatsApp adapters
+    • MCP OAuth flows: GitHub, Slack, Google, Notion
+    • Multi-channel conversation continuity
+    • Voice memo transcription (local Whisper)
+
+Phase 5 — Enterprise & Billing (Weeks 25–30)
+    • Stripe checkout, subscription management, Team tier
+    • SSO/SAML 2.0 with Okta, Azure AD, Google Workspace
+    • RBAC enforcement at all layers
+    • Audit log with export functionality
+    • Usage metering and billing alerts
+
+Phase 6 — Self-Learning & Advanced AI (Weeks 31–36)
+    • Autonomous skill creation from complex interactions
+    • Skill self-improvement with A/B testing
+    • Dialectic user modeling with Honcho-compatible API
+    • Subagent spawning and parallel workstreams
+    • Code assistant TUI and VS Code extension
+
+Phase 7 — Scale & Polish (Weeks 37–42)
+    • Kubernetes Helm charts and production hardening
+    • Performance optimization: caching, CDN, query optimization
+    • Enterprise data residency and encryption controls
+    • Mobile-responsive UI polish
+    • Public API documentation and SDK
+    • Marketplace: share and sell skills and pipeline templates
+
+Chapter 18 — Testing Strategy & Quality Assurance
+18.1 Testing Pyramid
+Layer
+Framework
+Coverage Target
+What is Tested
+Unit Tests
+Vitest (TS), pytest (Python)
+80%+
+Business logic, data transformations, utility functions
+Integration Tests
+Vitest + testcontainers
+70%+
+API endpoints, DB queries, queue workers
+E2E Tests
+Playwright
+Critical paths
+Full user flows: signup, chat, pipeline create/run, billing
+Agent Evals
+Custom eval harness + LLM-as-judge
+Key scenarios
+Agent quality, skill success rate, retrieval accuracy
+Load Tests
+k6
+Production targets
+Chat throughput, pipeline execution under load
+Security Tests
+OWASP ZAP, Semgrep
+All endpoints
+OWASP Top 10, secret scanning, dependency audit
+
+18.2 CI/CD Pipeline
+    • GitHub Actions for all CI workflows
+    • PR checks: type check, lint, unit tests, build
+    • Merge to main: integration tests, E2E tests on preview deployment
+    • Release: semantic versioning, auto-changelog, Docker image build and push
+    • Deployment: rolling update on Kubernetes, automated smoke tests
+
+18.3 Observability
+    • Structured JSON logging with Pino (Node.js) and structlog (Python)
+    • OpenTelemetry traces for cross-service request tracing
+    • Prometheus metrics: request rate, error rate, latency percentiles, queue depths
+    • Grafana dashboards for key business metrics (DAU, pipeline runs, token usage)
+    • PagerDuty integration for on-call alerting
+
+Chapter 19 — Appendices
+Appendix A — API Endpoint Reference (tRPC)
+Router
+Procedure
+Type
+Description
+auth
+login
+mutation
+Email/password login, returns JWT
+auth
+register
+mutation
+Create new user account
+auth
+refresh
+mutation
+Refresh access token
+auth
+logout
+mutation
+Invalidate session
+chat
+sendMessage
+mutation
+Send message, returns streaming response
+chat
+getSessions
+query
+List user's chat sessions
+chat
+getSession
+query
+Get session with messages
+chat
+deleteSession
+mutation
+Delete a session
+pipelines
+create
+mutation
+Create new pipeline
+pipelines
+update
+mutation
+Update pipeline graph or metadata
+pipelines
+trigger
+mutation
+Manually trigger a pipeline
+pipelines
+getRuns
+query
+List pipeline execution runs
+skills
+list
+query
+List user's skills
+skills
+create
+mutation
+Manually create a skill
+skills
+update
+mutation
+Update skill code or metadata
+skills
+delete
+mutation
+Delete a skill
+memories
+list
+query
+List user's memories
+memories
+delete
+mutation
+Delete a memory
+memories
+search
+query
+Vector + FTS search memories
+settings
+getProfile
+query
+Get user profile
+settings
+updateProfile
+mutation
+Update profile
+settings
+addApiKey
+mutation
+Add provider API key
+settings
+deleteApiKey
+mutation
+Delete API key
+billing
+getSubscription
+query
+Get current subscription
+billing
+createCheckout
+mutation
+Create Stripe checkout session
+billing
+openPortal
+mutation
+Open Stripe customer portal
+org
+create
+mutation
+Create organization
+org
+inviteMember
+mutation
+Invite member to org
+org
+updateMemberRole
+mutation
+Change member's role
+mcp
+listConnections
+query
+List OAuth connections
+mcp
+initiateOAuth
+mutation
+Start OAuth flow for a provider
+mcp
+revokeConnection
+mutation
+Revoke OAuth connection
+
+Appendix B — Glossary
+Term
+Definition
+MCP
+Model Context Protocol — standard for tool use between AI models and external services
+RAG
+Retrieval-Augmented Generation — enhancing LLM responses with retrieved context
+FTS5
+Full-Text Search version 5 — SQLite's built-in full-text search engine
+DAG
+Directed Acyclic Graph — data structure for representing workflow pipelines
+SAML 2.0
+Security Assertion Markup Language — XML-based SSO standard
+RBAC
+Role-Based Access Control — permissions system based on user roles
+PKCE
+Proof Key for Code Exchange — OAuth 2.0 security extension
+JIT Provisioning
+Just-In-Time — auto-creating user accounts on first SSO login
+Skill
+A reusable, versioned piece of agent capability learned from experience
+Context Engine
+The RAG + user modeling system that injects relevant context into prompts
+Ollama
+Open-source tool for running LLMs locally on consumer hardware
+BullMQ
+Redis-backed job queue for Node.js with priority, retry, and rate limiting
+tRPC
+TypeScript Remote Procedure Call — fully typed API without code generation
+Canal Mode
+Collaborative document editing mode where AI and user share a live canvas
+
+Appendix C — Technology Decision Log
+Decision
+Chosen
+Rejected Alternatives
+Rationale
+Frontend framework
+Next.js 14 App Router
+Remix, SvelteKit
+RSC performance, ecosystem maturity, Vercel deployment
+API framework
+Fastify + tRPC
+Express + REST, GraphQL
+tRPC eliminates schema drift, Fastify is 2x faster than Express
+Queue system
+BullMQ (Redis)
+SQS, RabbitMQ, Celery
+Lowest operational overhead, excellent Node.js support
+Vector DB
+Qdrant
+Pinecone, Weaviate, pgvector
+Self-hosted, fast, excellent filtering, open source
+Agent runtime
+Python asyncio
+Node.js, Go
+Best ML ecosystem, matches most AI library expectations
+Embedding model
+text-embedding-3-small (default)
+OpenAI ada-002, local
+Cost-effective, high quality, swappable
+Auth library
+Passport.js + custom
+Auth0, Clerk, NextAuth
+Avoids vendor lock-in for enterprise SSO flexibility
+Pipeline canvas
+React Flow
+Rete.js, GoJS
+MIT license, excellent React integration, active community
+Billing
+Stripe
+Paddle, LemonSqueezy
+Best global coverage, most complete SDK, enterprise features
+Container runtime
+Docker + Compose
+Podman, LXC
+Universal developer familiarity, best tooling
+
+— End of FlowMind Master Technical & Business Blueprint —
+This document is confidential and proprietary. All rights reserved.

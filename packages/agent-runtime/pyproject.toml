@@ -1,0 +1,24 @@
+[project]
+name = "flowmind-agent"
+version = "0.1.0"
+description = "FlowMind AI Agent Runtime — manages AI interactions with streaming, context, and skills."
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27.0",
+    "pydantic>=2.5.0",
+    "numpy>=1.26.0",
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "sse-starlette>=1.8.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.12.0"]
+anthropic = ["anthropic>=0.25.0"]
+google = ["google-generativeai>=0.7.0"]
+huggingface = ["transformers>=4.36.0", "torch>=2.1.0", "sentence-transformers>=3.0.0"]
+all = ["flowmind-agent[openai,anthropic,google,huggingface]"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

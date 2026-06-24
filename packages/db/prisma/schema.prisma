@@ -1,0 +1,550 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum Tier {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
+enum PipelineStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum RunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum FrameworkStatus {
+  RUNNING
+  STOPPED
+  ERROR
+  UNKNOWN
+}
+
+enum Visibility {
+  PRIVATE
+  PUBLIC
+  TEAM
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  name         String?
+  avatarUrl    String?
+  role         UserRole  @default(USER)
+  tier         Tier      @default(FREE)
+  timezone     String    @default("UTC")
+  language     String    @default("en")
+  defaultModel String?
+  stripeId     String?
+  orgId        String?
+  org          Org?      @relation(fields: [orgId], references: [id])
+
+  sessions     Session[]
+  skills       Skill[]
+  memories     Memory[]
+  apiKeys      ApiKey[]
+  pipelines    Pipeline[]
+  accounts     Account[]
+  frameworks   FrameworkConfig[]
+  reviews      FlowReview[]
+  clones       FlowClone[]
+  orgMembers   OrgMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Org {
+  id         String    @id @default(cuid())
+  name       String
+  slug       String    @unique
+  samlConfig Json?
+  tier       Tier      @default(FREE)
+  billingId  String?
+
+  members   OrgMember[]
+  pipelines Pipeline[]
+  mcpTokens McpToken[]
+  users     User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("orgs")
+}
+
+model OrgMember {
+  id     String  @id @default(cuid())
+  orgId  String
+  userId String
+  role   OrgRole @default(MEMBER)
+
+  org  Org  @relation(fields: [orgId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([orgId, userId])
+  @@map("org_members")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  refreshToken      String?
+  accessToken       String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String?
+  sessionState      String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String?
+  summary   String?
+  embedding Float[]
+
+  user     User      @relation(fields: [userId], references: [id])
+  messages Message[]
+  memories Memory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Message {
+  id          String       @id @default(cuid())
+  sessionId   String
+  role        MessageRole
+  content     String
+  toolCalls   Json?
+  toolResults Json?
+  model       String?
+  provider    String?
+  tokensIn    Int?
+  tokensOut   Int?
+  duration    Int?
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@map("messages")
+}
+
+model Skill {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String
+  description    String
+  triggerPattern String?
+  code           String
+  version        Int      @default(1)
+  successRate    Float?
+  useCount       Int      @default(0)
+  isActive       Boolean  @default(true)
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("skills")
+}
+
+model Memory {
+  id             String   @id @default(cuid())
+  userId         String
+  sessionId      String?
+  content        String
+  summary        String?
+  type           String   @default("general")
+  relevanceScore Float?
+  embedding      Float[]
+
+  user    User     @relation(fields: [userId], references: [id])
+  session Session? @relation(fields: [sessionId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("memories")
+}
+
+model ApiKey {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  provider     String
+  keyHash      String
+  lastFour     String
+  lastUsedAt   DateTime?
+  expiresAt    DateTime?
+  isActive     Boolean  @default(true)
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model McpToken {
+  id           String   @id @default(cuid())
+  orgId        String?
+  userId       String?
+  provider     String
+  accessToken  String
+  refreshToken String?
+  scope        String
+  expiresAt    DateTime?
+
+  org Org? @relation(fields: [orgId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("mcp_tokens")
+}
+
+model Pipeline {
+  id             String         @id @default(cuid())
+  userId         String?
+  orgId          String?
+  name           String
+  description    String?
+  graph          Json
+  isActive       Boolean        @default(false)
+  isPublic       Boolean        @default(false)
+  status         PipelineStatus @default(DRAFT)
+  version        Int            @default(1)
+  versionHistory Json?
+  category       String?
+  tags           String[]
+  icon           String?
+  runCount       Int            @default(0)
+  lastRunAt      DateTime?
+  avgDurationMs  Int?
+
+  user User? @relation(fields: [userId], references: [id])
+  org  Org?  @relation(fields: [orgId], references: [id])
+
+  runs         PipelineRun[]
+  marketplace  MarketplaceFlow?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([orgId])
+  @@map("pipelines")
+}
+
+model PipelineRun {
+  id         String     @id @default(cuid())
+  pipelineId String
+  status     RunStatus  @default(PENDING)
+  input      Json?
+  output     Json?
+  startedAt  DateTime?
+  completedAt DateTime?
+
+  pipeline Pipeline  @relation(fields: [pipelineId], references: [id])
+  logs     RunLog[]
+
+  createdAt DateTime @default(now())
+
+  @@index([pipelineId])
+  @@map("pipeline_runs")
+}
+
+model RunLog {
+  id       String @id @default(cuid())
+  runId    String
+  nodeId   String
+  nodeType String
+  input    Json?
+  output   Json?
+  error    String?
+  duration Int?
+
+  run PipelineRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([runId])
+  @@map("run_logs")
+}
+
+model MarketplaceFlow {
+  id          String     @id @default(cuid())
+  pipelineId  String     @unique
+  creatorId   String
+  category    String
+  title       String
+  description String
+  tags        String[]
+  price       Int?
+  downloads   Int        @default(0)
+  ratingAvg   Float      @default(0)
+  ratingCount Int        @default(0)
+  isFeatured  Boolean    @default(false)
+  isVerified  Boolean    @default(false)
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id])
+  reviews  FlowReview[]
+  clones   FlowClone[]
+  executions FlowExecution[]
+
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([creatorId])
+  @@map("marketplace_flows")
+}
+
+model FlowReview {
+  id         String   @id @default(cuid())
+  flowId     String
+  reviewerId String
+  stars      Int
+  body       String?
+
+  flow     MarketplaceFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  reviewer User            @relation(fields: [reviewerId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([flowId, reviewerId])
+  @@map("flow_reviews")
+}
+
+model FlowClone {
+  id               String   @id @default(cuid())
+  sourceFlowId     String
+  clonePipelineId  String
+  userId           String
+
+  sourceFlow MarketplaceFlow @relation(fields: [sourceFlowId], references: [id])
+  user       User            @relation(fields: [userId], references: [id])
+
+  clonedAt DateTime @default(now())
+
+  @@map("flow_clones")
+}
+
+model FlowExecution {
+  id            String   @id @default(cuid())
+  userId        String
+  flowId        String
+  pipelineRunId String?
+  source        String   @default("manual")
+
+  flow MarketplaceFlow @relation(fields: [flowId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([flowId])
+  @@map("flow_executions")
+}
+
+model CreatorRevenue {
+  id                String   @id @default(cuid())
+  creatorId         String
+  flowId            String
+  amount            Int
+  currency          String   @default("usd")
+  stripeTransferId  String?
+  periodStart       DateTime
+  periodEnd         DateTime
+
+  createdAt DateTime @default(now())
+
+  @@map("creator_revenue")
+}
+
+model FlowCategory {
+  id          String @id @default(cuid())
+  name        String
+  slug        String  @unique
+  icon        String?
+  description String?
+  sortOrder   Int     @default(0)
+
+  @@map("flow_categories")
+}
+
+model FrameworkConfig {
+  id            String @id @default(cuid())
+  userId        String
+  frameworkId   String
+  name          String
+  port          Int?
+  startCommand  String?
+  stopCommand   String?
+  logPath       String?
+  configPath    String?
+  envVars       Json?
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, frameworkId])
+  @@map("framework_configs")
+}
+
+model FrameworkStatusRecord {
+  id          String          @id @default(cuid())
+  userId      String
+  frameworkId String
+  status      FrameworkStatus @default(UNKNOWN)
+  pid         Int?
+  version     String?
+  lastSeenAt  DateTime?
+
+  @@unique([userId, frameworkId])
+  @@map("framework_status_records")
+}
+
+model SystemMetricsLog {
+  id          String   @id @default(cuid())
+  userId      String
+  frameworkId String?
+  cpuPercent  Float
+  ramMb       Float
+  gpuPercent  Float?
+  vramMb      Float?
+  temperature Float?
+
+  recordedAt DateTime @default(now())
+
+  @@index([userId, recordedAt])
+  @@map("system_metrics_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  orgId      String?
+  userId     String
+  action     String
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Subscription {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  stripeId       String?
+  tier           Tier     @default(FREE)
+  status         String   @default("active")
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+model CronJob {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  expression  String
+  pipelineId  String
+  channel     String?
+  isActive    Boolean  @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  runCount    Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("cron_jobs")
+}
+
+model Notification {
+  id      String   @id @default(cuid())
+  userId  String
+  type    String
+  title   String
+  body    String?
+  read    Boolean  @default(false)
+  data    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@map("notifications")
+}

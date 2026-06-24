@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: flowmind
+      POSTGRES_PASSWORD: flowmind
+      POSTGRES_DB: flowmind
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrantdata:/qdrant/storage
+
+  api:
+    image: flowmind/api:latest
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+    environment:
+      DATABASE_URL: postgres://flowmind:flowmind@postgres:5432/flowmind
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+
+  web:
+    image: flowmind/web:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  agent:
+    image: flowmind/agent:latest
+    ports:
+      - "8000:8000"
+    depends_on:
+      - api
+
+  traefik:
+    image: traefik:v3
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+
+volumes:
+  pgdata:
+  redisdata:
+  qdrantdata:

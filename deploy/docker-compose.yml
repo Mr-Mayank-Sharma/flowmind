@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: flowmind
+      POSTGRES_PASSWORD: flowmind
+      POSTGRES_DB: flowmind
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://flowmind:flowmind@postgres:5432/flowmind
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  runtime:
+    build:
+      context: packages/agent-runtime
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

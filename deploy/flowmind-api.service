@@ -1,0 +1,17 @@
+[Unit]
+Description=FlowMind AI API Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=flowmind
+WorkingDirectory=/opt/flowmind
+ExecStart=/usr/local/bin/pnpm --filter @flowmind/api dev
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=DATABASE_URL=postgresql://flowmind:flowmind@localhost:5432/flowmind
+
+[Install]
+WantedBy=multi-user.target

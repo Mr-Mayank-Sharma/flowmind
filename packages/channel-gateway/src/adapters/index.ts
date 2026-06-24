@@ -1,0 +1,5 @@
+export { TelegramAdapter } from './telegram.js'
+export { SlackAdapter } from './slack.js'
+export { DiscordAdapter } from './discord.js'
+export { WhatsAppAdapter } from './whatsapp.js'
+export { EmailAdapter } from './email.js'

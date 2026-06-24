@@ -1,0 +1,1296 @@
+﻿FLOWMIND
+AI PLATFORM
+Enhanced Master Blueprint  ·  v2.0  ·  2025
+
+The next-generation AI workflow orchestration platform — visual pipelines, centralized OS control, marketplace, and self-learning agents.
+Dimension
+Detail
+Platform Name
+FlowMind AI Platform
+Version
+2.0 Enhanced Blueprint
+Classification
+Confidential
+Architecture
+Monorepo · Next.js 14 · Node.js/Fastify · Python Agent · PostgreSQL + Redis + Qdrant
+Core Vision
+Unified AI workspace: drag-and-drop workflows + marketplace + OS control center
+Target Users
+Developers, creators, marketers, entrepreneurs, enterprise teams
+Deployment
+Local (Docker), Cloud (Kubernetes), Hybrid
+License Model
+Free · Pro $19/mo · Team $49/seat/mo · Enterprise custom
+
+Chapter 0 — Executive Summary & Enhanced Vision
+
+FlowMind is a unified, production-grade AI platform that goes far beyond a simple chatbot or automation tool. It combines three revolutionary pillars into one coherent product:
+
+Pillar
+What It Does
+Why It Matters
+Visual Workflow Engine
+Drag-and-drop pipeline builder (n8n-replica) with AI nodes, marketplace flows, and public/private sharing
+Anyone can automate any task visually — no code needed
+Marketplace + Default Flows
+100+ pre-built flows covering SEO, research, video creation, marketing, social media, business ops
+Instant productivity — connect and run without building from scratch
+OS Control Center (Home)
+Centralized dashboard to manage all AI frameworks (OpenClaw, Hermes, OpenCode, Ollama) installed on user's machine
+One place to control, configure, and run everything AI on your computer
+
+🎯 VISION
+Any user — technical or not — should be able to build, share, and monetize AI workflows. FlowMind is the operating system for AI work.
+
+0.1 — What Makes FlowMind Different
+Competitor
+What They Do
+FlowMind Advantage
+n8n
+Visual automation, no native AI agent
+Full AI agent runtime + self-learning built in
+Make.com
+Hosted automation, limited AI
+Local-first, self-hostable, AI-native workflows
+Zapier
+Simple triggers/actions, expensive
+Free tier + marketplace + OS control center
+LangChain
+Developer framework only
+Visual UI + marketplace for non-developers
+Claude.ai
+Chat interface only
+Full workflow + pipeline + system control
+
+Chapter 1 — Drag & Drop Workflow Builder (n8n Replica + Enhanced)
+
+The Workflow Builder is the heart of FlowMind. It is a full replica of n8n's visual pipeline builder, enhanced with AI-native nodes, marketplace integration, and a public/private sharing system. Built using React Flow with custom node types.
+
+1.1 — Canvas Architecture
+Component
+Technology
+Role
+Pipeline Canvas
+React Flow (custom node types)
+Infinite canvas for drag-and-drop node editing
+Node Registry
+TypeScript + JSON schema
+Catalog of all 120+ node types with schemas
+DAG Executor
+BullMQ on Redis (Node.js workers)
+Executes the pipeline as a Directed Acyclic Graph
+Trigger Manager
+Node.js + cron + webhooks
+Fires pipelines on schedule, webhook, event, or manual
+Pipeline Store
+PostgreSQL (graph JSON column)
+Stores pipeline DAG, versions, metadata
+Condition Engine
+JavaScript eval sandbox
+Evaluates conditions for branching logic
+Inspector Panel
+React + shadcn/ui
+Right-side config panel for each selected node
+Wiring UI
+React Flow edges + custom handles
+Visual connection lines with type validation
+
+1.2 — Complete Node Library (120+ Nodes)
+Trigger Nodes
+Node
+Description
+Config
+⏰ Cron Trigger
+Schedule with natural language or cron expression
+Expression, timezone, missed-run policy
+🔗 Webhook Trigger
+HTTP endpoint that starts a pipeline
+URL, method, auth, response mode
+📩 Channel Trigger
+Message from WhatsApp, Slack, Telegram, Discord
+Channel, filter, keywords
+▶ Manual Trigger
+Run-now button from UI or API call
+Input schema definition
+🔔 Event Trigger
+Internal FlowMind event (pipeline end, tool error, etc.)
+Event type, source pipeline
+📧 Email Trigger
+Incoming email via IMAP listener
+IMAP config, filter rules
+📁 File Watch Trigger
+New/modified file in folder
+Path, file pattern, debounce
+
+AI Nodes (FlowMind-Exclusive)
+Node
+Description
+Key Config
+🤖 AI Agent
+Run a full FlowMind agent with prompt + tools
+Model, tools, memory, max steps
+✍️ Content Writer
+Generate content with style/tone controls
+Tone, format, length, audience
+📊 Data Extractor
+Extract structured JSON from text/docs
+Output JSON schema, source field
+🏷️ Classifier
+Classify text into categories
+Categories, confidence threshold
+📝 Summarizer
+Summarize long text
+Max length, style, focus
+🌐 Web Researcher
+AI-powered web research with citations
+Query, depth, output format
+🖼️ Image Generator
+Generate images (local SD or API)
+Model, prompt template, size
+🎬 Video Script
+Write video scripts from outline
+Style, duration, platform
+🔊 Audio Transcribe
+Transcribe audio (local Whisper)
+Language, output format
+📈 SEO Optimizer
+Analyze and optimize content for SEO
+Target keywords, locale
+🧠 Embedder
+Generate vector embedding for text
+Model, storage target
+🛠️ Skill Runner
+Execute a saved FlowMind skill
+Skill ID, input mapping
+
+Action Nodes
+Node
+Description
+HTTP Request
+Any REST API call with auth (Bearer, API key, OAuth, Basic)
+Database Query
+SQL on connected PostgreSQL/MySQL/SQLite
+Send Email
+SMTP or Mailgun email with HTML template
+Send Message
+Post to any connected channel (WhatsApp, Slack, Telegram, Discord)
+File Read/Write
+Read or write files in user workspace
+Code Execute
+Run Python or JS in sandboxed Docker container
+Transform Data
+Map/filter/sort/group data with JSONata expressions
+Set Variable
+Store a value for use later in the pipeline
+Delay/Wait
+Pause execution for a fixed or dynamic duration
+Error Handler
+Catch errors from previous nodes and route or alert
+
+Flow Control Nodes
+Node
+How It Works
+Condition (If/Else)
+Inspect any field with operators: equals, contains, greater than, regex, is empty, etc. TRUE/FALSE output sockets
+Switch (Multi-branch)
+Match a value to multiple cases with a DEFAULT fallback. Dynamic output socket per case
+Parallel Fork
+Split pipeline into N simultaneous branches. BullMQ creates a job per branch
+Merge / Barrier
+Wait for ALL parallel branches to complete before continuing. Aggregates all outputs
+Loop (For Each)
+Iterate over an array, running downstream nodes for each item. Configurable concurrency
+Retry
+Retry a node or sub-pipeline on failure, with backoff and max attempts
+Sub-Pipeline
+Embed another saved pipeline as a reusable node (pipeline composition)
+
+Integration Nodes (40+ services)
+GitHub, GitLab, Jira, Linear, Asana, Notion, Airtable, Google Sheets, Google Drive, Slack, Discord, Telegram, WhatsApp, Microsoft Teams, Stripe, Shopify, HubSpot, Salesforce, Mailgun, Twilio, AWS S3, Cloudflare, Vercel, Supabase, Firebase, WordPress, Webflow, and more — each with OAuth 2.0 and full CRUD operations.
+
+Chapter 2 — Workflow Marketplace & Public/Private Flow System
+
+The Marketplace is FlowMind's most powerful growth engine. Users can publish their workflows publicly to share with the community — or keep them private. FlowMind ships 100+ default flows covering every major use case.
+
+2.1 — Public vs Private Flow System
+Property
+Private Flow
+Public Flow
+Visibility
+Only the creator (and org members)
+Anyone on FlowMind marketplace
+Who can run it
+Creator / org members with permission
+Any user — clone and run, or run directly
+Who can edit it
+Creator / org admins only
+Creator only (others clone a copy)
+Monetization
+Not applicable
+Creator can set a price (Free / Paid)
+Cloning
+Not applicable
+One-click clone to user's workspace
+Reviews & Ratings
+Not applicable
+5-star rating + written reviews
+Analytics
+Private run logs
+Public download/run count, private revenue
+Version control
+Full versioning, private
+Public changelog, versioned releases
+
+2.2 — Marketplace Architecture
+Component
+Technology
+Description
+Marketplace Frontend
+Next.js App Router + shadcn
+Browse, search, filter, preview flows
+Flow Store (DB)
+PostgreSQL: flows, versions, reviews
+All flow metadata and graph stored here
+Search & Discover
+PostgreSQL full-text + Qdrant vector
+Keyword + semantic search across all flows
+Rating System
+PostgreSQL: reviews table
+5-star + text review, verified run only
+Monetization
+Stripe Connect
+Creator revenue share, 80/20 split
+Clone Engine
+Server-side deep copy
+Deep-clones graph, remaps IDs, preserves config
+Preview System
+Sandboxed flow renderer
+Shows node graph without executing
+Analytics Engine
+ClickHouse or TimescaleDB
+Download counts, run counts, revenue stats
+Verification Badge
+Manual review + automated scan
+Blue checkmark for verified creators
+
+2.3 — 100+ Default Marketplace Flows (Built-in at Launch)
+Category 1: SEO & Content Marketing
+Flow Name
+Input
+What It Does
+Output
+SEO Project Optimizer
+Website URL + target keywords
+Audits site, generates meta tags, keyword clusters, internal link suggestions, schema markup
+Full SEO report + implementation guide
+Content Gap Analyzer
+Your domain + 3 competitor URLs
+Finds keyword gaps, content opportunities, missing pages
+Prioritized content calendar
+Blog Post Writer
+Topic + audience + tone
+Researches topic, writes full SEO-optimized post with headers, FAQs, meta
+Ready-to-publish blog post
+Backlink Prospector
+Niche + target domain
+Finds link-building opportunities, drafts outreach emails
+Prospect list + outreach templates
+Local SEO Optimizer
+Business name + location + category
+Optimizes Google Business Profile, generates local citations, NAP consistency check
+Local SEO action plan
+
+Category 2: Research & Intelligence
+Flow Name
+Input
+What It Does
+Output
+Deep Researcher
+Topic + output format (PDF/MD/DOCX)
+Multi-source research, synthesis, citations, executive summary
+Research report in chosen format
+Competitor Intelligence
+Company name / URL
+Analyzes products, pricing, messaging, reviews, job postings
+Competitive analysis dashboard
+Market Sizing Tool
+Industry + geography + segment
+TAM/SAM/SOM calculation with data sources
+Market sizing report with charts
+Academic Paper Summarizer
+PDF upload or arXiv URL
+Extracts key findings, methodology, limitations, implications
+Structured summary + key quotes
+News Monitor
+Topics + keywords + schedule
+Monitors news sources, filters relevance, summarizes daily
+Daily briefing via email/Slack
+Patent Researcher
+Technology area or company
+Searches patents, identifies IP landscape, freedom-to-operate signals
+Patent landscape report
+
+Category 3: Video & Media Production
+Flow Name
+Input
+What It Does
+YouTube Video Maker
+Topic + style + duration
+Script → voiceover text → image prompts → assembles with FFmpeg → uploads draft
+Short-Form Video Creator
+Idea + platform (TikTok/Reels/Shorts)
+Script, captions, thumbnail, hooks, CTA — optimized per platform
+Podcast Episode Planner
+Topic + guest bio
+Episode outline, interview questions, show notes, social clips copy
+Video Script Writer
+Topic + target audience + tone
+Full video script with b-roll suggestions, transitions, CTA
+Thumbnail Generator
+Video title + style
+Generates 5 thumbnail concepts with AI image generation
+Auto Subtitles
+Video file upload
+Transcribes with Whisper, formats SRT/VTT, burns-in captions
+Repurpose Content
+Long video/article URL
+Creates Twitter thread, LinkedIn post, newsletter section, short video clips
+
+Category 4: Photo & Visual Design
+Flow Name
+Input
+What It Does
+Product Photo Enhancer
+Product image upload
+Background removal, enhancement, lifestyle mockups, color variants
+Brand Kit Generator
+Brand name + industry + vibe
+Logo concepts, color palette, typography, brand guidelines PDF
+Social Media Asset Maker
+Brand kit + post copy
+Creates sized images for all platforms (Instagram, LinkedIn, Twitter, etc.)
+Infographic Creator
+Data/text content + topic
+AI-designed infographic with charts, icons, layout
+Meme Generator
+Topic or trending format
+Finds relevant templates, generates contextual memes for marketing
+AI Photo Editor
+Image + editing instructions
+Inpainting, outpainting, style transfer, upscaling
+
+Category 5: Video Editing Automation
+Flow Name
+Input
+What It Does
+Auto Jump-Cut Editor
+Raw video upload
+Detects silence, removes pauses, applies jump cuts via FFmpeg
+Highlight Reel Creator
+Long video + topic focus
+AI identifies best moments, assembles highlight reel with transitions
+B-Roll Matcher
+Voiceover script + video
+Suggests and inserts relevant stock footage at keyword timestamps
+Color Grade Applier
+Video + style reference
+Applies cinematic color grade matching reference style
+Intro/Outro Adder
+Brand kit + video
+Renders animated intro/outro and appends to video
+Multi-Format Exporter
+Edited video
+Exports in YouTube, TikTok, Reels, and LinkedIn specs automatically
+
+Category 6: Content Writing
+Flow Name
+Description
+Email Newsletter Writer
+Writes full newsletter from topic list, optimized for open rates, formatted for Mailchimp/Beehiiv
+LinkedIn Content Calendar
+Generates 30 days of LinkedIn posts based on your expertise and audience
+Landing Page Copywriter
+Creates full landing page copy: headline, subheading, features, social proof, FAQ, CTA
+Case Study Writer
+Transforms customer story into formatted case study with problem/solution/results structure
+Product Description Bulk
+Generates 100+ SEO-optimized product descriptions from CSV of product specs
+Ebook / Lead Magnet Writer
+Writes full multi-chapter ebook on a topic with cover page outline
+Press Release Generator
+Creates professional press release from company news/announcement
+Job Description Writer
+Writes compelling, inclusive job descriptions optimized for applicant quality
+
+Category 7: Marketing Automation
+Flow Name
+Description
+Lead Nurture Sequence
+Creates 7-email drip sequence for new leads with personalization hooks
+Ad Copy A/B Test Generator
+Generates 10 variations of ad copy for Facebook/Google with different angles
+Cold Email Campaign
+Researches prospects, personalizes emails, sequences follow-ups, tracks replies
+Webinar Funnel Builder
+Creates registration page copy, reminder sequence, replay email, follow-up offer
+Affiliate Program Manager
+Tracks affiliates, generates unique links, calculates commissions, sends payouts
+Campaign Performance Reporter
+Pulls data from ad platforms, analyzes ROAS, generates executive summary
+Influencer Outreach
+Identifies relevant influencers, scores them, drafts personalized outreach
+Product Launch Checklist
+Creates full launch playbook with timeline, channels, copy, and tracking
+
+Category 8: Client Communication
+Flow Name
+Description
+Client Onboarding Flow
+Sends welcome kit, collects information, schedules kickoff call, creates project folder
+Proposal Generator
+Transforms project brief into professional proposal with pricing, timeline, terms
+Invoice & Payment Reminders
+Sends invoices via email, follows up on overdue payments with escalating reminders
+Client Update Reporter
+Generates weekly project status reports and emails them to clients automatically
+Support Ticket Handler
+Classifies, prioritizes, and drafts responses to client support requests
+Contract Sender
+Generates contract from template, sends for e-signature via DocuSign/HelloSign
+NPS Survey Automator
+Sends NPS surveys post-project, collects responses, escalates detractors
+Testimonial Collector
+Follows up with satisfied clients, requests testimonials, formats for website use
+
+Category 9: Social Media Management
+Flow Name
+Description
+Multi-Platform Scheduler
+Write once, publish to Twitter/X, LinkedIn, Instagram, Facebook, TikTok simultaneously
+Engagement Responder
+Monitors comments/DMs, drafts relevant responses, flags ones needing human review
+Trend Spotter
+Monitors trending topics in your niche, suggests timely content to create
+Hashtag Research
+Finds optimal hashtags for each platform by audience size and engagement rate
+Social Listening Monitor
+Tracks brand mentions across platforms, alerts on sentiment shifts
+Community Manager
+Moderates comments, welcomes new followers, surfaces top fan content
+Cross-Post Repurposer
+Takes one piece of content and reformats it for every platform automatically
+Analytics Reporter
+Pulls social metrics, identifies top posts, recommends strategy adjustments
+
+Category 10: Business Operations
+Flow Name
+Description
+Meeting Note Summarizer
+Records/transcribes meeting, extracts action items, assigns owners, sends summary
+HR Onboarding Flow
+Creates employee accounts, sends welcome docs, schedules training, assigns buddy
+Expense Report Processor
+Scans receipts, categorizes expenses, generates reports, routes for approval
+Inventory Alert System
+Monitors stock levels, reorders automatically when threshold hit, notifies team
+CRM Data Enricher
+Enriches contact records with LinkedIn, company data, funding, tech stack
+Legal Document Reviewer
+Reviews contracts for red flags, missing clauses, unusual terms
+Financial Report Generator
+Pulls data from accounting software, generates P&L, cash flow summary
+Employee Performance Reporter
+Compiles OKR data, generates review drafts, schedules 1:1s
+Vendor Management
+Tracks vendor contracts, renewal dates, SLAs, sends renewal alerts
+Compliance Checker
+Audits processes against regulatory frameworks (GDPR, HIPAA, SOC2)
+
+Chapter 3 — Home: Centralized OS Control Center
+
+The Home section is the most unique feature of FlowMind — a centralized control panel for your entire AI ecosystem. If you have any AI framework installed on your operating system (OpenClaw, Hermes, OpenCode, Ollama, LM Studio, ComfyUI, etc.), FlowMind's Home becomes the universal remote control for all of it.
+
+💡 KEY IDEA
+FlowMind Home is like a mission control center for your AI setup. One app to start, stop, configure, and interact with every AI tool on your machine.
+
+3.1 — What Home Does
+Feature
+Description
+Technical Approach
+Framework Detector
+Auto-discovers installed AI frameworks at startup (Ollama, ComfyUI, LM Studio, etc.)
+Scans localhost ports, process list, config files
+Status Dashboard
+Shows running/stopped status of each framework with CPU/RAM/GPU usage
+WebSocket polling + system metrics API
+Start / Stop Buttons
+One-click start/stop for any detected framework
+Shell command execution via Node.js child_process
+Log Viewer
+Live streaming logs from each framework in a terminal pane
+Tail file / process stdout capture via WebSocket
+Input Terminal
+Send commands/prompts directly to any framework from FlowMind Home UI
+stdin injection or HTTP API depending on framework
+Config Editor
+Edit framework config files (model settings, ports, environment vars) from UI
+File read/write + syntax-highlighted JSON/YAML editor
+Model Manager
+Browse, download, delete models for Ollama/LM Studio from one place
+Ollama API + LM Studio API proxy
+GPU Monitor
+Real-time GPU utilization, VRAM usage, temperature per GPU
+nvidia-smi polling or ROCm equivalent
+Network Map
+Visual map of all local AI services and their ports/APIs
+Auto-discovery + network scan on localhost
+Quick Launch
+Create shortcut buttons for frequently-used framework actions
+User-configurable command shortcuts
+
+3.2 — Supported Frameworks
+Framework
+Detection Method
+Control Actions
+Input Method
+Ollama
+Port 11434 scan + process check
+Start/Stop, pull models, delete models, set GPU layers
+HTTP API (/api/generate)
+LM Studio
+Port 1234 scan + .lmstudio config
+Start/Stop, load/unload models, change context length
+OpenAI-compatible API
+ComfyUI
+Port 8188 scan + comfyui process
+Start/Stop, queue workflows, view gallery
+REST API + WebSocket
+OpenClaw
+Config file detection
+Start/Stop, channel management, model switching
+Internal tRPC API
+Hermes Agent
+Port + process detection
+Start/Stop, skill management, cron control
+HTTP API
+OpenCode / Continue
+VS Code extension detection
+Enable/disable, switch models, clear context
+Extension API
+LocalAI
+Port 8080 scan
+Start/Stop, manage models
+OpenAI-compatible API
+Stable Diffusion WebUI
+Port 7860 scan
+Start/Stop, queue generation, browse outputs
+REST API
+Whisper (local)
+Process detection
+Start/Stop, transcription queue
+CLI / HTTP API
+Any Custom App
+User-defined port + command
+User-defined start/stop/send commands
+User-defined HTTP or CLI
+
+3.3 — Home UI Layout
+Panel
+Location
+Contents
+System Overview
+Top-center hero card
+Total AI services: X running / Y stopped | CPU, RAM, GPU summary gauges
+Framework Grid
+Main content area
+Card per detected framework: icon, name, status badge, start/stop button, quick stats
+Framework Detail
+Right side panel (click to expand)
+Logs, config editor, model list, input terminal, resource graphs
+Model Browser
+Tab in detail panel
+All downloaded models: size, quantization, last used — with download and delete actions
+GPU Dashboard
+Bottom bar
+Per-GPU: utilization %, VRAM used/total, temp, power draw — live-updating
+Quick Actions
+Floating action bar
+User-configured shortcut buttons (e.g., 'Start my daily AI stack', 'Generate image')
+Input Terminal
+Slide-up drawer
+Send a prompt/command to any selected framework, see streamed response inline
+Notification Feed
+Top-right
+Framework started/stopped, model downloaded, error alerts, quota warnings
+
+3.4 — Technical Architecture for OS Control
+Component
+Technology
+Description
+System Bridge
+Electron or Tauri (if desktop app)
+Native access to process management, file system, network
+Framework Detector
+Node.js + netstat + ps
+Scans running processes and ports at startup and every 5s
+Process Manager
+Node.js child_process
+Spawns, monitors, and kills framework processes
+GPU Monitor
+nvidia-smi JSON / ROCm
+Polls GPU metrics every 2s, streams to frontend via WebSocket
+Config Manager
+Node.js fs + js-yaml + json5
+Reads and writes framework config files safely
+Log Streamer
+Node.js readline + WebSocket
+Tails log files and process stdout, streams to UI in real-time
+Input Router
+Framework-specific adapters
+Routes user input to correct framework API (HTTP, stdin, WebSocket)
+Model Registry
+SQLite cache + framework APIs
+Unified model list across Ollama, LM Studio, ComfyUI
+
+Chapter 4 — System Integration: How Everything Connects
+
+This chapter explains how every component of FlowMind communicates — from the user clicking a button in the browser, to the AI agent running a workflow, to the OS control center managing local frameworks.
+
+4.1 — Master Data Flow (End-to-End)
+Flow 1: User Runs a Marketplace Flow
+Step
+Component
+What Happens
+1
+Browser (Next.js)
+User browses Marketplace, selects 'SEO Optimizer' flow, clicks Run
+2
+API Gateway (Fastify)
+Authenticates JWT, checks tier quota, routes to Pipeline Service
+3
+Pipeline Service
+Fetches flow graph from PostgreSQL, creates a PipelineRun record
+4
+Trigger Manager
+Sets status to RUNNING, queues first node(s) into BullMQ
+5
+BullMQ Worker
+Dequeues node job, calls appropriate NodeHandler
+6
+Node Handler
+For AI node: calls Agent Orchestrator. For HTTP node: makes API call. Etc.
+7
+Agent Orchestrator (Python)
+Builds prompt, queries Context Engine, calls LLM Router
+8
+LLM Router
+Checks Ollama (local first), falls back to cloud if unavailable
+9
+Inference
+Streams response tokens back through SSE to browser
+10
+Node Complete
+Worker marks node done, fetches next node(s) from DAG
+11
+Pipeline Complete
+Final results stored, PipelineRun status set to SUCCESS
+12
+Browser Update
+WebSocket push notifies user, results panel updates live
+
+Flow 2: User Sends Chat Message (with tool use)
+Step
+Component
+What Happens
+1
+Chat UI
+User types message, hits send. Message sent via tRPC mutation
+2
+API Gateway
+Auth check, rate limit check, session lookup
+3
+Agent Orchestrator
+Context Engine retrieves relevant memories (Qdrant vector search + FTS5)
+4
+Prompt Builder
+Assembles: base template + user model + retrieved memories + tool definitions
+5
+LLM Router
+Selects model (local Ollama or cloud), starts streaming
+6
+LLM Response
+Model responds with tool_call block (e.g., flowmind.web.search)
+7
+Tool Dispatcher
+Routes tool call to MCP Executor
+8
+MCP Executor
+Runs tool with user's OAuth token, returns result
+9
+Tool Result
+Injected back into conversation, LLM continues with context
+10
+Stream Complete
+Full response delivered. Memory consolidation queued in BullMQ
+11
+Skill Engine
+Evaluates if a new skill should be created from this interaction
+12
+Memory Job
+Background job generates embedding, stores memory in Qdrant
+
+Flow 3: Home OS Control — Start a Framework
+Step
+Component
+What Happens
+1
+Home UI
+User clicks 'Start Ollama' button in OS Control Center
+2
+API Gateway
+Routes to System Bridge service
+3
+System Bridge
+Checks if Ollama process is already running via ps/netstat
+4
+Process Manager
+Spawns 'ollama serve' as child process, captures stdout/stderr
+5
+Log Streamer
+Streams Ollama startup logs to Home UI via WebSocket in real-time
+6
+Health Check
+Polls localhost:11434/api/tags every 500ms until healthy
+7
+Status Update
+Home UI status badge changes from 'Stopped' to 'Running'
+8
+Model Registry
+Fetches model list from Ollama API, updates FlowMind model selector
+9
+LLM Router Update
+Router marks Ollama as available, new chat sessions will use it first
+10
+Notification
+Toast notification: 'Ollama is running — local models available'
+
+4.2 — Service Communication Map
+From
+To
+Protocol
+What It Carries
+Browser
+API Gateway
+HTTPS + tRPC + SSE
+User actions, streaming responses
+Browser
+Home System Bridge
+WebSocket
+Real-time logs, GPU metrics, status updates
+API Gateway
+Agent Orchestrator
+HTTP (internal)
+Chat messages, session context
+API Gateway
+Pipeline Service
+tRPC (internal)
+Pipeline CRUD, run triggers
+Agent Orchestrator
+Context Engine
+Python function call
+Query, returns context block
+Agent Orchestrator
+LLM Router
+Python async
+Prompt, returns streamed tokens
+Agent Orchestrator
+MCP Executor
+HTTP
+Tool call, returns tool result
+Pipeline Service
+BullMQ / Redis
+BullMQ producer
+Node execution jobs
+BullMQ Workers
+NodeHandlers
+In-process
+Node config + input data
+NodeHandlers (AI)
+Agent Orchestrator
+HTTP
+AI prompt, returns result
+MCP Executor
+OAuth Providers
+HTTPS
+API calls with user tokens
+LLM Router
+Ollama Proxy
+HTTP
+Inference request, streamed tokens
+LLM Router
+Cloud LLMs
+HTTPS
+Inference request, streamed tokens
+Skill Engine
+PostgreSQL
+Prisma ORM
+Skill CRUD operations
+Context Engine
+Qdrant
+HTTP
+Vector search, upsert embeddings
+All Services
+PostgreSQL
+Prisma ORM
+Persistent data storage
+All Services
+Redis
+ioredis
+Sessions, pub/sub, rate limits
+
+Chapter 5 — Artifact & Component Communication Plan
+
+This chapter defines the precise contracts between every major artifact (frontend component, backend service, database table, queue, and external API). This is the source of truth for how the system is wired together.
+
+5.1 — Frontend Artifact Map
+Component / Page
+Route
+Talks To
+State Management
+Chat Interface
+/chat/[sessionId]
+chatRouter.sendMessage (tRPC SSE), chatRouter.getSessions
+Zustand: sessionStore, messageStore
+Pipeline Canvas
+/pipelines/[id]
+pipelinesRouter CRUD, WebSocket for run status
+Zustand: pipelineStore, React Flow state
+Marketplace Browser
+/marketplace
+marketplaceRouter.list, .search, .clone
+React Query cache
+Home / OS Control
+/home
+systemRouter (WebSocket), frameworkRouter
+Zustand: frameworkStore, metricsStore
+Flow Builder (new)
+/pipelines/new
+pipelinesRouter.create, nodeRegistry fetch
+Local React state + Zustand draft
+Settings
+/settings/[tab]
+settingsRouter, billingRouter, authRouter
+React Query + form state
+Skill Library
+/skills
+skillsRouter CRUD + search
+React Query cache
+Memory Manager
+/settings/memory
+memoriesRouter.list, .delete, .search
+React Query cache
+Billing Page
+/settings/billing
+billingRouter.getSubscription, .createCheckout
+React Query cache
+Analytics
+/analytics
+analyticsRouter, pipeline run history
+React Query + chart state
+
+5.2 — API Router Contracts (tRPC)
+Chat Router
+Procedure
+Type
+Input Schema
+Returns
+sendMessage
+mutation + SSE stream
+{ sessionId, content, files?, model?, tools? }
+AsyncGenerator<StreamChunk>
+getSessions
+query
+{ cursor?, limit? }
+Session[] + nextCursor
+getSession
+query
+{ id: string }
+Session + Message[]
+createSession
+mutation
+{ title? }
+Session
+deleteSession
+mutation
+{ id: string }
+{ success: boolean }
+searchSessions
+query
+{ query: string, limit? }
+Session[] with relevance score
+forkSession
+mutation
+{ sessionId, fromMessageId }
+New Session
+
+Pipeline Router
+Procedure
+Input Schema
+Returns
+create
+{ name, description?, graph: DAGGraph }
+Pipeline
+update
+{ id, graph?, name?, description?, isActive? }
+Pipeline
+delete
+{ id }
+{ success: boolean }
+list
+{ cursor?, limit?, filter? }
+Pipeline[] + nextCursor
+getById
+{ id }
+Pipeline + Trigger[] + last 10 Runs
+trigger
+{ id, input?: Record<string,unknown> }
+PipelineRun
+getRuns
+{ pipelineId, cursor?, limit? }
+PipelineRun[] + logs
+getRunLogs
+{ runId }
+RunLog[] (WebSocket stream also available)
+publish
+{ id, visibility: 'public'|'private', price? }
+Pipeline (marketplace entry)
+clone
+{ marketplacePipelineId }
+New Pipeline in user workspace
+
+Marketplace Router
+Procedure
+Input Schema
+Returns
+list
+{ category?, search?, sort?, cursor?, limit? }
+MarketplaceFlow[] + pagination
+getById
+{ id }
+MarketplaceFlow + reviews + creator profile
+search
+{ query: string, filters? }
+MarketplaceFlow[] ranked by relevance
+rate
+{ flowId, stars: 1-5, review? }
+Review
+clone
+{ flowId }
+Pipeline cloned to user workspace
+publish
+{ pipelineId, category, description, tags, price? }
+MarketplaceFlow
+unpublish
+{ flowId }
+{ success: boolean }
+getCreatorFlows
+{ creatorId }
+MarketplaceFlow[] by creator
+
+System (Home OS) Router
+Procedure
+Type
+Input Schema
+Returns
+getFrameworks
+query
+{}
+Framework[] with status, version, port
+startFramework
+mutation
+{ frameworkId: string }
+{ success, pid? }
+stopFramework
+mutation
+{ frameworkId: string }
+{ success }
+sendInput
+mutation + stream
+{ frameworkId, input: string }
+StreamChunk[]
+getMetrics
+query
+{ frameworkId? }
+SystemMetrics (CPU, RAM, GPU)
+getLogs
+subscription (WS)
+{ frameworkId }
+LogLine stream
+getModels
+query
+{ frameworkId }
+Model[] with size, quantization
+pullModel
+mutation + stream
+{ frameworkId, modelName }
+Download progress stream
+deleteModel
+mutation
+{ frameworkId, modelName }
+{ success }
+updateConfig
+mutation
+{ frameworkId, config: Record<string, unknown> }
+{ success }
+
+Chapter 6 — Enhanced Database Schema
+
+6.1 — New Tables for Marketplace & Home
+Table
+Key Columns
+Purpose
+marketplace_flows
+id, pipeline_id, creator_id, category, title, description, tags[], price, downloads, rating_avg, is_featured, is_verified, published_at
+Public marketplace entries
+flow_reviews
+id, flow_id, reviewer_id, stars, body, created_at
+Ratings and reviews for marketplace flows
+flow_clones
+id, source_flow_id, clone_pipeline_id, user_id, cloned_at
+Tracks who cloned what from marketplace
+flow_categories
+id, name, slug, icon, description, sort_order
+Marketplace category taxonomy
+framework_configs
+id, user_id, framework_id, port, start_command, stop_command, log_path, config_path, env_vars (encrypted)
+Per-user framework configurations
+framework_status
+id, user_id, framework_id, status (running/stopped), pid, last_seen_at
+Live status tracking (refresh from system bridge)
+system_metrics_log
+id, user_id, framework_id, cpu_pct, ram_mb, gpu_pct, vram_mb, recorded_at
+Time-series metrics for charts
+flow_executions
+id, user_id, flow_id, pipeline_run_id, source (manual/cron/trigger), created_at
+Tracks marketplace flow usage for analytics
+creator_revenue
+id, creator_id, flow_id, amount, currency, stripe_transfer_id, period_start, period_end
+Revenue tracking for paid flows
+
+6.2 — Enhanced Pipeline Schema
+Column
+Type
+Notes
+id
+CUID
+Primary key
+user_id / org_id
+String (nullable)
+Owner — personal or org
+name
+String
+Display name
+description
+String (nullable)
+Markdown description
+graph
+JSON
+DAG: { nodes: Node[], edges: Edge[] }
+is_active
+Boolean
+Whether triggers are live
+is_public
+Boolean
+Copied to marketplace_flows on publish
+version
+Int
+Auto-incremented on each save
+version_history
+JSON[]
+Last 20 graph snapshots for rollback
+category
+String (nullable)
+SEO, Research, Marketing, etc.
+tags
+String[]
+Searchable tags
+icon
+String (nullable)
+Emoji or icon URL
+run_count
+Int
+Total executions
+last_run_at
+DateTime
+For 'recently used' sorting
+avg_duration_ms
+Int
+Average pipeline execution time
+created_at / updated_at
+DateTime
+Timestamps
+
+Chapter 7 — Enhanced Implementation Roadmap
+
+Phase
+Timeline
+Key Deliverables
+Phase 1: Foundation
+Weeks 1–6
+Monorepo, auth, chat UI, LLM Router, basic settings, file upload
+Phase 2: Agent Core
+Weeks 7–12
+Agent Orchestrator, Context Engine, Qdrant, MCP tools, Ollama, skills
+Phase 3: Workflow Engine
+Weeks 13–18
+React Flow canvas, all node types, BullMQ DAG executor, triggers, run history
+Phase 4: Marketplace
+Weeks 19–24
+Marketplace UI/API, public/private flows, clone system, ratings, 25 default flows
+Phase 5: Home / OS Control
+Weeks 25–30
+Framework detection, process manager, GPU monitor, log streamer, input terminal
+Phase 6: Channels + OAuth
+Weeks 31–36
+Telegram, Slack, Discord, WhatsApp gateways; GitHub/Google/Notion OAuth
+Phase 7: 100 Default Flows
+Weeks 37–42
+Build remaining 75+ marketplace flows across all 10 categories
+Phase 8: Enterprise + Billing
+Weeks 43–48
+Stripe, SSO/SAML, RBAC, audit log, usage metering, Team tier
+Phase 9: Scale + Polish
+Weeks 49–54
+Kubernetes Helm, performance tuning, mobile PWA, public API, Stripe Connect for creators
+
+7.1 — MVP Definition (What to Ship First)
+🚀 MVP
+A working chat interface + basic workflow builder + 10 default flows + Home with Ollama control. This alone is a compelling product.
+
+MVP Feature
+Priority
+Est. Weeks
+Chat with streaming + tool calls
+P0
+2
+Ollama local model support + cloud fallback
+P0
+1
+Basic drag-and-drop pipeline builder (15 node types)
+P0
+4
+Cron + webhook triggers
+P0
+1
+10 pre-built flows (SEO, Research, Content, Social)
+P0
+2
+Home: Ollama start/stop + model manager
+P0
+2
+User auth + settings + API key management
+P0
+2
+Basic marketplace (browse + clone)
+P1
+2
+Stripe billing (Free + Pro tiers)
+P1
+1
+Public/Private flow toggle
+P1
+1
+
+Chapter 8 — Appendix: Technology Decisions & Glossary
+
+8.1 — Final Technology Stack
+Layer
+Technology
+Why
+Frontend
+Next.js 14 App Router + TypeScript
+RSC performance, full-stack in one repo, Vercel-ready
+Styling
+Tailwind CSS + shadcn/ui
+Rapid UI, accessible components, design system
+Pipeline Canvas
+React Flow + custom nodes
+MIT license, best React integration, active community
+API Layer
+Fastify + tRPC
+Type-safe, 2x faster than Express, no schema drift
+Agent Runtime
+Python 3.11 asyncio
+Best ML/AI library ecosystem, matches LLM tools
+Queue System
+BullMQ on Redis
+Lowest ops overhead, excellent Node.js support, retries built-in
+Primary DB
+PostgreSQL 16 + Prisma
+Reliability, JSON columns for graphs, Prisma type safety
+Vector DB
+Qdrant
+Self-hosted, fast, excellent filtering, open source
+Cache / Pub-Sub
+Redis 7
+Session store, BullMQ, rate limiting, WebSocket pub-sub
+File Storage
+MinIO (local) / S3 (cloud)
+S3-compatible, self-hostable for local users
+Local LLM
+Ollama
+Best UX for local models, huge model library, active community
+Auth
+Passport.js + JWT + SAML
+No vendor lock-in, enterprise SSO flexibility
+Billing
+Stripe + Stripe Connect
+Best global coverage, creator revenue share built-in
+Desktop Bridge
+Electron or Tauri
+Native OS access needed for Home framework control
+Monitoring
+OpenTelemetry + Prometheus + Grafana
+Industry standard, self-hostable
+CI/CD
+GitHub Actions + Docker + k8s Helm
+Standard stack, reproducible deployments
+
+8.2 — Glossary
+Term
+Definition
+DAG
+Directed Acyclic Graph — data structure for representing workflow pipelines without cycles
+MCP
+Model Context Protocol — standard for tool use between AI models and external services
+RAG
+Retrieval-Augmented Generation — enhancing LLM responses with retrieved context from memory
+BullMQ
+Redis-backed job queue for Node.js with priority, retry, delay, and rate limiting built-in
+Skill
+A reusable, versioned piece of agent capability that the AI learns and improves over time
+Context Engine
+The RAG + user modeling system that injects relevant memories into every LLM prompt
+OS Control Center
+The Home section that manages local AI frameworks like Ollama, ComfyUI, LM Studio
+Framework
+An AI tool installed on the user's OS (e.g., Ollama, ComfyUI, Hermes Agent, OpenCode)
+System Bridge
+The server-side service with OS-level access that controls local processes and reads metrics
+Marketplace Flow
+A workflow published by a user (or FlowMind default) available for all users to clone/run
+Clone
+Copy a marketplace flow into your own workspace — fully editable, never affects the original
+tRPC
+TypeScript Remote Procedure Call — fully typed API client/server with no code generation needed
+Qdrant
+Open-source vector database used for semantic search over memories and context
+SSE
+Server-Sent Events — HTTP-based protocol for streaming tokens from LLM to browser in real time
+RBAC
+Role-Based Access Control — permissions system: Owner, Admin, Member, Viewer, API Token
+JIT Provisioning
+Automatic account creation on first SSO login without manual admin setup
+
+FlowMind AI Platform
+Enhanced Master Blueprint  ·  v2.0  ·  Confidential  ·  2025
