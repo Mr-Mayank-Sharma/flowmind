@@ -1,3 +1,4 @@
+import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -21,7 +22,14 @@ async function main() {
   });
 
   await server.register(cors, {
-    origin: process.env.APP_URL || "http://localhost:3000",
+    origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
+      const allowed = [process.env.APP_URL, "http://localhost:3000", "http://localhost:4000"].filter(Boolean) as string[]
+      if (!origin || allowed.some((a) => origin.startsWith(a))) {
+        cb(null, true)
+      } else {
+        cb(null, false)
+      }
+    },
     credentials: true,
   });
 

@@ -548,3 +548,90 @@ model Notification {
   @@index([userId, read])
   @@map("notifications")
 }
+
+enum KnowledgeBaseStatus {
+  READY
+  INDEXING
+  ERROR
+}
+
+enum DocumentStatus {
+  INDEXED
+  INDEXING
+  ERROR
+}
+
+enum DocumentType {
+  PDF
+  TXT
+  MD
+  CSV
+  JSON
+}
+
+enum AgentStatus {
+  RUNNING
+  STOPPED
+  ERROR
+  DEPLOYING
+}
+
+model KnowledgeBase {
+  id          String               @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  model       String               @default("nomic-embed-text")
+  status      KnowledgeBaseStatus  @default(READY)
+  totalDocs   Int                  @default(0)
+  totalChunks Int                  @default(0)
+  totalSize   BigInt               @default(0)
+
+  documents KnowledgeDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("knowledge_bases")
+}
+
+model KnowledgeDocument {
+  id          String         @id @default(cuid())
+  kbId        String
+  name        String
+  type        DocumentType   @default(TXT)
+  size        Int            @default(0)
+  chunks      Int            @default(0)
+  status      DocumentStatus @default(INDEXING)
+  content     String?
+
+  kb KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kbId])
+  @@map("knowledge_documents")
+}
+
+model Agent {
+  id          String      @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  model       String      @default("mistral:7b")
+  status      AgentStatus @default(STOPPED)
+  tools       Int         @default(0)
+  temperature Float       @default(0.3)
+  maxTokens   Int         @default(2048)
+  memory      String      @default("0.5 GB")
+  messages    Int         @default(0)
+  successRate Float       @default(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("agents")
+}

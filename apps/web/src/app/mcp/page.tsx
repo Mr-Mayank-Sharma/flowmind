@@ -1,15 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Server,
   Plus,
   Trash2,
-  Plug,
   Wifi,
   WifiOff,
   Wrench,
-  RefreshCw,
   Clock,
   Activity,
 } from "lucide-react"
@@ -18,88 +16,61 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { api } from "@/lib/api"
 
-interface MCPServer {
-  id: string
-  name: string
-  description: string
-  type: "stdio" | "sse" | "built-in"
-  status: "connected" | "disconnected" | "error"
-  tools: string[]
-  lastActive: string
-  command?: string
-  url?: string
-}
-
-interface MCPWrench {
-  name: string
-  serverId: string
-  serverName: string
-  description: string
-  inputSchema: string
-}
-
-const defaultServers: MCPServer[] = [
-  { id: "s1", name: "Filesystem", description: "Read, write, and manage files", type: "built-in", status: "connected", tools: ["read_file", "write_file", "list_dir", "search_files"], lastActive: "just now", command: "built-in" },
-  { id: "s2", name: "GitHub", description: "Repository management and code review", type: "sse", status: "connected", tools: ["get_repo", "list_issues", "create_pr", "review_code", "search_code"], lastActive: "2 min ago", url: "https://mcp.github.com/v1" },
-  { id: "s3", name: "PostgreSQL", description: "Query and manage databases", type: "stdio", status: "connected", tools: ["query", "execute", "list_tables", "describe_table"], lastActive: "15 min ago", command: "npx mcp-postgres" },
-  { id: "s4", name: "Slack", description: "Messaging and channel management", type: "sse", status: "connected", tools: ["send_message", "list_channels", "search_messages", "get_thread"], lastActive: "1 hour ago", url: "https://mcp.slack.com/v1" },
-  { id: "s5", name: "Web Search", description: "Web search and content extraction", type: "built-in", status: "disconnected", tools: ["search", "fetch_url", "extract_text"], lastActive: "1 day ago" },
-  { id: "s6", name: "Browser Automation", description: "Headless browser control", type: "stdio", status: "error", tools: ["navigate", "click", "type", "screenshot", "extract"], lastActive: "3 hours ago", command: "npx playwright-mcp" },
-  { id: "s7", name: "Redis Cache", description: "In-memory data store operations", type: "stdio", status: "disconnected", tools: ["get", "set", "delete", "keys", "publish"], lastActive: "2 days ago", command: "npx mcp-redis" },
-  { id: "s8", name: "Jira", description: "Issue tracking and project management", type: "sse", status: "connected", tools: ["get_issue", "create_issue", "search_issues", "list_projects"], lastActive: "30 min ago", url: "https://mcp.jira.com/v1" },
-]
-
-const defaultWrenchs: MCPWrench[] = [
-  { name: "read_file", serverId: "s1", serverName: "Filesystem", description: "Read contents of a file at specified path", inputSchema: "{ path: string }" },
-  { name: "write_file", serverId: "s1", serverName: "Filesystem", description: "Write content to a file", inputSchema: "{ path: string, content: string }" },
-  { name: "list_dir", serverId: "s1", serverName: "Filesystem", description: "List directory contents", inputSchema: "{ path: string }" },
-  { name: "get_repo", serverId: "s2", serverName: "GitHub", description: "Get repository details", inputSchema: "{ owner: string, repo: string }" },
-  { name: "create_pr", serverId: "s2", serverName: "GitHub", description: "Create a pull request", inputSchema: "{ owner: string, repo: string, title: string, body: string, head: string, base: string }" },
-  { name: "query", serverId: "s3", serverName: "PostgreSQL", description: "Execute SQL query", inputSchema: "{ query: string }" },
-  { name: "send_message", serverId: "s4", serverName: "Slack", description: "Send message to channel", inputSchema: "{ channel: string, text: string }" },
-  { name: "search", serverId: "s5", serverName: "Web Search", description: "Search the web", inputSchema: "{ query: string }" },
-  { name: "navigate", serverId: "s6", serverName: "Browser Automation", description: "Navigate to URL", inputSchema: "{ url: string }" },
-  { name: "get", serverId: "s7", serverName: "Redis Cache", description: "Get value by key", inputSchema: "{ key: string }" },
-  { name: "get_issue", serverId: "s8", serverName: "Jira", description: "Get issue details", inputSchema: "{ issueKey: string }" },
-]
-
-// status icons removed - rendered inline below
 const statusColors: Record<string, "default" | "secondary" | "destructive"> = { connected: "default", disconnected: "secondary", error: "destructive" }
-const typeColors: Record<string, "default" | "secondary" | "outline"> = { stdio: "secondary", sse: "default", "built-in": "outline" }
+
+const typeColors: Record<string, "default" | "secondary" | "outline"> = { sse: "default", streamable: "secondary", stdio: "outline" }
 
 export default function MCPPage() {
-  const [servers, setServers] = useState(defaultServers)
-  const [tools] = useState(defaultWrenchs)
+  const [servers, setServers] = useState<any[]>([])
+  const [tools, setTools] = useState<any[]>([])
+  const [newUrl, setNewUrl] = useState("")
   const [showNew, setShowNew] = useState(false)
   const [newName, setNewName] = useState("")
-  const [newUrl, setNewUrl] = useState("")
 
-  const handleDelete = (id: string) => {
-    setServers(prev => prev.filter(s => s.id !== id))
+  const fetchServers = async () => {
+    try {
+      const list = await api.mcp.list()
+      setServers(list.map((s: any) => ({
+        id: s.id,
+        name: s.provider,
+        description: s.scope ? `Scope: ${s.scope}` : "MCP Server",
+        type: "sse",
+        status: "disconnected",
+        tools: [],
+        lastActive: s.updatedAt ? new Date(s.updatedAt).toLocaleDateString() : "never",
+        url: s.provider,
+      })))
+    } catch {}
   }
 
-  const handleAdd = () => {
+  useEffect(() => { fetchServers() }, [])
+
+  const allTools = servers.flatMap((s: any) =>
+    (s.tools || []).map((t: any) => ({ ...t, serverId: s.id, serverName: s.name, status: s.status }))
+  )
+
+  const handleDelete = async (id: string) => {
+    try {
+      await api.mcp.delete(id)
+      fetchServers()
+    } catch {}
+  }
+
+  const handleAdd = async () => {
     if (!newName.trim()) return
-    const id = "s" + Date.now()
-    const newServer: MCPServer = {
-      id,
-      name: newName.trim(),
-      description: "Custom MCP server connection",
-      type: newUrl ? "sse" : "built-in",
-      status: "disconnected",
-      tools: [],
-      lastActive: "never",
-      url: newUrl || undefined,
-    }
-    setServers(prev => [newServer, ...prev])
-    setNewName("")
-    setNewUrl("")
-    setShowNew(false)
+    try {
+      await api.mcp.create({ provider: newName.trim(), accessToken: "manual", scope: "read" })
+      setNewName("")
+      setNewUrl("")
+      setShowNew(false)
+      fetchServers()
+    } catch {}
   }
 
-  const connected = servers.filter(s => s.status === "connected").length
-  const totalWrenchs = servers.reduce((sum, s) => sum + s.tools.length, 0)
+  const connected = servers.filter((s: any) => s.status === "connected").length
+  const totalTools = servers.reduce((sum: number, s: any) => sum + s.tools.length, 0)
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -140,8 +111,8 @@ export default function MCPPage() {
             <CardContent className="p-4 flex items-center gap-3">
               <Wrench className="h-8 w-8 text-primary" />
               <div>
-                <p className="text-2xl font-bold font-mono">{totalWrenchs}</p>
-                <p className="text-xs text-muted-foreground">Available Wrenchs</p>
+                <p className="text-2xl font-bold font-mono">{totalTools}</p>
+                <p className="text-xs text-muted-foreground">Available Tools</p>
               </div>
             </CardContent>
           </Card>
@@ -155,7 +126,7 @@ export default function MCPPage() {
             </TabsTrigger>
             <TabsTrigger value="tools" className="gap-2">
               <Wrench className="h-4 w-4" />
-              Wrench Browser
+              Tool Browser
             </TabsTrigger>
           </TabsList>
 
@@ -249,7 +220,7 @@ export default function MCPPage() {
             <Card>
               <CardContent className="p-0">
                 <div className="divide-y divide-border">
-                  {tools.map(tool => {
+                  {allTools.map(tool => {
                     const server = servers.find(s => s.id === tool.serverId)
                     return (
                       <div key={tool.name} className="flex items-start justify-between px-4 py-3 hover:bg-accent/30 transition-colors">

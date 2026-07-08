@@ -75,7 +75,7 @@ export default function HomePage() {
   const errorCount = frameworks.filter((f) => f.status === "error").length
 
   const derivedMetrics = [
-    { label: "Pipelines Running", value: "12", change: "+2", trend: "up" as const, icon: GitBranch, color: "text-blue-500 bg-blue-500/10" },
+    { label: "Pipelines Running", value: `${runningCount}`, change: `+${runningCount}`, trend: "up" as const, icon: GitBranch, color: "text-blue-500 bg-blue-500/10" },
     { label: "Agents Active", value: `${runningCount}`, change: `+${runningCount}`, trend: "up" as const, icon: Bot, color: "text-emerald-500 bg-emerald-500/10" },
     { label: "Errors Today", value: `${errorCount}`, change: `-${stoppedCount}`, trend: "down" as const, icon: AlertTriangle, color: "text-red-500 bg-red-500/10" },
     { label: "CPU Load", value: metrics ? `${metrics.cpuPercent}%` : "--", change: metrics ? `${metrics.cpuPercent > 60 ? "▲" : "▼"} ${metrics.cpuPercent}%` : "", trend: metrics && metrics.cpuPercent > 60 ? "up" as const : "down" as const, icon: Activity, color: "text-amber-500 bg-amber-500/10" },

@@ -23,7 +23,9 @@ import { nodeTypes as customNodeTypes } from "./custom-nodes"
 import { NodePalette } from "./node-palette"
 import { InspectorPanel } from "./inspector-panel"
 import { PipelineToolbar } from "./pipeline-toolbar"
+import { RunsPanel } from "./runs-panel"
 import { cn } from "@flowmind/ui"
+import { api } from "../../lib/api"
 
 interface PipelineCanvasProps {
   pipelineId: string
@@ -108,6 +110,10 @@ function CanvasInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [pipelineName, setPipelineName] = useState(initialName)
+  const [version, setVersion] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [showRuns, setShowRuns] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
 
@@ -173,13 +179,58 @@ function CanvasInner({
     [setNodes, setEdges]
   )
 
-  const onSave = useCallback(() => {
-    console.log("Save pipeline:", { nodes, edges, pipelineName })
-  }, [nodes, edges, pipelineName])
+  const onSave = useCallback(async () => {
+    setSaving(true)
+    try {
+      await api.pipeline.update({
+        id: pipelineId,
+        name: pipelineName,
+        graph: { nodes: nodes.map((n) => ({ id: n.id, type: n.type!, label: n.data.label, position: n.position, config: (n.data as any).config ?? {} })), edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })) },
+      })
+      setVersion((v) => v + 1)
+    } catch (err) {
+      console.error("Save failed:", err)
+    } finally {
+      setSaving(false)
+    }
+  }, [pipelineId, pipelineName, nodes, edges])
 
-  const onRun = useCallback(() => {
-    console.log("Run pipeline:", { nodes, edges })
-  }, [nodes, edges])
+  const onRun = useCallback(async () => {
+    setRunning(true)
+    try {
+      const result = await api.pipeline.trigger(pipelineId, {})
+      setNodes((nds) =>
+        nds.map((n) => {
+          const output = result.outputs?.find((o) => o.nodeId === n.id)
+          return { ...n, data: { ...n.data, status: output?.error ? "error" : "success" } }
+        })
+      )
+    } catch (err) {
+      console.error("Run failed:", err)
+    } finally {
+      setRunning(false)
+    }
+  }, [pipelineId, setNodes])
+
+  const onRunNode = useCallback(async (nodeId: string) => {
+    try {
+      const result = await api.pipeline.executeNode(pipelineId, nodeId, {})
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, lastOutput: result, status: result?.error ? "error" : "success" as string } } : n
+        )
+      )
+      return result
+    } catch (err) {
+      console.error("Node execute failed:", err)
+    }
+  }, [pipelineId, setNodes])
+
+  const onUpdateNodeStatus = useCallback((nodeId: string, status: string) => {
+    setNodes((nds) =>
+      nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, status } } : n))
+    )
+  }, [setNodes])
 
   return (
     <div className="h-full w-full flex flex-col bg-background">
@@ -189,7 +240,11 @@ function CanvasInner({
         onNameChange={setPipelineName}
         onSave={onSave}
         onRun={onRun}
-        version={1}
+        saving={saving}
+        running={running}
+        onToggleRuns={() => setShowRuns(!showRuns)}
+        showRuns={showRuns}
+        version={version}
       />
       <div className="flex flex-1 overflow-hidden">
         <NodePalette />
@@ -246,12 +301,21 @@ function CanvasInner({
             />
           </ReactFlow>
         </div>
-        <InspectorPanel
-          selectedNode={selectedNode}
-          onUpdateNode={onUpdateNode}
-          onDeleteNode={onDeleteNode}
-          onClose={() => setSelectedNode(null)}
-        />
+        {showRuns ? (
+          <RunsPanel
+            pipelineId={pipelineId}
+            onClose={() => setShowRuns(false)}
+          />
+        ) : (
+          <InspectorPanel
+            selectedNode={selectedNode}
+            onUpdateNode={onUpdateNode}
+            onDeleteNode={onDeleteNode}
+            onRunNode={onRunNode}
+            onUpdateNodeStatus={onUpdateNodeStatus}
+            onClose={() => setSelectedNode(null)}
+          />
+        )}
       </div>
     </div>
   )

@@ -20,6 +20,12 @@ import {
   Loader2,
   Wifi,
   WifiOff,
+  Brain,
+  Bot,
+  Sparkles,
+  Microscope,
+  Wind,
+  Zap,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -31,14 +37,14 @@ import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
-const providerIcons: Record<string, string> = {
-  ollama: "🦙",
-  huggingface: "🤗",
-  openai: "🧠",
-  anthropic: "🔮",
-  google: "🔬",
-  mistral: "🌬️",
-  groq: "⚡",
+const providerIcons: Record<string, React.ElementType> = {
+  ollama: Bot,
+  huggingface: Sparkles,
+  openai: Brain,
+  anthropic: Sparkles,
+  google: Microscope,
+  mistral: Wind,
+  groq: Zap,
 }
 
 const providerColors: Record<string, string> = {
@@ -192,7 +198,7 @@ export default function ModelsPage() {
                 : providers.map((provider: any) => {
                     const providerModels = groupedByProvider[provider.id] || []
                     const hasApiKey = providerModels.some((m: any) => m.available)
-                    const icon = providerIcons[provider.id] || "🤖"
+                    const ProviderIcon = (providerIcons as Record<string, React.ElementType>)[provider.id] || Bot
                     const color = providerColors[provider.id] || "border-border"
 
                     return (
@@ -200,7 +206,7 @@ export default function ModelsPage() {
                         <CardHeader className="pb-3">
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
-                              <span className="text-2xl">{icon}</span>
+                              <ProviderIcon className="h-6 w-6 text-foreground" />
                               <div>
                                 <CardTitle className="text-base capitalize">{provider.name}</CardTitle>
                                 <CardDescription className="text-xs mt-0.5">

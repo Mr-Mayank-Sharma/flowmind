@@ -15,7 +15,6 @@ export async function createContext({ req, res }: CreateFastifyContextOptions) {
       const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
       userId = payload.userId;
     } catch {
-      // Invalid token, userId stays null
     }
   }
 

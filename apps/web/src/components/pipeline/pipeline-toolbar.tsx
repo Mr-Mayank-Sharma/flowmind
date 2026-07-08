@@ -9,6 +9,8 @@ import {
   Redo2,
   ChevronLeft,
   Workflow,
+  History,
+  Loader2,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -18,6 +20,10 @@ interface PipelineToolbarProps {
   onNameChange: (name: string) => void
   onSave: () => void
   onRun: () => void
+  saving?: boolean
+  running?: boolean
+  onToggleRuns?: () => void
+  showRuns?: boolean
   version: number
 }
 
@@ -27,6 +33,10 @@ export function PipelineToolbar({
   onNameChange,
   onSave,
   onRun,
+  saving,
+  running,
+  onToggleRuns,
+  showRuns,
   version,
 }: PipelineToolbarProps) {
   const [editing, setEditing] = useState(false)
@@ -117,9 +127,10 @@ export function PipelineToolbar({
           variant="ghost"
           size="sm"
           onClick={onSave}
+          disabled={saving}
           className="gap-1.5 text-xs h-8"
         >
-          <Save className="h-3.5 w-3.5" />
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Save
           <span className="text-[10px] text-muted-foreground hidden sm:inline">
             Ctrl+S
@@ -129,11 +140,23 @@ export function PipelineToolbar({
           variant="default"
           size="sm"
           onClick={onRun}
+          disabled={running}
           className="gap-1.5 text-xs h-8"
         >
-          <Play className="h-3.5 w-3.5" />
-          Run
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          {running ? "Running..." : "Run"}
         </Button>
+        {onToggleRuns && (
+          <Button
+            variant={showRuns ? "secondary" : "ghost"}
+            size="sm"
+            onClick={onToggleRuns}
+            className="gap-1.5 text-xs h-8"
+          >
+            <History className="h-3.5 w-3.5" />
+            Runs
+          </Button>
+        )}
         <div className="w-px h-5 bg-border mx-1" />
         <Button variant="ghost" size="icon" disabled className="h-8 w-8">
           <Undo2 className="h-4 w-4" />

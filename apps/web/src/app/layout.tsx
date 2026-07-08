@@ -3,6 +3,7 @@ import "@/styles/globals.css"
 import { ThemeProvider } from "@/providers/theme-provider"
 import { AuthProvider } from "@/hooks/use-auth"
 import { LayoutWithSidebar } from "@/components/layout-with-sidebar"
+import { ErrorBoundary } from "@/components/error-boundary"
 import { Toaster } from "@/components/ui/toast"
 
 export const metadata: Metadata = {
@@ -33,7 +34,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <AuthProvider>
-            <LayoutWithSidebar>{children}</LayoutWithSidebar>
+            <ErrorBoundary>
+              <LayoutWithSidebar>{children}</LayoutWithSidebar>
+            </ErrorBoundary>
             <Toaster />
           </AuthProvider>
         </ThemeProvider>

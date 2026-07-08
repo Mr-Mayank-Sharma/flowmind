@@ -14,108 +14,15 @@ import {
   XCircle,
   AlertTriangle,
   Eye,
-  EyeOff,
-  UserCheck,
-  UserX,
   Ban,
   Key,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
-interface RBACEntry {
-  userId: string
-  userName: string
-  userEmail: string
-  role: "admin" | "developer" | "operator" | "viewer"
-  agents: string[]
-  pipelines: string[]
-  permissions: {
-    createAgents: boolean
-    editAgents: boolean
-    deleteAgents: boolean
-    createPipelines: boolean
-    editPipelines: boolean
-    deletePipelines: boolean
-    manageSettings: boolean
-    viewAudit: boolean
-  }
-  lastActive: string
-  status: "active" | "suspended" | "invited"
-}
-
-interface AuditEntry {
-  id: string
-  action: string
-  resource: string
-  userName: string
-  userEmail: string
-  ip: string
-  timestamp: string
-  status: "success" | "denied" | "error"
-  details: string
-}
-
-const rbacData: RBACEntry[] = [
-  {
-    userId: "u1", userName: "Mayank Sharma", userEmail: "mayank@flowmind.ai", role: "admin",
-    agents: ["Research Assistant", "Code Reviewer", "Data Analyst", "DevOps Bot"],
-    pipelines: ["Customer Support", "Content Rewriter", "Daily Data Sync"],
-    permissions: { createAgents: true, editAgents: true, deleteAgents: true, createPipelines: true, editPipelines: true, deletePipelines: true, manageSettings: true, viewAudit: true },
-    lastActive: "just now", status: "active",
-  },
-  {
-    userId: "u2", userName: "Priya Patel", userEmail: "priya@flowmind.ai", role: "developer",
-    agents: ["Content Writer", "Data Analyst"],
-    pipelines: ["Content Rewriter", "Research Summarizer"],
-    permissions: { createAgents: true, editAgents: true, deleteAgents: false, createPipelines: true, editPipelines: true, deletePipelines: false, manageSettings: false, viewAudit: false },
-    lastActive: "5 min ago", status: "active",
-  },
-  {
-    userId: "u3", userName: "Alex Chen", userEmail: "alex@flowmind.ai", role: "operator",
-    agents: ["Customer Support"],
-    pipelines: ["Customer Support"],
-    permissions: { createAgents: false, editAgents: true, deleteAgents: false, createPipelines: false, editPipelines: true, deletePipelines: false, manageSettings: false, viewAudit: false },
-    lastActive: "1 hour ago", status: "active",
-  },
-  {
-    userId: "u4", userName: "Sarah Kim", userEmail: "sarah@flowmind.ai", role: "viewer",
-    agents: [], pipelines: [],
-    permissions: { createAgents: false, editAgents: false, deleteAgents: false, createPipelines: false, editPipelines: false, deletePipelines: false, manageSettings: false, viewAudit: true },
-    lastActive: "1 day ago", status: "active",
-  },
-  {
-    userId: "u5", userName: "James Wilson", userEmail: "james@client.org", role: "viewer",
-    agents: [], pipelines: [],
-    permissions: { createAgents: false, editAgents: false, deleteAgents: false, createPipelines: false, editPipelines: false, deletePipelines: false, manageSettings: false, viewAudit: false },
-    lastActive: "1 week ago", status: "invited",
-  },
-  {
-    userId: "u6", userName: "Legacy Bot Account", userEmail: "bot-v2@flowmind.ai", role: "operator",
-    agents: ["Research Assistant"],
-    pipelines: [],
-    permissions: { createAgents: false, editAgents: true, deleteAgents: false, createPipelines: false, editPipelines: true, deletePipelines: false, manageSettings: false, viewAudit: false },
-    lastActive: "3 days ago", status: "suspended",
-  },
-]
-
-const auditLog: AuditEntry[] = [
-  { id: "a1", action: "agent.create", resource: "Research Assistant", userName: "Mayank Sharma", userEmail: "mayank@flowmind.ai", ip: "192.168.1.42", timestamp: "2025-06-24 14:32:18", status: "success", details: "Created new agent with role: Researcher" },
-  { id: "a2", action: "pipeline.execute", resource: "Customer Support", userName: "Mayank Sharma", userEmail: "mayank@flowmind.ai", ip: "192.168.1.42", timestamp: "2025-06-24 14:30:05", status: "success", details: "Pipeline execution started - 8 nodes" },
-  { id: "a3", action: "agent.update", resource: "Code Reviewer", userName: "Priya Patel", userEmail: "priya@flowmind.ai", ip: "10.0.0.54", timestamp: "2025-06-24 14:25:44", status: "success", details: "Updated model from gpt-4 to gpt-4o" },
-  { id: "a4", action: "settings.access", resource: "API Keys", userName: "Alex Chen", userEmail: "alex@flowmind.ai", ip: "10.0.0.101", timestamp: "2025-06-24 13:12:30", status: "denied", details: "Unauthorized access attempt to API key settings (insufficient permissions)" },
-  { id: "a5", action: "agent.delete", resource: "Legacy Bot", userName: "Mayank Sharma", userEmail: "mayank@flowmind.ai", ip: "192.168.1.42", timestamp: "2025-06-24 12:00:00", status: "success", details: "Deleted agent with id: a-old-3" },
-  { id: "a6", action: "pipeline.create", resource: "Daily Data Sync", userName: "Priya Patel", userEmail: "priya@flowmind.ai", ip: "10.0.0.54", timestamp: "2025-06-24 11:45:22", status: "success", details: "Created pipeline with 12 nodes" },
-  { id: "a7", action: "agent.execute", resource: "Data Analyst", userName: "Sarah Kim", userEmail: "sarah@flowmind.ai", ip: "172.16.0.88", timestamp: "2025-06-24 10:30:15", status: "success", details: "Agent query completed in 4.2s" },
-  { id: "a8", action: "settings.access", resource: "Security Settings", userName: "James Wilson", userEmail: "james@client.org", ip: "203.0.113.42", timestamp: "2025-06-23 22:15:00", status: "denied", details: "Unauthorized access attempt to security settings" },
-  { id: "a9", action: "agent.create", resource: "Customer Support", userName: "Mayank Sharma", userEmail: "mayank@flowmind.ai", ip: "192.168.1.42", timestamp: "2025-06-23 16:00:30", status: "error", details: "Failed to create agent: quota exceeded" },
-  { id: "a10", action: "auth.login", resource: "User Session", userName: "Mayank Sharma", userEmail: "mayank@flowmind.ai", ip: "192.168.1.42", timestamp: "2025-06-24 08:00:00", status: "success", details: "Login from trusted device" },
-  { id: "a11", action: "auth.login", resource: "User Session", userName: "Legacy Bot Account", userEmail: "bot-v2@flowmind.ai", ip: "45.33.32.156", timestamp: "2025-06-23 19:30:00", status: "denied", details: "Login from unrecognized IP address" },
-  { id: "a12", action: "pipeline.delete", resource: "Old Pipeline v1", userName: "Mayank Sharma", userEmail: "mayank@flowmind.ai", ip: "192.168.1.42", timestamp: "2025-06-23 14:00:00", status: "success", details: "Deleted archived pipeline" },
-]
+import { api } from "@/lib/api"
+import { useQuery } from "@/hooks/use-query"
 
 const roleColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   admin: "destructive",
@@ -148,18 +55,27 @@ export default function GovernancePage() {
   const [sortField, setSortField] = useState<string>("timestamp")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
+  const { data: orgMembers = [], loading: membersLoading } = useQuery(
+    "governance:members",
+    () => api.settings.getOrgMembers(),
+  )
+  const { data: auditLog = [], loading: auditLoading } = useQuery(
+    "governance:audit",
+    () => api.settings.getAuditLog(),
+  )
+
   const filteredAudit = auditLog
-    .filter(e =>
-      e.action.toLowerCase().includes(auditSearch.toLowerCase()) ||
-      e.resource.toLowerCase().includes(auditSearch.toLowerCase()) ||
-      e.userName.toLowerCase().includes(auditSearch.toLowerCase()) ||
-      e.details.toLowerCase().includes(auditSearch.toLowerCase())
+    .filter((e: any) =>
+      (e.action || "").toLowerCase().includes(auditSearch.toLowerCase()) ||
+      (e.resource || "").toLowerCase().includes(auditSearch.toLowerCase()) ||
+      (e.userName || e.user?.name || "").toLowerCase().includes(auditSearch.toLowerCase()) ||
+      (e.details || "").toLowerCase().includes(auditSearch.toLowerCase())
     )
 
-  const filteredRBAC = rbacData.filter(u =>
-    u.userName.toLowerCase().includes(rbacSearch.toLowerCase()) ||
-    u.userEmail.toLowerCase().includes(rbacSearch.toLowerCase()) ||
-    u.role.toLowerCase().includes(rbacSearch.toLowerCase())
+  const filteredRBAC = orgMembers.filter((u: any) =>
+    (u.user?.name || "").toLowerCase().includes(rbacSearch.toLowerCase()) ||
+    (u.user?.email || "").toLowerCase().includes(rbacSearch.toLowerCase()) ||
+    (u.role || "").toLowerCase().includes(rbacSearch.toLowerCase())
   )
 
   const toggleSort = (field: string) => {
@@ -194,7 +110,7 @@ export default function GovernancePage() {
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Users className="h-3.5 w-3.5" />
-              {rbacData.length} users
+              {orgMembers.length} users
             </span>
             <span className="flex items-center gap-1">
               <FileText className="h-3.5 w-3.5" />
@@ -246,49 +162,49 @@ export default function GovernancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredRBAC.map(user => (
-                      <tr key={user.userId} className="hover:bg-accent/30 transition-colors">
+                    {filteredRBAC.map((member: any) => (
+                      <tr key={member.id || member.userId} className="hover:bg-accent/30 transition-colors">
                         <td className="p-3">
                           <div>
-                            <p className="font-medium text-sm">{user.userName}</p>
-                            <p className="text-xs text-muted-foreground">{user.userEmail}</p>
+                            <p className="font-medium text-sm">{member.user?.name || member.userName}</p>
+                            <p className="text-xs text-muted-foreground">{member.user?.email || member.userEmail}</p>
                           </div>
                         </td>
                         <td className="p-3">
-                          <Badge variant={roleColors[user.role]} className="text-[10px] capitalize">
-                            {user.role === "viewer" ? (
+                          <Badge variant={roleColors[member.role]} className="text-[10px] capitalize">
+                            {member.role === "viewer" ? (
                               <Eye className="h-3 w-3 mr-1" />
-                            ) : user.role === "admin" ? (
+                            ) : member.role === "admin" ? (
                               <ShieldAlert className="h-3 w-3 mr-1" />
                             ) : (
                               <ShieldCheck className="h-3 w-3 mr-1" />
                             )}
-                            {user.role}
+                            {member.role}
                           </Badge>
                         </td>
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
-                            {user.agents.length > 0 ? user.agents.slice(0, 2).map(a => (
+                            {member.agents?.length > 0 ? member.agents.slice(0, 2).map((a: string) => (
                               <Badge key={a} variant="outline" className="text-[10px]">{a}</Badge>
                             )) : <span className="text-xs text-muted-foreground">—</span>}
-                            {user.agents.length > 2 && (
-                              <Badge variant="outline" className="text-[10px]">+{user.agents.length - 2}</Badge>
+                            {member.agents?.length > 2 && (
+                              <Badge variant="outline" className="text-[10px]">+{member.agents.length - 2}</Badge>
                             )}
                           </div>
                         </td>
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
-                            {user.pipelines.length > 0 ? user.pipelines.slice(0, 2).map(p => (
+                            {member.pipelines?.length > 0 ? member.pipelines.slice(0, 2).map((p: string) => (
                               <Badge key={p} variant="outline" className="text-[10px]">{p}</Badge>
                             )) : <span className="text-xs text-muted-foreground">—</span>}
-                            {user.pipelines.length > 2 && (
-                              <Badge variant="outline" className="text-[10px]">+{user.pipelines.length - 2}</Badge>
+                            {member.pipelines?.length > 2 && (
+                              <Badge variant="outline" className="text-[10px]">+{member.pipelines.length - 2}</Badge>
                             )}
                           </div>
                         </td>
                         <td className="p-3">
                           <div className="flex gap-1">
-                            {Object.entries(user.permissions).map(([key, val]) => (
+                            {member.permissions ? Object.entries(member.permissions).map(([key, val]) => (
                               <div key={key} className="group relative">
                                 {val ? (
                                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
@@ -296,16 +212,16 @@ export default function GovernancePage() {
                                   <XCircle className="h-3.5 w-3.5 text-muted-foreground opacity-40" />
                                 )}
                                 <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] bg-popover px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                  {key.replace(/([A-Z])/g, ' $1').trim()}: {val ? "Allowed" : "Denied"}
+                                  {String(key).replace(/([A-Z])/g, ' $1').trim()}: {val ? "Allowed" : "Denied"}
                                 </span>
                               </div>
-                            ))}
+                            )) : <span className="text-xs text-muted-foreground">—</span>}
                           </div>
                         </td>
                         <td className="p-3">
-                          <Badge variant={statusColors[user.status]} className="text-[10px] h-5 gap-1">
-                            {user.status === "active" ? <CheckCircle2 className="h-3 w-3" /> : user.status === "suspended" ? <Ban className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                            {user.status}
+                          <Badge variant={statusColors[member.status || "active"]} className="text-[10px] h-5 gap-1">
+                            {member.status === "active" ? <CheckCircle2 className="h-3 w-3" /> : member.status === "suspended" ? <Ban className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
+                            {member.status || "active"}
                           </Badge>
                         </td>
                       </tr>
@@ -356,7 +272,7 @@ export default function GovernancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredAudit.map(entry => (
+                    {(filteredAudit as any[]).map((entry: any) => (
                       <tr key={entry.id} className="hover:bg-accent/30 transition-colors">
                         <td className="p-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{entry.timestamp}</td>
                         <td className="p-3">

@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress"
 import { Card } from "@/components/ui/card"
 import { Cpu, MemoryStick, Monitor, HardDrive, Activity, Gauge, Thermometer, Users, ArrowUp, ArrowDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { api, type SystemMetrics as ApiSystemMetrics } from "@/lib/api"
 
 interface SystemMetrics {
   cpu: number
@@ -25,24 +26,32 @@ interface SystemMetrics {
   services: { running: number; total: number }
 }
 
-function generateMetrics(): SystemMetrics {
+function mapMetrics(m: ApiSystemMetrics): SystemMetrics {
   return {
-    cpu: 30 + Math.round(Math.random() * 50),
-    ram: 40 + Math.round(Math.random() * 40),
-    ramUsed: `${(8 + Math.random() * 8).toFixed(1)} GB`,
-    ramTotal: "16 GB",
-    gpu: Math.random() > 0.3 ? 20 + Math.round(Math.random() * 60) : null,
-    gpuTemp: Math.random() > 0.3 ? 55 + Math.round(Math.random() * 25) : null,
-    disk: 40 + Math.round(Math.random() * 30),
-    diskUsed: `${(200 + Math.random() * 300).toFixed(0)} GB`,
-    diskTotal: "512 GB",
-    networkUp: `${(1 + Math.random() * 10).toFixed(1)} Mbps`,
-    networkDown: `${(5 + Math.random() * 50).toFixed(1)} Mbps`,
-    processes: 120 + Math.round(Math.random() * 80),
-    uptime: `${Math.floor(24 + Math.random() * 48)}h ${Math.floor(Math.random() * 60)}m`,
-    loadAvg: `${(1 + Math.random() * 3).toFixed(2)}, ${(1 + Math.random() * 2).toFixed(2)}, ${(0.5 + Math.random() * 1.5).toFixed(2)}`,
-    services: { running: 4 + Math.round(Math.random() * 2), total: 8 },
+    cpu: m.cpuPercent,
+    ram: m.ramPercent,
+    ramUsed: m.ramUsedGb + " GB",
+    ramTotal: m.ramTotalGb + " GB",
+    gpu: m.gpuPercent,
+    gpuTemp: m.gpuTemp,
+    disk: m.diskPercent,
+    diskUsed: m.diskUsedGb + " GB",
+    diskTotal: m.diskTotalGb + " GB",
+    networkUp: m.networkUpMbps + " Mbps",
+    networkDown: m.networkDownMbps + " Mbps",
+    processes: m.processes,
+    uptime: m.uptime,
+    loadAvg: m.loadAvg,
+    services: { running: m.servicesRunning, total: m.servicesTotal },
   }
+}
+
+const defaultMetrics: SystemMetrics = {
+  cpu: 0, ram: 0, ramUsed: "0 GB", ramTotal: "0 GB",
+  gpu: null, gpuTemp: null, disk: 0, diskUsed: "0 GB", diskTotal: "0 GB",
+  networkUp: "0 Mbps", networkDown: "0 Mbps", processes: 0,
+  uptime: "0h 0m", loadAvg: "0.00, 0.00, 0.00",
+  services: { running: 0, total: 0 },
 }
 
 const gaugeColor = (value: number) => {
@@ -58,24 +67,38 @@ const metricCards = [
   { id: "disk", label: "Disk", icon: HardDrive, color: "text-amber-400 bg-amber-500/10" },
 ]
 
-const processes = [
-  { name: "ollama", pid: 28491, cpu: "2.3%", ram: "1.2 GB", status: "running" as const, user: "flowmind" },
-  { name: "lm-studio", pid: 28512, cpu: "0.8%", ram: "2.1 GB", status: "running" as const, user: "flowmind" },
-  { name: "comfyui", pid: 28534, cpu: "5.1%", ram: "3.4 GB", status: "running" as const, user: "flowmind" },
-  { name: "node", pid: 28567, cpu: "1.2%", ram: "0.4 GB", status: "running" as const, user: "flowmind" },
-  { name: "postgres", pid: 1234, cpu: "0.3%", ram: "0.8 GB", status: "running" as const, user: "postgres" },
-  { name: "redis-server", pid: 5678, cpu: "0.1%", ram: "0.1 GB", status: "running" as const, user: "redis" },
-  { name: "nginx", pid: 9012, cpu: "0.0%", ram: "0.05 GB", status: "running" as const, user: "www-data" },
-  { name: "dockerd", pid: 3456, cpu: "0.5%", ram: "0.3 GB", status: "running" as const, user: "root" },
-]
+interface SystemProcess {
+  name: string
+  pid: number | null
+  status: string
+  port: number
+  version: string
+}
 
 export default function SystemPage() {
-  const [metrics, setMetrics] = useState<SystemMetrics>(generateMetrics())
+  const [metrics, setMetrics] = useState<SystemMetrics>(defaultMetrics)
+  const [frameworks, setFrameworks] = useState<SystemProcess[]>([])
+
+  const fetchMetrics = async () => {
+    try {
+      const [m, fws] = await Promise.all([
+        api.system.getMetrics(),
+        api.system.getFrameworks(),
+      ])
+      setMetrics(mapMetrics(m))
+      setFrameworks(fws.map((fw) => ({
+        name: fw.name,
+        pid: fw.pid,
+        status: fw.status,
+        port: fw.port,
+        version: fw.version,
+      })))
+    } catch {}
+  }
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics(generateMetrics())
-    }, 3000)
+    fetchMetrics()
+    const interval = setInterval(fetchMetrics, 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -196,11 +219,11 @@ export default function SystemPage() {
           </Card>
         </div>
 
-        {/* Process List */}
+        {/* Running Services */}
         <section>
           <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            Running Processes
-            <Badge variant="outline" className="text-[10px] font-normal">{processes.length} processes</Badge>
+            Running Services
+            <Badge variant="outline" className="text-[10px] font-normal">{frameworks.length} services</Badge>
           </h2>
           <div className="rounded-lg border border-border/50 bg-surface overflow-hidden">
             <div className="overflow-x-auto">
@@ -209,25 +232,26 @@ export default function SystemPage() {
                   <tr className="border-b border-border/50 bg-muted/30">
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Name</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">PID</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">CPU</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Memory</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Port</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Version</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Status</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">User</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {processes.map((proc) => (
-                    <tr key={proc.pid} className="border-b border-border/30 last:border-0 hover:bg-accent/20 transition-colors">
-                      <td className="px-4 py-2.5 font-medium text-sm">{proc.name}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{proc.pid}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs">{proc.cpu}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs">{proc.ram}</td>
+                  {frameworks.map((fw) => (
+                    <tr key={fw.name} className="border-b border-border/30 last:border-0 hover:bg-accent/20 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-sm">{fw.name}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{fw.pid ?? "-"}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">:{fw.port}</td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{fw.version}</td>
                       <td className="px-4 py-2.5">
-                        <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                          {proc.status}
+                        <Badge variant="secondary" className={cn(
+                          "text-[10px]",
+                          fw.status === "running" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-muted text-muted-foreground border-border"
+                        )}>
+                          {fw.status}
                         </Badge>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{proc.user}</td>
                     </tr>
                   ))}
                 </tbody>

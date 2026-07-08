@@ -6,78 +6,58 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Search, Book, Upload, FileText, Trash2, ExternalLink, Database, Search as SearchIcon, Loader2, CheckCircle, XCircle, Download } from "lucide-react"
+import { Search, Book, Upload, FileText, Trash2, ExternalLink, Database, Search as SearchIcon, Loader2, CheckCircle, XCircle, Download, File, FileJson, Table2, FileSpreadsheet, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
+import { useQuery, useMutation } from "@/hooks/use-query"
 
-interface KnowledgeBase {
-  id: string
-  name: string
-  description: string
-  documents: number
-  chunks: number
-  size: string
-  model: string
-  status: "ready" | "indexing" | "error"
-  lastUpdated: string
-}
-
-interface Document {
-  id: string
-  name: string
-  type: "pdf" | "txt" | "md" | "csv" | "json"
-  size: string
-  chunks: number
-  status: "indexed" | "indexing" | "error"
-  uploaded: string
-}
-
-const initialKBs: KnowledgeBase[] = [
-  { id: "kb1", name: "Product Documentation", description: "User guides, API docs, and release notes", documents: 24, chunks: 3421, size: "48 MB", model: "nomic-embed-text", status: "ready", lastUpdated: "2 hours ago" },
-  { id: "kb2", name: "Customer Support KB", description: "Common issues, solutions, and FAQs", documents: 156, chunks: 12890, size: "215 MB", model: "nomic-embed-text", status: "ready", lastUpdated: "1 day ago" },
-  { id: "kb3", name: "Code Repository", description: "Source code embeddings for code search", documents: 890, chunks: 45200, size: "890 MB", model: "codellama:7b", status: "indexing", lastUpdated: "Just now" },
-  { id: "kb4", name: "Legal Documents", description: "Contracts, terms of service, privacy policy", documents: 12, chunks: 1567, size: "22 MB", model: "nomic-embed-text", status: "ready", lastUpdated: "3 days ago" },
-]
-
-const initialDocs: Record<string, Document[]> = {
-  "kb1": [
-    { id: "d1", name: "getting-started.md", type: "md", size: "12 KB", chunks: 45, status: "indexed", uploaded: "2 hours ago" },
-    { id: "d2", name: "api-reference.pdf", type: "pdf", size: "2.3 MB", chunks: 234, status: "indexed", uploaded: "1 day ago" },
-    { id: "d3", name: "release-notes-v2.json", type: "json", size: "89 KB", chunks: 12, status: "indexed", uploaded: "3 days ago" },
-    { id: "d4", name: "architecture-overview.md", type: "md", size: "45 KB", chunks: 89, status: "indexing", uploaded: "Just now" },
-  ],
-  "kb2": [
-    { id: "d5", name: "faq-common-issues.csv", type: "csv", size: "156 KB", chunks: 345, status: "indexed", uploaded: "1 day ago" },
-    { id: "d6", name: "troubleshooting-guide.md", type: "md", size: "28 KB", chunks: 67, status: "indexed", uploaded: "2 days ago" },
-  ],
-}
-
-const searchResults = [
-  { id: "r1", content: "To configure the API key, navigate to Settings > API Keys and click 'Create New Key'", kb: "Product Documentation", score: 0.97, doc: "api-reference.pdf" },
-  { id: "r2", content: "The maximum request size is 10 MB. For larger payloads, use the multipart upload endpoint.", kb: "Product Documentation", score: 0.92, doc: "api-reference.pdf" },
-  { id: "r3", content: "Our SLA guarantees 99.9% uptime. Credits are issued if uptime falls below this threshold.", kb: "Legal Documents", score: 0.88, doc: "terms-of-service.md" },
-  { id: "r4", content: "For password reset issues, verify that the email matches the account on file.", kb: "Customer Support KB", score: 0.85, doc: "faq-common-issues.csv" },
-]
-
-const typeIcons: Record<string, string> = { pdf: "📕", txt: "📄", md: "📝", csv: "📊", json: "📋" }
+const typeIcons: Record<string, React.ElementType> = { pdf: FileText, txt: File, md: FileText, csv: Table2, json: FileJson }
 
 export default function KnowledgePage() {
   const [activeTab, setActiveTab] = useState<"browse" | "search" | "upload">("browse")
   const [selectedKB, setSelectedKB] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [searching, setSearching] = useState(false)
-  const [searchResults_, setSearchResults] = useState<typeof searchResults>([])
+  const [showCreate, setShowCreate] = useState(false)
+  const [newKB, setNewKB] = useState({ name: "", description: "" })
+
+  const { data: kbs = [], loading: kbsLoading, refetch: refetchKBs } = useQuery(
+    "knowledge:list",
+    () => api.knowledge.list(),
+  )
+
+  const { data: currentKB, loading: kbLoading } = useQuery(
+    selectedKB ? `knowledge:getById:${selectedKB}` : null,
+    () => api.knowledge.getById(selectedKB!),
+    { enabled: !!selectedKB },
+  )
+
+  const { data: searchResults = [], loading: searching, refetch: doSearch } = useQuery(
+    searchQuery ? `knowledge:search:${searchQuery}` : null,
+    () => api.knowledge.search(searchQuery),
+    { enabled: false },
+  )
 
   const handleSearch = () => {
     if (!searchQuery.trim()) return
-    setSearching(true)
-    setTimeout(() => {
-      setSearchResults(searchResults.filter((r) => r.content.toLowerCase().includes(searchQuery.toLowerCase())))
-      setSearching(false)
-    }, 1200)
+    doSearch()
   }
 
-  const currentKB = selectedKB ? initialKBs.find((kb) => kb.id === selectedKB) : null
-  const currentDocs = selectedKB ? (initialDocs[selectedKB] ?? []) : []
+  const { mutate: createKB } = useMutation(
+    (input: { name: string; description?: string }) => api.knowledge.create(input),
+    { onSuccess: () => { setShowCreate(false); setNewKB({ name: "", description: "" }); refetchKBs() } },
+  )
+
+  const { mutate: deleteKB } = useMutation(
+    (id: string) => api.knowledge.delete(id),
+    { onSuccess: () => { setSelectedKB(null); refetchKBs() } },
+  )
+
+  const { mutate: deleteDoc } = useMutation(
+    (id: string) => api.knowledge.deleteDocument(id),
+    { onSuccess: refetchKBs },
+  )
+
+  const docs = currentKB?.documents ?? []
 
   return (
     <div className="min-h-screen bg-background">
@@ -88,12 +68,19 @@ export default function KnowledgePage() {
               <h1 className="text-2xl font-bold">Knowledge Base</h1>
               <p className="text-sm text-muted-foreground mt-0.5">Store, index, and search documents for RAG-powered agents</p>
             </div>
-            <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
-              {(["browse", "search", "upload"] as const).map((tab) => (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={cn("px-3 py-1.5 text-xs rounded-md transition-colors font-medium", activeTab === tab ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
-                >{tab === "browse" ? "Browse" : tab === "search" ? "Search" : "Upload"}</button>
-              ))}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+                {(["browse", "search", "upload"] as const).map((tab) => (
+                  <button key={tab} onClick={() => setActiveTab(tab)}
+                    className={cn("px-3 py-1.5 text-xs rounded-md transition-colors font-medium", activeTab === tab ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                  >{tab === "browse" ? "Browse" : tab === "search" ? "Search" : "Upload"}</button>
+                ))}
+              </div>
+              {activeTab === "browse" && (
+                <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setShowCreate(!showCreate)}>
+                  <Plus className="h-3 w-3" /> New KB
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -104,7 +91,28 @@ export default function KnowledgePage() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2 space-y-3">
               <h2 className="text-sm font-semibold mb-3">Knowledge Bases</h2>
-              {initialKBs.map((kb) => (
+
+              {showCreate && (
+                <Card className="p-4 border-primary/30 bg-primary/[0.02]">
+                  <h3 className="text-sm font-semibold mb-3">Create Knowledge Base</h3>
+                  <div className="space-y-3">
+                    <Input value={newKB.name} onChange={(e) => setNewKB({ ...newKB, name: e.target.value })} placeholder="Knowledge base name" className="h-8 text-sm" />
+                    <Input value={newKB.description} onChange={(e) => setNewKB({ ...newKB, description: e.target.value })} placeholder="Description (optional)" className="h-8 text-sm" />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-8 text-xs" onClick={() => createKB(newKB)} disabled={!newKB.name}>Create</Button>
+                      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowCreate(false)}>Cancel</Button>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {kbsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : kbs.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No knowledge bases yet. Create one to get started.</p>
+              ) : kbs.map((kb: any) => (
                 <div key={kb.id}
                   className={cn("rounded-lg border border-border/50 bg-surface p-4 transition-all cursor-pointer card-hover", selectedKB === kb.id && "ring-1 ring-primary/30")}
                   onClick={() => setSelectedKB(selectedKB === kb.id ? null : kb.id)}
@@ -119,15 +127,20 @@ export default function KnowledgePage() {
                         <p className="text-xs text-muted-foreground">{kb.description}</p>
                       </div>
                     </div>
-                    <Badge className={cn("text-[10px]", kb.status === "ready" ? "bg-emerald-500/10 text-emerald-400" : kb.status === "indexing" ? "bg-blue-500/10 text-blue-400" : "bg-red-500/10 text-red-400")}>
-                      {kb.status === "ready" ? "Ready" : kb.status === "indexing" ? "Indexing..." : "Error"}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={cn("text-[10px]", kb.status === "READY" ? "bg-emerald-500/10 text-emerald-400" : kb.status === "INDEXING" ? "bg-blue-500/10 text-blue-400" : "bg-red-500/10 text-red-400")}>
+                        {kb.status === "READY" ? "Ready" : kb.status === "INDEXING" ? "Indexing..." : "Error"}
+                      </Badge>
+                      <button onClick={(e) => { e.stopPropagation(); deleteKB(kb.id) }} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
-                    <span>{kb.documents} documents</span>
-                    <span>{kb.chunks.toLocaleString()} chunks</span>
-                    <span>{kb.size}</span>
-                    <span className="ml-auto">{kb.lastUpdated}</span>
+                    <span>{kb.totalDocs} documents</span>
+                    <span>{kb.totalChunks.toLocaleString()} chunks</span>
+                    <span>{kb.totalSize ? `${(Number(kb.totalSize) / 1_000_000).toFixed(1)} MB` : "0 MB"}</span>
+                    <span className="ml-auto">{new Date(kb.updatedAt).toLocaleDateString()}</span>
                   </div>
                 </div>
               ))}
@@ -138,24 +151,28 @@ export default function KnowledgePage() {
                 <Card className="p-5">
                   <h3 className="text-sm font-semibold mb-3">{currentKB.name} — Documents</h3>
                   <div className="space-y-2">
-                    {currentDocs.length === 0 ? (
+                    {docs.length === 0 ? (
                       <p className="text-xs text-muted-foreground text-center py-4">No documents yet</p>
-                    ) : currentDocs.map((doc) => (
-                      <div key={doc.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border/50 bg-background/30 hover:bg-accent/20 transition-colors">
-                        <span className="text-lg">{typeIcons[doc.type] ?? "📄"}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">{doc.name}</p>
-                          <p className="text-[10px] text-muted-foreground">{doc.size} · {doc.chunks} chunks</p>
+                    ) : docs.map((doc: any) => {
+                      const typeLower = doc.type.toLowerCase()
+                      const DocIcon = (typeIcons as Record<string, React.ElementType>)[typeLower] || File
+                      return (
+                        <div key={doc.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border/50 bg-background/30 hover:bg-accent/20 transition-colors">
+                          <DocIcon className="h-5 w-5 text-muted-foreground" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{doc.name}</p>
+                            <p className="text-[10px] text-muted-foreground">{doc.size ? `${(doc.size / 1024).toFixed(1)} KB` : "0 KB"} · {doc.chunks} chunks</p>
+                          </div>
+                          <Badge className={cn("text-[10px]", doc.status === "INDEXED" ? "bg-emerald-500/10 text-emerald-400" : "bg-blue-500/10 text-blue-400")}>
+                            {doc.status === "INDEXED" ? "indexed" : "indexing"}
+                          </Badge>
+                          <button onClick={() => deleteDoc(doc.id)} className="p-1 text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
                         </div>
-                        <Badge className={cn("text-[10px]", doc.status === "indexed" ? "bg-emerald-500/10 text-emerald-400" : "bg-blue-500/10 text-blue-400")}>
-                          {doc.status}
-                        </Badge>
-                        <button className="p-1 text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="h-3 w-3" /></button>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                   <div className="mt-3 pt-3 border-t border-border/50">
-                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 w-full">
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 w-full" onClick={() => setActiveTab("upload")}>
                       <Upload className="h-3 w-3" /> Upload Document
                     </Button>
                   </div>
@@ -189,10 +206,10 @@ export default function KnowledgePage() {
               </div>
             )}
 
-            {searchResults_.length > 0 && !searching && (
+            {searchResults.length > 0 && !searching && (
               <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">{searchResults_.length} results</p>
-                {searchResults_.map((r) => (
+                <p className="text-xs text-muted-foreground">{searchResults.length} results</p>
+                {searchResults.map((r: any) => (
                   <div key={r.id} className="rounded-lg border border-border/50 bg-surface p-4 hover:bg-accent/20 transition-colors">
                     <div className="flex items-start gap-3">
                       <div className="flex-1">
@@ -226,21 +243,7 @@ export default function KnowledgePage() {
                   <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
                   <p className="text-sm text-muted-foreground">Drop files here</p>
                 </div>
-                <div className="w-full space-y-1">
-                  <label className="text-xs text-muted-foreground mb-1 block">Target Knowledge Base</label>
-                  <select className="h-9 text-sm w-full rounded-md border border-input bg-surface px-3">
-                    {initialKBs.map((kb) => (<option key={kb.id}>{kb.name}</option>))}
-                  </select>
-                </div>
-                <div className="w-full space-y-1">
-                  <label className="text-xs text-muted-foreground mb-1 block">Chunking Strategy</label>
-                  <select className="h-9 text-sm w-full rounded-md border border-input bg-surface px-3" defaultValue="fixed">
-                    <option value="fixed">Fixed size (512 tokens)</option>
-                    <option value="semantic">Semantic chunking</option>
-                    <option value="paragraph">By paragraph</option>
-                  </select>
-                </div>
-                <Button className="w-full gap-2" disabled>
+                <Button className="w-full gap-2">
                   <Upload className="h-4 w-4" /> Upload & Index
                 </Button>
                 <p className="text-[10px] text-muted-foreground">Max file size: 50 MB per file</p>

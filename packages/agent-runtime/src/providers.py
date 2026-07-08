@@ -46,7 +46,7 @@ class ProviderRegistry:
         all_models: list[ModelInfo] = []
         for provider in self._providers.values():
             try:
-                models = await provider.discover()
+                models = await asyncio.wait_for(provider.discover(), timeout=5)
                 all_models.extend(models)
             except Exception:
                 pass
@@ -115,6 +115,16 @@ class OllamaProvider(BaseProvider):
         ("llava", "7B", 4096, "LLaVA multimodal vision-language model"),
     ]
 
+    async def _get_model_capabilities(self, name: str) -> list[str]:
+        try:
+            r = await self._request("POST", "/api/show", json={"name": name})
+            data = r.json()
+            return data.get("capabilities", ["text"])
+        except Exception:
+            return ["text"]
+
+    _EMBEDDING_FAMILIES = {"bert", "nomic-bert", "gte", "bge"}
+
     async def discover(self) -> list[ModelInfo]:
         models: list[ModelInfo] = []
         pulled = set()
@@ -124,16 +134,18 @@ class OllamaProvider(BaseProvider):
             for m in data.get("models", []):
                 name = m["name"]
                 pulled.add(name.split(":")[0])
+                caps = await self._get_model_capabilities(name)
+                can_chat = any(c in caps for c in ("chat", "completion", "vision"))
                 models.append(
                     ModelInfo(
                         id=name,
                         provider="ollama",
                         name=name,
                         description=f"Ollama local model ({_fmt_size(m.get('size', 0))})",
-                        capabilities=["text"],
+                        capabilities=caps,
                         context_length=8192,
                         local=True,
-                        available=True,
+                        available=can_chat,
                         size=_fmt_size(m.get("size", 0)),
                     )
                 )

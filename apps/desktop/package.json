@@ -46,9 +46,6 @@
       "artifactName": "flowmind-${version}-${arch}.${ext}",
       "category": "Utility",
       "icon": "public/icon.svg",
-      "deb": {
-        "packageName": "flowmind-desktop"
-      },
       "desktop": {
         "Name": "FlowMind AI OS",
         "Comment": "Open-source AI Operating System",
@@ -56,6 +53,9 @@
         "Terminal": false,
         "Type": "Application"
       }
+    },
+    "deb": {
+      "packageName": "flowmind-desktop"
     },
     "mac": {
       "target": ["dmg"],

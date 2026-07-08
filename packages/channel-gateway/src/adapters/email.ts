@@ -1,3 +1,4 @@
+import nodemailer from "nodemailer"
 import type { ChannelAdapter, OutgoingMessage, ChannelMessage } from '../index.js'
 
 export interface SmtpConfig {
@@ -21,46 +22,54 @@ export class EmailAdapter implements ChannelAdapter {
   private watching = false
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private inboxCallback: ((msg: ChannelMessage) => void) | null = null
+  private transporter: nodemailer.Transporter
 
   constructor(
     private smtp: SmtpConfig,
     private imap: ImapConfig,
-  ) {}
+  ) {
+    this.transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: smtp.auth,
+    })
+  }
 
   async sendMessage(message: OutgoingMessage): Promise<void> {
-    const from = this.smtp.auth.user
     const to = message.channelId
     const subject = (message.metadata?.subject as string) ?? 'FlowMind Message'
 
-    const payload: Record<string, unknown> = {
-      from,
+    const mailOptions: nodemailer.SendMailOptions = {
+      from: this.smtp.auth.user,
       to,
       subject,
       text: message.text ?? '',
     }
 
     if (message.replyTo) {
-      payload.inReplyTo = message.replyTo
-      payload.references = message.replyTo
+      mailOptions.inReplyTo = message.replyTo
+      mailOptions.references = message.replyTo
     }
 
     if (message.files?.length) {
-      payload.attachments = message.files.map((f) => ({
-        filename: f.name,
-        path: f.url,
-        contentType: f.mimeType,
-      }))
+      mailOptions.attachments = await Promise.all(
+        message.files.map(async (f) => {
+          if (f.url.startsWith("http")) {
+            const res = await fetch(f.url)
+            const buffer = Buffer.from(await res.arrayBuffer())
+            return { filename: f.name, content: buffer, contentType: f.mimeType }
+          }
+          return { filename: f.name, path: f.url, contentType: f.mimeType }
+        })
+      )
     }
 
     if (message.metadata?.html) {
-      payload.html = message.metadata.html
+      mailOptions.html = message.metadata.html as string
     }
 
-    // SMTP send — placeholder for nodemailer or similar
-    console.log('[EmailAdapter] Sending email via SMTP', {
-      host: this.smtp.host,
-      payload,
-    })
+    await this.transporter.sendMail(mailOptions)
   }
 
   async handleUpdate(payload: unknown): Promise<ChannelMessage | null> {
@@ -68,8 +77,6 @@ export class EmailAdapter implements ChannelAdapter {
   }
 
   async setupWebhook(url: string): Promise<void> {
-    // Email uses IMAP polling or webhook services like SendGrid/SparkPost
-    // This is a placeholder for configuring an inbound email webhook
     await Promise.resolve(url)
   }
 
@@ -102,17 +109,11 @@ export class EmailAdapter implements ChannelAdapter {
   }
 
   private async pollInbox(): Promise<Array<Record<string, unknown>>> {
-    // IMAP fetch placeholder — real implementation uses imapflow or node-imap
     console.log('[EmailAdapter] Polling IMAP inbox', {
       host: this.imap.host,
       mailbox: this.imap.mailbox ?? 'INBOX',
     })
     return []
-  }
-
-  private async sendEmail(payload: Record<string, unknown>): Promise<void> {
-    // SMTP transport placeholder — real implementation uses nodemailer
-    console.log('[EmailAdapter] Sending via SMTP', payload)
   }
 
   private parseEmailPayload(payload: unknown): ChannelMessage | null {

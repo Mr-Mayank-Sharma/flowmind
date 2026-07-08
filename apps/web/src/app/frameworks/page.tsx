@@ -1,39 +1,69 @@
 "use client"
 
 import Link from "next/link"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, Play, Square, RotateCcw, AlertCircle, Server, Wifi, WifiOff } from "lucide-react"
+import { Search, Play, Square, RotateCcw, AlertCircle, Server, Wifi, WifiOff, Bot, Sparkles, Brush, Shield, Zap, Keyboard, Image, Brain, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { api } from "../../lib/api"
 
-const allFrameworks = [
-  { id: "ollama", name: "Ollama", icon: "🦙", status: "running" as const, port: 11434, version: "0.3.12", pid: 28491, models: 4, category: "LLM" as const, description: "Local LLM inference server" },
-  { id: "lm-studio", name: "LM Studio", icon: "🤖", status: "running" as const, port: 1234, version: "0.2.29", pid: 28512, models: 3, category: "LLM" as const, description: "Desktop LLM runtime" },
-  { id: "comfyui", name: "ComfyUI", icon: "🎨", status: "running" as const, port: 8188, version: "0.2.4", pid: 28534, models: 4, category: "Image" as const, description: "Node-based SD workflow engine" },
-  { id: "openclaw", name: "OpenClaw", icon: "🦀", status: "stopped" as const, port: 9090, version: "1.2.0", pid: null, models: 0, category: "Agent" as const, description: "Agent orchestration framework" },
-  { id: "hermes", name: "Hermes Agent", icon: "⚡", status: "running" as const, port: 3001, version: "2.1.5", pid: 28567, models: 2, category: "Agent" as const, description: "AI agent runtime" },
-  { id: "opencode", name: "OpenCode", icon: "⌨️", status: "error" as const, port: 8080, version: "0.8.3", pid: null, models: 0, category: "Dev Tools" as const, description: "AI coding assistant" },
-  { id: "sd", name: "Stable Diffusion", icon: "🖼️", status: "stopped" as const, port: 7860, version: "1.9.4", pid: null, models: 0, category: "Image" as const, description: "Text-to-image generation" },
-  { id: "localai", name: "LocalAI", icon: "🧠", status: "running" as const, port: 8080, version: "2.17.1", pid: 28589, models: 3, category: "LLM" as const, description: "OpenAI-compatible local API" },
-]
+interface Framework {
+  id: string
+  name: string
+  icon: string
+  status: "running" | "stopped" | "error"
+  port: number
+  version: string
+  pid: number | null
+  models: number
+  description: string
+  category: string
+}
+
+const frameworkIcons: Record<string, React.ElementType> = {
+  ollama: Bot,
+  "lm-studio": Bot,
+  comfyui: Brush,
+  openclaw: Shield,
+  hermes: Zap,
+  opencode: Keyboard,
+  sd: Image,
+  localai: Brain,
+}
 
 const categories = ["All", "LLM", "Image", "Agent", "Dev Tools"] as const
 const statusFilters = ["All", "running", "stopped", "error"] as const
 
 export default function FrameworksPage() {
+  const [frameworks, setFrameworks] = useState<Framework[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState<string>("All")
   const [statusFilter, setStatusFilter] = useState<string>("All")
 
+  useEffect(() => {
+    api.system.getFrameworks()
+      .then((data: any) => {
+        const fws = data?.result?.data?.data ?? data?.result?.data ?? data?.data ?? data ?? []
+        setFrameworks(Array.isArray(fws) ? fws : [])
+        setLoading(false)
+      })
+      .catch((err: Error) => {
+        setError(err.message)
+        setLoading(false)
+      })
+  }, [])
+
   const filtered = useMemo(() => {
-    return allFrameworks.filter((fw) => {
+    return frameworks.filter((fw) => {
       if (statusFilter !== "All" && fw.status !== statusFilter) return false
       if (category !== "All" && fw.category !== category) return false
       if (search && !fw.name.toLowerCase().includes(search.toLowerCase()) && !fw.id.includes(search.toLowerCase())) return false
       return true
     })
-  }, [search, category, statusFilter])
+  }, [search, category, statusFilter, frameworks])
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -44,7 +74,7 @@ export default function FrameworksPage() {
     }
   }
 
-  const runningCount = allFrameworks.filter((f) => f.status === "running").length
+  const runningCount = frameworks.filter((f) => f.status === "running").length
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,7 +89,7 @@ export default function FrameworksPage() {
             </div>
             <Badge variant="secondary" className="text-xs gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {runningCount}/{allFrameworks.length} running
+              {loading ? "..." : runningCount}/{loading ? "..." : frameworks.length} running
             </Badge>
           </div>
 
@@ -107,43 +137,62 @@ export default function FrameworksPage() {
       </div>
 
       <div className="px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-          {filtered.map((fw) => {
-            const sb = statusBadge(fw.status)
-            return (
-              <Link
-                key={fw.id}
-                href={`/frameworks/${fw.id}`}
-                className="group rounded-lg border border-border/50 bg-surface p-5 transition-all card-hover"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="text-2xl">{fw.icon}</div>
-                  <div className={cn("flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-medium", sb.bg)}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full", sb.dot, fw.status === "running" && "animate-pulse")} />
-                    {sb.label}
-                  </div>
-                </div>
-                <h3 className="font-semibold text-sm">{fw.name}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5 mb-3 line-clamp-1">{fw.description}</p>
-                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Server className="h-3 w-3" />
-                    :{fw.port}
-                  </span>
-                  <span>v{fw.version}</span>
-                  {fw.models > 0 && <span>{fw.models} models</span>}
-                  {fw.pid && <span>PID {fw.pid}</span>}
-                </div>
-              </Link>
-            )
-          })}
-        </div>
-
-        {filtered.length === 0 && (
+        {loading && (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <AlertCircle className="h-8 w-8 mb-2" />
-            <p className="text-sm">No frameworks match your filters</p>
+            <Loader2 className="h-8 w-8 mb-2 animate-spin" />
+            <p className="text-sm">Scanning for AI frameworks...</p>
           </div>
+        )}
+        {error && (
+          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+            <AlertCircle className="h-8 w-8 mb-2 text-red-400" />
+            <p className="text-sm text-red-400">Failed to load: {error}</p>
+          </div>
+        )}
+        {!loading && !error && (
+          <>
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <AlertCircle className="h-8 w-8 mb-2" />
+                <p className="text-sm">No frameworks match your filters</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                {filtered.map((fw) => {
+                  const sb = statusBadge(fw.status)
+                  return (
+                    <Link
+                      key={fw.id}
+                      href={`/frameworks/${fw.id}`}
+                      className="group rounded-lg border border-border/50 bg-surface p-5 transition-all card-hover"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        {(() => {
+                          const FwIcon = frameworkIcons[fw.icon] || Bot
+                          return <FwIcon className="h-6 w-6 text-foreground" />
+                        })()}
+                        <div className={cn("flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-medium", sb.bg)}>
+                          <span className={cn("h-1.5 w-1.5 rounded-full", sb.dot, fw.status === "running" && "animate-pulse")} />
+                          {sb.label}
+                        </div>
+                      </div>
+                      <h3 className="font-semibold text-sm">{fw.name}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5 mb-3 line-clamp-1">{fw.description}</p>
+                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Server className="h-3 w-3" />
+                          :{fw.port}
+                        </span>
+                        <span>v{fw.version}</span>
+                        {fw.models > 0 && <span>{fw.models} models</span>}
+                        {fw.pid && <span>PID {fw.pid}</span>}
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

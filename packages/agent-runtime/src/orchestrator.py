@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator
 from src.context_engine import ContextEngine
 from src.llm_router import LLMRouter
 from src.models import Memory, StreamChunk
-from src.resilience import ToolExecutor, with_retry
+from src.resilience import ToolExecutor
 from src.skill_engine import SkillEngine
 
 SYSTEM_PROMPT = (
@@ -24,13 +24,13 @@ class AgentOrchestrator:
         self.tool_executor = ToolExecutor()
         self._history: list[Memory] = []
 
-    @with_retry(max_retries=3, base_delay=0.5)
     async def _call_llm(
         self, prompt: str
     ) -> AsyncGenerator[StreamChunk, None]:
+        await self.llm_router.discover_models()
         config = {"estimated_tokens": len(prompt.split()), "prefer_local": True}
-        provider = self.llm_router.select_provider(config)
-        async for chunk in self.llm_router.stream_response(prompt, provider):
+        provider_name, model_name = self.llm_router.select_provider(config)
+        async for chunk in self.llm_router.stream_response(prompt, provider_name, model_name):
             yield chunk
 
     async def _build_prompt(self, message: str, context_blocks: list[dict[str, Any]]) -> str:

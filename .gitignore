@@ -12,3 +12,6 @@ coverage/
 .nyc_output/
 *.tsbuildinfo
 .pnpm-store/
+Refrences/
+FLOWMIND_BUSINESS_USE_CASES.md
+FLOWMIND_COMPLETE_GUIDE.md

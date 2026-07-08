@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Search, Play, Code, Server, Database, Bot, Globe, Shield, Cpu, Webhook, AlertTriangle, CheckCircle, Loader2, Copy, Terminal, ArrowRight, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
 
 interface Endpoint {
   id: string
@@ -39,22 +40,6 @@ const methodColors: Record<string, string> = {
   DELETE: "text-red-400 bg-red-500/10",
 }
 
-const responseData = `{
-  "success": true,
-  "data": {
-    "id": "cmqs93dwu0002h6esvnvteu10",
-    "email": "admin@flowmind.ai",
-    "name": "FlowMind Admin",
-    "role": "SUPER_ADMIN",
-    "tier": "FREE",
-    "createdAt": "2026-06-24T21:29:00.000Z"
-  },
-  "meta": {
-    "requestId": "req_abc123",
-    "duration": "42ms"
-  }
-}`
-
 export default function PlaygroundPage() {
   const [search, setSearch] = useState("")
   const [selectedEndpoint, setSelectedEndpoint] = useState<string>("e4")
@@ -77,14 +62,25 @@ export default function PlaygroundPage() {
     return acc
   }, {})
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (!currentEndpoint) return
     setLoading(true)
     setShowResponse(true)
     setResponse(null)
-    setTimeout(() => {
-      setResponse(responseData)
+    try {
+      const ep = currentEndpoint
+      const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}${ep.path.replace("/api", "/trpc")}`
+      const result = await api.playground.execute({
+        method: ep.method,
+        url,
+        body: ep.method !== "GET" ? requestBody : undefined,
+      })
+      setResponse(JSON.stringify(result, null, 2))
+    } catch (e: any) {
+      setResponse(JSON.stringify({ error: e.message || "Request failed" }, null, 2))
+    } finally {
       setLoading(false)
-    }, 1200)
+    }
   }
 
   return (
@@ -165,7 +161,11 @@ export default function PlaygroundPage() {
                       {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                       {loading ? "Sending..." : "Send Request"}
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => {
+                      if (!currentEndpoint) return
+                      const curl = `curl -X ${currentEndpoint.method} "${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}${currentEndpoint.path}" ${currentEndpoint.method !== "GET" ? `-d '${requestBody}'` : ""} -H "Content-Type: application/json"`
+                      navigator.clipboard.writeText(curl)
+                    }}>
                       <Copy className="h-3.5 w-3.5" /> Copy cURL
                     </Button>
                   </div>
@@ -181,9 +181,8 @@ export default function PlaygroundPage() {
                       </h3>
                       {!loading && response && (
                         <div className="flex items-center gap-2 text-xs">
-                          <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-400">200 OK</Badge>
-                          <span className="text-muted-foreground">42ms</span>
-                          <Copy className="h-3 w-3 text-muted-foreground cursor-pointer hover:text-foreground" />
+                          <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-400">Response</Badge>
+                          <Copy className="h-3 w-3 text-muted-foreground cursor-pointer hover:text-foreground" onClick={() => navigator.clipboard.writeText(response || "")} />
                         </div>
                       )}
                     </div>

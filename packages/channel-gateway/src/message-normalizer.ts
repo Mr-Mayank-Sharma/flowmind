@@ -66,11 +66,14 @@ function normalizeSlack(payload: RawPayload): ChannelMessage | null {
 function normalizeDiscord(payload: RawPayload): ChannelMessage | null {
   const msg = payload.body as Record<string, unknown> | undefined
   if (!msg) return null
+  const author = msg.author as Record<string, unknown> | undefined
+  const member = msg.member as Record<string, unknown> | undefined
+  const memberUser = member?.user as Record<string, unknown> | undefined
   return {
     id: String(msg.id ?? ''),
     channelType: 'discord',
     channelId: String(msg.channel_id ?? ''),
-    userId: String(msg.author?.id ?? msg.member?.user?.id ?? ''),
+    userId: String(author?.id ?? memberUser?.id ?? ''),
     text: msg.content as string | undefined,
     files: msg.attachments
       ? (msg.attachments as Array<Record<string, unknown>>).map((a) => ({
@@ -93,14 +96,15 @@ function normalizeWhatsApp(payload: RawPayload): ChannelMessage | null {
   const textEntry =
     (msg.text as Record<string, unknown> | undefined)?.body ??
     (msg.caption as string | undefined)
+  const key = msg.key as Record<string, unknown> | undefined
   return {
-    id: String(msg.id ?? msg.key?.id ?? ''),
+    id: String(msg.id ?? key?.id ?? ''),
     channelType: 'whatsapp',
-    channelId: String(msg.chatId ?? msg.key?.remoteJid ?? ''),
-    userId: String(msg.author ?? msg.key?.participant ?? msg.from ?? ''),
+    channelId: String(msg.chatId ?? key?.remoteJid ?? ''),
+    userId: String(msg.author ?? key?.participant ?? msg.from ?? ''),
     text: textEntry as string | undefined,
     files: msg.mediaKey
-      ? [{ url: '', mimeType: String(msg.mimetype ?? 'application/octet-stream'), name: msg.fileName as string ?? 'media' }]
+      ? [{ url: '', mimeType: String(msg.mimetype ?? 'application/octet-stream'), name: (msg.fileName as string | undefined) ?? 'media' }]
       : undefined,
     voiceUrl: msg.mediaKey && msg.mimetype === 'audio/ogg; codecs=opus' ? '' : undefined,
     metadata: msg as Record<string, unknown>,
@@ -111,12 +115,13 @@ function normalizeWhatsApp(payload: RawPayload): ChannelMessage | null {
 function normalizeEmail(payload: RawPayload): ChannelMessage | null {
   const msg = payload.body as Record<string, unknown> | undefined
   if (!msg) return null
+  const from = msg.from as Record<string, unknown> | undefined
   return {
     id: String(msg.messageId ?? ''),
     channelType: 'email',
     channelId: String(msg.inbox ?? ''),
-    userId: String(msg.from?.address ?? msg.from ?? ''),
-    text: msg.text ?? msg.html ?? msg.subject ?? '',
+    userId: String(from?.address ?? msg.from ?? ''),
+    text: String(msg.text ?? msg.html ?? msg.subject ?? ''),
     files: msg.attachments
       ? (msg.attachments as Array<Record<string, unknown>>).map((a) => ({
           url: String(a.url ?? a.path ?? ''),

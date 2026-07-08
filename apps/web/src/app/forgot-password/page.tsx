@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
             <div className="flex flex-col items-center gap-4 py-4">
               <CheckCircle className="h-12 w-12 text-success" />
               <p className="text-sm text-muted-foreground text-center">
-                If an account exists with {email}, you'll receive a password reset email shortly.
+                If an account exists with {email}, you&apos;ll receive a password reset email shortly.
               </p>
               <Link href="/login">
                 <Button variant="outline" className="gap-2 mt-2">

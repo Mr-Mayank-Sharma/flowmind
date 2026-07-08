@@ -12,8 +12,20 @@ import { ChatInput } from "./chat-input";
 export function ChatLayout() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId");
-  const { currentSessionId, selectSession } = useChatStore();
+  const { currentSessionId, selectSession, init, sessions, loading } = useChatStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    init()
+  }, [init])
+
+  const firstSessionId = sessions[0]?.id;
+
+  useEffect(() => {
+    if (firstSessionId && !currentSessionId) {
+      selectSession(firstSessionId)
+    }
+  }, [firstSessionId, currentSessionId, selectSession])
 
   useEffect(() => {
     if (sessionId && sessionId !== currentSessionId) {

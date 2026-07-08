@@ -37,7 +37,7 @@ class LLMRouter:
             local = [m for m in self._models if m.local and m.available]
             if local:
                 return local[0].provider, local[0].id
-            return "ollama", "llama3.2"
+            return "ollama", "tinyllama:latest"
 
         cloud = [m for m in self._models if not m.local and m.available]
         if cloud:
@@ -47,7 +47,7 @@ class LLMRouter:
     async def stream_response(
         self, prompt: str, provider: str, model: str | None = None
     ) -> AsyncGenerator[StreamChunk, None]:
-        model_id = model or "llama3.2"
+        model_id = model or "tinyllama:latest"
         messages = [{"role": "user", "content": prompt}]
 
         async for chunk in registry.chat(provider, model_id, messages):

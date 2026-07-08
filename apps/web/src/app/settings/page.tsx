@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
@@ -13,9 +13,11 @@ import {
   User, Palette, Cpu, HardDrive, Brain, Key, Link, Clock, Bell, Building,
   CreditCard, Shield, AlertTriangle, Check, X, Plus, Trash2, RefreshCw,
   Download, Github, Chrome, Slack, BookOpen, Search, Copy, Eye, EyeOff,
-  LogOut, Smartphone, Globe, Moon, Sun, Monitor, GripVertical, ChevronRight,
-  Zap, FileText, Star, Circle, ArrowUpDown, Wallet,
+  LogOut, Smartphone, Moon, Sun, Monitor, GripVertical,
+  FileText, ArrowUpDown, Loader2,
 } from "lucide-react"
+import { api } from "@/lib/api"
+import { useQuery, useMutation } from "@/hooks/use-query"
 
 type TabId =
   | "profile" | "appearance" | "ai-models" | "local-models" | "memory"
@@ -69,107 +71,6 @@ const providers = ["OpenAI", "Anthropic", "Google AI", "Mistral AI", "Meta", "Gr
 
 const fontSizes = ["Small", "Medium", "Large"]
 const chatDensities = ["Comfortable", "Compact", "Cozy"]
-
-const mockSkills = [
-  { id: "s1", name: "Web Research", description: "Search and extract information from websites", enabled: true, category: "Data" },
-  { id: "s2", name: "Code Interpreter", description: "Execute Python code and return results", enabled: true, category: "Development" },
-  { id: "s3", name: "Image Generation", description: "Generate images using Stable Diffusion", enabled: false, category: "Creative" },
-  { id: "s4", name: "Document Parser", description: "Parse PDF, DOCX, and other document formats", enabled: true, category: "Data" },
-  { id: "s5", name: "Webhook Sender", description: "Send HTTP requests to external services", enabled: true, category: "Integration" },
-  { id: "s6", name: "Memory Retrieval", description: "Query long-term memory stores", enabled: false, category: "System" },
-  { id: "s7", name: "Sentiment Analysis", description: "Analyze text sentiment and emotion", enabled: true, category: "NLP" },
-  { id: "s8", name: "Translation", description: "Translate text between languages", enabled: false, category: "NLP" },
-]
-
-const mockMemoryEntries = [
-  { id: "m1", type: "Conversation", preview: "User discussed project requirements for the AI pipeline builder...", date: "2026-06-22", size: "2.4 KB" },
-  { id: "m2", type: "Document", preview: "Extracted key insights from the research paper on transformer architectures...", date: "2026-06-21", size: "15.8 KB" },
-  { id: "m3", type: "Preference", preview: "User prefers concise responses with bullet points for technical topics...", date: "2026-06-20", size: "0.8 KB" },
-  { id: "m4", type: "Conversation", preview: "Debugged Python script for data pipeline ETL process...", date: "2026-06-19", size: "4.2 KB" },
-  { id: "m5", type: "Code Snippet", preview: "Saved React hook for real-time WebSocket connections...", date: "2026-06-18", size: "1.6 KB" },
-  { id: "m6", type: "Fact", preview: "User's preferred tech stack: Next.js, Tailwind, tRPC, PostgreSQL...", date: "2026-06-17", size: "0.5 KB" },
-]
-
-const mockApiKeys = [
-  { id: "ak1", name: "OpenAI Production", provider: "OpenAI", key: "sk-...aB3x", created: "2026-01-15", lastUsed: "2026-06-23", status: "active" as const },
-  { id: "ak2", name: "Anthropic Dev", provider: "Anthropic", key: "sk-ant-...9fK2", created: "2026-03-20", lastUsed: "2026-06-22", status: "active" as const },
-  { id: "ak3", name: "Google AI", provider: "Google AI", key: "AIza...qR7m", created: "2026-04-01", lastUsed: "2026-06-21", status: "active" as const },
-  { id: "ak4", name: "Mistral Staging", provider: "Mistral AI", key: "ms-...3pQx", created: "2026-05-10", lastUsed: "2026-06-15", status: "expired" as const },
-  { id: "ak5", name: "OpenAI Legacy", provider: "OpenAI", key: "sk-...zL9f", created: "2025-11-01", lastUsed: "2026-04-30", status: "revoked" as const },
-]
-
-const mockConnections = [
-  { id: "c1", name: "GitHub", icon: Github, connected: true, email: "user@github.com", scope: "repo, workflow, gist" },
-  { id: "c2", name: "Google", icon: Chrome, connected: true, email: "user@gmail.com", scope: "drive, docs, sheets" },
-  { id: "c3", name: "Slack", icon: Slack, connected: false, email: null, scope: null },
-  { id: "c4", name: "Notion", icon: BookOpen, connected: false, email: null, scope: null },
-]
-
-const mockCronJobs = [
-  { id: "cr1", name: "Daily Report Generation", pipeline: "Research Summarizer", schedule: "0 8 * * 1-5", nextRun: "2026-06-25 08:00", lastRun: "2026-06-24 08:00", status: "active" as const },
-  { id: "cr2", name: "Weekly Competitor Scan", pipeline: "Competitor Research", schedule: "0 6 * * 1", nextRun: "2026-06-30 06:00", lastRun: "2026-06-23 06:00", status: "active" as const },
-  { id: "cr3", name: "Social Media Posting", pipeline: "Social Media Scheduler", schedule: "*/30 9-18 * * 1-5", nextRun: "2026-06-24 09:30", lastRun: "2026-06-24 09:00", status: "active" as const },
-  { id: "cr4", name: "Data Sync - Nightly", pipeline: "CRM Sync Pipeline", schedule: "0 2 * * *", nextRun: "2026-06-25 02:00", lastRun: "2026-06-24 02:00", status: "paused" as const },
-  { id: "cr5", name: "Model Retraining Trigger", pipeline: "Fine-tune Pipeline", schedule: "0 3 */2 * *", nextRun: "2026-06-26 03:00", lastRun: null, status: "active" as const },
-] as { id: string; name: string; pipeline: string; schedule: string; nextRun: string; lastRun: string | null; status: "active" | "paused" }[]
-
-const notificationEvents = [
-  { id: "pipeline-complete", label: "Pipeline Complete", description: "When a pipeline finishes execution" },
-  { id: "pipeline-failed", label: "Pipeline Failed", description: "When a pipeline encounters an error" },
-  { id: "model-downloaded", label: "Model Downloaded", description: "When a model finishes downloading" },
-  { id: "low-credits", label: "Low Credits", description: "When API credit balance is low" },
-  { id: "invite-received", label: "Invite Received", description: "When you are invited to an organization" },
-  { id: "member-joined", label: "Member Joined", description: "When a new member joins your organization" },
-  { id: "cron-failed", label: "Cron Job Failed", description: "When a scheduled job fails to execute" },
-  { id: "security-alert", label: "Security Alert", description: "Suspicious login or security events" },
-]
-
-const mockOrgMembers = [
-  { id: "u1", name: "Alex Chen", email: "alex@flowmind.ai", role: "Admin" as const, avatar: "AC", joined: "2025-09-01" },
-  { id: "u2", name: "Sarah Johnson", email: "sarah@flowmind.ai", role: "Admin" as const, avatar: "SJ", joined: "2025-09-01" },
-  { id: "u3", name: "Marcus Lee", email: "marcus@flowmind.ai", role: "Editor" as const, avatar: "ML", joined: "2025-10-15" },
-  { id: "u4", name: "Priya Patel", email: "priya@flowmind.ai", role: "Viewer" as const, avatar: "PP", joined: "2026-01-20" },
-  { id: "u5", name: "Tom Wilson", email: "tom@flowmind.ai", role: "Editor" as const, avatar: "TW", joined: "2026-03-10" },
-]
-
-const mockAuditLog = [
-  { id: "a1", action: "Pipeline 'Research Summarizer' deployed", user: "Alex Chen", date: "2026-06-24 09:15", type: "pipeline" as const },
-  { id: "a2", action: "API key 'OpenAI Production' rotated", user: "Sarah Johnson", date: "2026-06-24 08:30", type: "security" as const },
-  { id: "a3", action: "Member 'Tom Wilson' invited", user: "Alex Chen", date: "2026-06-23 14:00", type: "org" as const },
-  { id: "a4", action: "Plan upgraded to Team", user: "Alex Chen", date: "2026-06-22 11:45", type: "billing" as const },
-  { id: "a5", action: "Model 'llama-3-70b' downloaded", user: "System", date: "2026-06-22 10:20", type: "system" as const },
-  { id: "a6", action: "Cron job 'Daily Report' paused", user: "Priya Patel", date: "2026-06-21 16:00", type: "pipeline" as const },
-]
-
-const mockInvoices = [
-  { id: "inv-001", date: "Jun 1, 2026", amount: "$49.00", status: "paid" as const, period: "June 2026" },
-  { id: "inv-002", date: "May 1, 2026", amount: "$49.00", status: "paid" as const, period: "May 2026" },
-  { id: "inv-003", date: "Apr 1, 2026", amount: "$49.00", status: "paid" as const, period: "April 2026" },
-  { id: "inv-004", date: "Mar 1, 2026", amount: "$19.00", status: "paid" as const, period: "March 2026" },
-  { id: "inv-005", date: "Feb 1, 2026", amount: "$19.00", status: "paid" as const, period: "February 2026" },
-]
-
-const mockSessions = [
-  { id: "s1", device: "MacBook Pro 16\"", browser: "Chrome 125", ip: "203.0.113.42", lastActive: "Now", current: true },
-  { id: "s2", device: "iPhone 15 Pro", browser: "Safari 18", ip: "203.0.113.42", lastActive: "2 hours ago", current: false },
-  { id: "s3", device: "Windows Desktop", browser: "Firefox 127", ip: "198.51.100.73", lastActive: "3 days ago", current: false },
-  { id: "s4", device: "Linux Server", browser: "curl/8.4", ip: "192.0.2.100", lastActive: "1 week ago", current: false },
-]
-
-const mockApiTokens = [
-  { id: "t1", name: "CI/CD Token", token: "fm_cicd_...a1b2", created: "2026-04-10", expires: "2027-04-10", lastUsed: "2026-06-23", scopes: ["pipelines:read", "pipelines:write"] },
-  { id: "t2", name: "Webhook Integration", token: "fm_webhook_...x3y4", created: "2026-05-01", expires: "2027-05-01", lastUsed: "2026-06-20", scopes: ["cron:read", "cron:write"] },
-  { id: "t3", name: "Monitoring Bot", token: "fm_mon_...z5w6", created: "2026-02-15", expires: "2027-02-15", lastUsed: "2026-06-24", scopes: ["pipelines:read", "system:metrics"] },
-]
-
-const mockInstalledModels = [
-  { id: "lm1", name: "mistral", size: "4.2 GB", status: "loaded" as const, quant: "Q4_K_M", ram: "4.8 GB" },
-  { id: "lm2", name: "llama3", size: "6.7 GB", status: "loaded" as const, quant: "Q5_K_M", ram: "7.2 GB" },
-  { id: "lm3", name: "codellama", size: "6.7 GB", status: "loaded" as const, quant: "Q4_K_M", ram: "7.0 GB" },
-  { id: "lm4", name: "mixtral", size: "26 GB", status: "unloaded" as const, quant: "Q4_K_M", ram: "27 GB" },
-  { id: "lm5", name: "phi-3-mini", size: "2.3 GB", status: "loaded" as const, quant: "Q4_K_M", ram: "2.8 GB" },
-  { id: "lm6", name: "nomic-embed-text", size: "274 MB", status: "unloaded" as const, quant: "F16", ram: "512 MB" },
-]
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("profile")
@@ -257,6 +158,38 @@ function ProfileTab() {
   const [showCurrent, setShowCurrent] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const { data: user, loading, refetch } = useQuery(
+    "settings:profile",
+    () => api.settings.getProfile(),
+  )
+
+  const [name, setName] = useState("")
+  const [timezone, setTimezone] = useState("UTC")
+  const [language, setLanguage] = useState("en")
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name ?? "")
+      setTimezone(user.timezone ?? "UTC")
+      setLanguage(user.language ?? "en")
+    }
+  }, [user])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await api.settings.updateProfile({ name, timezone, language })
+      refetch()
+    } catch {} finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+  }
 
   return (
     <div className="space-y-8">
@@ -268,13 +201,19 @@ function ProfileTab() {
         <CardContent className="space-y-6">
           <div className="flex items-center gap-4 mb-2">
             <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xl">
-              JD
+              {(user?.name ?? "U").charAt(0).toUpperCase()}
             </div>
             <div>
-              <p className="font-medium">John Doe</p>
-              <p className="text-sm text-muted-foreground">Free plan</p>
+              <p className="font-medium">{user?.name ?? "User"}</p>
+              <p className="text-sm text-muted-foreground capitalize">{user?.tier?.toLowerCase() ?? "Free"} plan</p>
             </div>
-            <Button variant="outline" size="sm" className="ml-auto gap-2">
+            <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={() => {
+              const input = document.createElement("input")
+              input.type = "file"
+              input.accept = "image/*"
+              input.onchange = () => alert("Avatar upload requires server-side implementation")
+              input.click()
+            }}>
               <RefreshCw className="h-3.5 w-3.5" />
               Change Avatar
             </Button>
@@ -282,22 +221,18 @@ function ProfileTab() {
           <Separator />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">First Name</label>
-              <Input defaultValue="John" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Last Name</label>
-              <Input defaultValue="Doe" />
+              <label className="text-sm font-medium">Full Name</label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Email</label>
-            <Input defaultValue="john.doe@flowmind.ai" type="email" />
+            <Input defaultValue={user?.email ?? ""} type="email" disabled />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Timezone</label>
-              <Select>
+              <Select value={timezone} onValueChange={setTimezone}>
                 <SelectTrigger><SelectValue placeholder="Select timezone" /></SelectTrigger>
                 <SelectContent>
                   {timezones.map(tz => (
@@ -308,7 +243,7 @@ function ProfileTab() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Language</label>
-              <Select>
+              <Select value={language} onValueChange={setLanguage}>
                 <SelectTrigger><SelectValue placeholder="Select language" /></SelectTrigger>
                 <SelectContent>
                   {languages.map(lang => (
@@ -319,7 +254,7 @@ function ProfileTab() {
             </div>
           </div>
           <div className="pt-2">
-            <Button>Save Changes</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</Button>
           </div>
         </CardContent>
       </Card>
@@ -372,7 +307,7 @@ function ProfileTab() {
             </div>
           </div>
           <div>
-            <Button variant="outline">Update Password</Button>
+            <Button variant="outline" onClick={() => alert("Password change requires current password verification. This feature requires server-side implementation.")}>Update Password</Button>
           </div>
         </CardContent>
       </Card>
@@ -386,7 +321,11 @@ function ProfileTab() {
           <p className="text-sm text-muted-foreground">
             This action cannot be undone. All your pipelines, flows, settings, and personal data will be permanently removed.
           </p>
-          <Button variant="destructive" className="gap-2">
+          <Button variant="destructive" className="gap-2" onClick={() => {
+            if (window.confirm("Are you sure you want to permanently delete your account? This cannot be undone.")) {
+              alert("Account deletion request submitted. This feature requires server-side implementation.")
+            }
+          }}>
             <Trash2 className="h-4 w-4" />
             Delete My Account
           </Button>
@@ -397,9 +336,22 @@ function ProfileTab() {
 }
 
 function AppearanceTab() {
+  const { data: user } = useQuery("settings:profile", () => api.settings.getProfile())
   const [theme, setTheme] = useState<"light" | "dark" | "system">("dark")
   const [fontSize, setFontSize] = useState("Medium")
   const [density, setDensity] = useState("Comfortable")
+
+  useEffect(() => {
+    if (user) {
+      if (user.theme) setTheme(user.theme)
+      if (user.fontSize) setFontSize(user.fontSize)
+      if (user.chatDensity) setDensity(user.chatDensity)
+    }
+  }, [user])
+
+  const saveAppearance = useCallback(() => {
+    api.settings.updateAppearance({ theme, fontSize, chatDensity: density })
+  }, [theme, fontSize, density])
 
   return (
     <div className="space-y-8">
@@ -417,7 +369,7 @@ function AppearanceTab() {
             ].map(({ value, icon: Icon, label }) => (
               <button
                 key={value}
-                onClick={() => setTheme(value)}
+                onClick={() => { setTheme(value); setTimeout(saveAppearance, 0) }}
                 className={`flex flex-col items-center gap-3 rounded-lg border p-6 transition-colors ${
                   theme === value
                     ? "border-primary bg-primary/5"
@@ -443,7 +395,7 @@ function AppearanceTab() {
             {fontSizes.map(size => (
               <button
                 key={size}
-                onClick={() => setFontSize(size)}
+                onClick={() => { setFontSize(size); setTimeout(saveAppearance, 0) }}
                 className={`flex-1 rounded-lg border p-4 text-center transition-colors ${
                   fontSize === size
                     ? "border-primary bg-primary/5"
@@ -456,14 +408,6 @@ function AppearanceTab() {
                 <span className="text-xs text-muted-foreground mt-1 block">{size}</span>
               </button>
             ))}
-          </div>
-          <div className={`rounded-lg border bg-surface p-4 ${
-            fontSize === "Small" ? "text-xs" : fontSize === "Medium" ? "text-sm" : "text-base"
-          }`}>
-            <p className="font-medium mb-1">Preview</p>
-            <p className="text-muted-foreground">
-              This is how text will appear throughout the application. Adjust to your preference.
-            </p>
           </div>
         </CardContent>
       </Card>
@@ -478,7 +422,7 @@ function AppearanceTab() {
             {chatDensities.map(d => (
               <button
                 key={d}
-                onClick={() => setDensity(d)}
+                onClick={() => { setDensity(d); setTimeout(saveAppearance, 0) }}
                 className={`flex-1 rounded-lg border p-4 text-center transition-colors ${
                   density === d
                     ? "border-primary bg-primary/5"
@@ -491,36 +435,6 @@ function AppearanceTab() {
                 <span className={`text-xs font-medium ${density === d ? "text-primary" : ""}`}>{d}</span>
               </button>
             ))}
-          </div>
-          <div className={`rounded-lg border bg-surface space-y-2 ${
-            density === "Compact" ? "p-2" : density === "Comfortable" ? "p-4" : "p-3"
-          }`}>
-            <div className={`flex items-start gap-3 ${
-              density === "Compact" ? "mb-1" : density === "Comfortable" ? "mb-3" : "mb-2"
-            }`}>
-              <div className="h-6 w-6 rounded-full bg-primary/20 shrink-0 flex items-center justify-center text-xs font-medium text-primary">
-                AI
-              </div>
-              <div className="flex-1">
-                <p className={`font-medium ${density === "Compact" ? "text-xs" : "text-sm"}`}>Assistant</p>
-                <p className={`text-muted-foreground ${density === "Compact" ? "text-xs" : "text-sm"}`}>
-                  Here is a preview of how messages will appear with the selected density setting.
-                </p>
-              </div>
-            </div>
-            <div className={`flex items-start gap-3 ${
-              density === "Compact" ? "" : density === "Comfortable" ? "mb-3" : "mb-2"
-            }`}>
-              <div className="h-6 w-6 rounded-full bg-secondary/20 shrink-0 flex items-center justify-center text-xs font-medium text-secondary">
-                Y
-              </div>
-              <div className="flex-1">
-                <p className={`font-medium ${density === "Compact" ? "text-xs" : "text-sm"}`}>You</p>
-                <p className={`text-muted-foreground ${density === "Compact" ? "text-xs" : "text-sm"}`}>
-                  This looks great! I prefer the {density.toLowerCase()} view.
-                </p>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -618,6 +532,37 @@ function AiModelsTab() {
 }
 
 function LocalModelsTab() {
+  const [pulling, setPulling] = useState(false)
+
+  const { data: modelsList = [], loading: modelsLoading, refetch: refetchModels } = useQuery(
+    "settings:models",
+    () => api.models.list(),
+  )
+
+  const handlePullModel = async () => {
+    const name = prompt("Enter model name to pull (e.g. llama3:8b):")
+    if (!name) return
+    setPulling(true)
+    try {
+      await api.models.pullModel(name)
+      refetchModels()
+      alert(`Model "${name}" pulled successfully`)
+    } catch (e: any) {
+      alert(`Failed: ${e.message}`)
+    } finally {
+      setPulling(false)
+    }
+  }
+
+  const handleTestConnection = async () => {
+    try {
+      const health = await api.models.getRuntimeHealth()
+      alert(health.online ? "Connection OK" : "Runtime offline")
+    } catch (e: any) {
+      alert(`Connection failed: ${e.message}`)
+    }
+  }
+
   return (
     <div className="space-y-8">
       <Card>
@@ -630,7 +575,7 @@ function LocalModelsTab() {
             <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse" />
             <div className="flex-1">
               <p className="text-sm font-medium">Connected to Ollama</p>
-              <p className="text-xs text-muted-foreground">http://localhost:11434 &middot; v0.3.12 &middot; 3 active models</p>
+              <p className="text-xs text-muted-foreground">http://localhost:11434</p>
             </div>
             <Badge variant="secondary">Online</Badge>
           </div>
@@ -645,8 +590,8 @@ function LocalModelsTab() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" className="gap-2"><RefreshCw className="h-3.5 w-3.5" />Reconnect</Button>
-            <Button variant="outline" size="sm">Test Connection</Button>
+            <Button size="sm" className="gap-2" onClick={handleTestConnection}><RefreshCw className="h-3.5 w-3.5" />Reconnect</Button>
+            <Button variant="outline" size="sm" onClick={handleTestConnection}>Test Connection</Button>
           </div>
         </CardContent>
       </Card>
@@ -657,26 +602,27 @@ function LocalModelsTab() {
           <CardDescription>Manage locally installed models</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {mockInstalledModels.map(model => (
-            <div key={model.id} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3">
-              <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                model.status === "loaded" ? "bg-green-500" : "bg-muted-foreground"
-              }`} />
+          {modelsLoading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : modelsList.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No models installed. Pull a model to get started.</p>
+          ) : modelsList.map((model: any) => (
+            <div key={model.id ?? model.name} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3">
+              <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${model.status === "loaded" ? "bg-green-500" : "bg-muted-foreground"}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{model.name}</p>
-                <p className="text-xs text-muted-foreground">{model.size} &middot; {model.quant} &middot; ~{model.ram} RAM</p>
+                <p className="text-xs text-muted-foreground">{model.size ?? "Unknown"}</p>
               </div>
               <Badge variant={model.status === "loaded" ? "default" : "secondary"} className="text-xs shrink-0">
                 {model.status === "loaded" ? "Loaded" : "Unloaded"}
               </Badge>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                <Trash2 className="h-4 w-4" />
-              </Button>
             </div>
           ))}
           <div className="flex gap-2 pt-2">
-            <Button size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" />Pull Model</Button>
-            <Button variant="outline" size="sm" className="gap-2"><RefreshCw className="h-3.5 w-3.5" />Refresh</Button>
+            <Button size="sm" className="gap-2" onClick={handlePullModel} disabled={pulling}>
+              <Plus className="h-3.5 w-3.5" />{pulling ? "Pulling..." : "Pull Model"}
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={refetchModels}><RefreshCw className="h-3.5 w-3.5" />Refresh</Button>
           </div>
         </CardContent>
       </Card>
@@ -720,14 +666,42 @@ function MemoryTab({
   skillSearch: string
   setSkillSearch: (v: string) => void
 }) {
-  const filteredSkills = mockSkills.filter(s =>
+  const { data: toolsList = [], refetch: refetchTools } = useQuery(
+    "settings:tools",
+    () => api.tools.list(),
+  )
+
+  const { mutate: toggleTool } = useMutation(
+    (id: string) => api.tools.toggle(id),
+    { onSuccess: refetchTools },
+  )
+
+  const { data: memories = [], loading: memoriesLoading, refetch: refetchMemories } = useQuery(
+    "settings:memories",
+    () => api.settings.getMemories(),
+  )
+
+  const { mutate: deleteMemory } = useMutation(
+    (id: string) => api.settings.deleteMemory(id),
+    { onSuccess: refetchMemories },
+  )
+
+  const filteredSkills = toolsList.filter((s: any) =>
     s.name.toLowerCase().includes(skillSearch.toLowerCase()) ||
     s.description.toLowerCase().includes(skillSearch.toLowerCase())
   )
-  const filteredMemory = mockMemoryEntries.filter(e =>
-    e.preview.toLowerCase().includes(memorySearch.toLowerCase()) ||
+  const filteredMemory = memories.filter((e: any) =>
+    (e.content ?? e.summary ?? "").toLowerCase().includes(memorySearch.toLowerCase()) ||
     e.type.toLowerCase().includes(memorySearch.toLowerCase())
   )
+
+  const typeColors: Record<string, string> = {
+    Conversation: "bg-blue-500",
+    Document: "bg-amber-500",
+    Preference: "bg-purple-500",
+    "Code Snippet": "bg-emerald-500",
+    Fact: "bg-rose-500",
+  }
 
   return (
     <div className="space-y-8">
@@ -747,16 +721,16 @@ function MemoryTab({
             />
           </div>
           <div className="space-y-2">
-            {filteredSkills.map(skill => (
+            {filteredSkills.map((skill: any) => (
               <div key={skill.id} className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{skill.name}</p>
-                    <Badge variant="outline" className="text-xs">{skill.category}</Badge>
+                    <Badge variant="outline" className="text-xs">{skill.category ?? "General"}</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">{skill.description}</p>
                 </div>
-                <Switch checked={skill.enabled} />
+                <Switch checked={skill.isActive} onCheckedChange={() => toggleTool(skill.id)} />
               </div>
             ))}
           </div>
@@ -780,26 +754,24 @@ function MemoryTab({
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
             <span>{filteredMemory.length} entries</span>
-            <span>Total: ~29.3 KB</span>
+            <span>Total: ~{memories.length} entries</span>
           </div>
           <div className="divide-y divide-border">
-            {filteredMemory.map(entry => (
+            {memoriesLoading ? (
+              <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : filteredMemory.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No memories found</p>
+            ) : filteredMemory.map((entry: any) => (
               <div key={entry.id} className="flex items-start gap-3 py-3">
-                <div className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${
-                  entry.type === "Conversation" ? "bg-blue-500" :
-                  entry.type === "Document" ? "bg-amber-500" :
-                  entry.type === "Preference" ? "bg-purple-500" :
-                  entry.type === "Code Snippet" ? "bg-emerald-500" : "bg-rose-500"
-                }`} />
+                <div className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${typeColors[entry.type] ?? "bg-blue-500"}`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{entry.type}</p>
-                    <span className="text-xs text-muted-foreground">{entry.date}</span>
-                    <span className="text-xs text-muted-foreground">{entry.size}</span>
+                    <span className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleDateString()}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">{entry.preview}</p>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{entry.content ?? entry.summary ?? ""}</p>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0" onClick={() => deleteMemory(entry.id)}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -812,6 +784,26 @@ function MemoryTab({
 }
 
 function ApiKeysTab({ showKey, setShowKey }: { showKey: string | null; setShowKey: (v: string | null) => void }) {
+  const [showNewKeyForm, setShowNewKeyForm] = useState(false)
+  const [newKeyName, setNewKeyName] = useState("")
+  const [newKeyProvider, setNewKeyProvider] = useState("OpenAI")
+  const [newKeyValue, setNewKeyValue] = useState("")
+
+  const { data: apiKeys = [], loading, refetch } = useQuery(
+    "settings:apiKeys",
+    () => api.settings.getApiKeys(),
+  )
+
+  const { mutate: createKey } = useMutation(
+    (input: { name: string; provider: string; key: string }) => api.settings.createApiKey(input),
+    { onSuccess: () => { setShowNewKeyForm(false); setNewKeyName(""); setNewKeyValue(""); refetch() } },
+  )
+
+  const { mutate: deleteKey } = useMutation(
+    (id: string) => api.settings.deleteApiKey(id),
+    { onSuccess: refetch },
+  )
+
   return (
     <div className="space-y-8">
       <Card>
@@ -821,38 +813,51 @@ function ApiKeysTab({ showKey, setShowKey }: { showKey: string | null; setShowKe
               <CardTitle>API Keys</CardTitle>
               <CardDescription>Manage API keys for external providers</CardDescription>
             </div>
-            <Button size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" />Add Key</Button>
+            <Button size="sm" className="gap-2" onClick={() => setShowNewKeyForm(!showNewKeyForm)}><Plus className="h-3.5 w-3.5" />Add Key</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {mockApiKeys.map(ak => (
+          {showNewKeyForm && (
+            <div className="rounded-lg border border-primary/30 bg-primary/[0.02] p-4 space-y-3">
+              <Input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Key name" className="h-8 text-sm" />
+              <select value={newKeyProvider} onChange={(e) => setNewKeyProvider(e.target.value)} className="h-8 text-sm w-full rounded-md border border-input bg-surface px-3">
+                {providers.map(p => <option key={p}>{p}</option>)}
+              </select>
+              <Input value={newKeyValue} onChange={(e) => setNewKeyValue(e.target.value)} placeholder="API key" className="h-8 text-sm font-mono" />
+              <div className="flex gap-2">
+                <Button size="sm" className="h-8 text-xs" onClick={() => createKey({ name: newKeyName, provider: newKeyProvider, key: newKeyValue })} disabled={!newKeyName || !newKeyValue}>Save</Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowNewKeyForm(false)}>Cancel</Button>
+              </div>
+            </div>
+          )}
+          {loading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : apiKeys.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No API keys yet</p>
+          ) : apiKeys.map((ak: any) => (
             <div key={ak.id} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium">{ak.name}</p>
-                  <Badge variant={ak.status === "active" ? "default" : ak.status === "expired" ? "secondary" : "outline"}>
-                    {ak.status}
+                  <Badge variant={ak.isActive ? "default" : "secondary"}>
+                    {ak.isActive ? "active" : "inactive"}
                   </Badge>
                   <Badge variant="outline" className="text-xs">{ak.provider}</Badge>
                 </div>
                 <div className="flex items-center gap-3 mt-1">
                   <div className="flex items-center gap-1.5">
                     <code className="text-xs text-muted-foreground font-mono">
-                      {showKey === ak.id ? ak.key : ak.key.slice(0, 8) + "••••••••"}
+                      {showKey === ak.id ? ak.keyHash?.slice(0, 16) + "..." : "••••" + ak.lastFour}
                     </code>
                     <button onClick={() => setShowKey(showKey === ak.id ? null : ak.id)} className="text-muted-foreground hover:text-foreground">
                       {showKey === ak.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                     </button>
                   </div>
-                  <button className="text-muted-foreground hover:text-foreground">
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Created {ak.created} &middot; Last used {ak.lastUsed}</p>
+                <p className="text-xs text-muted-foreground mt-1">Created {new Date(ak.createdAt).toLocaleDateString()} &middot; Last used {ak.lastUsedAt ? new Date(ak.lastUsedAt).toLocaleDateString() : "Never"}</p>
               </div>
               <div className="flex gap-1 shrink-0">
-                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs"><RefreshCw className="h-3 w-3" />Rotate</Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => deleteKey(ak.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -865,6 +870,20 @@ function ApiKeysTab({ showKey, setShowKey }: { showKey: string | null; setShowKe
 }
 
 function ConnectionsTab() {
+  const { data: connections = [], loading, refetch } = useQuery(
+    "settings:connections",
+    () => api.settings.getConnections(),
+  )
+
+  const { mutate: deleteConnection } = useMutation(
+    (id: string) => api.settings.deleteConnection(id),
+    { onSuccess: refetch },
+  )
+
+  const providerIcons: Record<string, React.ElementType> = {
+    github: Github, google: Chrome, slack: Slack, notion: BookOpen,
+  }
+
   return (
     <div className="space-y-8">
       <Card>
@@ -873,32 +892,26 @@ function ConnectionsTab() {
           <CardDescription>Connect your accounts to enable integrations</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {mockConnections.map(conn => {
-            const Icon = conn.icon
+          {loading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : connections.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No connected accounts yet</p>
+          ) : connections.map((conn: any) => {
+            const provider = conn.provider.toLowerCase()
+            const Icon = providerIcons[provider] ?? Link
             return (
               <div key={conn.id} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-4">
                 <div className="h-10 w-10 rounded-lg bg-accent flex items-center justify-center">
                   <Icon className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{conn.name}</p>
-                  {conn.connected ? (
-                    <p className="text-xs text-muted-foreground">Connected as {conn.email} &middot; Scope: {conn.scope}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Not connected</p>
-                  )}
+                  <p className="text-sm font-medium capitalize">{conn.provider}</p>
+                  <p className="text-xs text-muted-foreground">Scope: {conn.scope ?? "Full access"}</p>
                 </div>
-                {conn.connected ? (
-                  <Button variant="outline" size="sm" className="shrink-0 gap-2">
-                    <X className="h-3.5 w-3.5" />
-                    Revoke
-                  </Button>
-                ) : (
-                  <Button size="sm" className="shrink-0 gap-2">
-                    <Plus className="h-3.5 w-3.5" />
-                    Authorize
-                  </Button>
-                )}
+                <Button variant="outline" size="sm" className="shrink-0 gap-2" onClick={() => deleteConnection(conn.id)}>
+                  <X className="h-3.5 w-3.5" />
+                  Revoke
+                </Button>
               </div>
             )
           })}
@@ -909,11 +922,20 @@ function ConnectionsTab() {
 }
 
 function CronJobsTab() {
-  const [cronList, setCronList] = useState(mockCronJobs)
+  const { data: cronList = [], loading, refetch } = useQuery(
+    "settings:cron",
+    () => api.jobs.list(),
+  )
 
-  const toggleCron = (id: string) => {
-    setCronList(prev => prev.map(j => j.id === id ? { ...j, status: j.status === "active" ? "paused" as const : "active" as const } : j))
-  }
+  const { mutate: toggleJob } = useMutation(
+    (id: string) => api.jobs.toggle(id),
+    { onSuccess: refetch },
+  )
+
+  const { mutate: deleteJob } = useMutation(
+    (id: string) => api.jobs.delete(id),
+    { onSuccess: refetch },
+  )
 
   return (
     <div className="space-y-8">
@@ -928,32 +950,36 @@ function CronJobsTab() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {cronList.map(job => (
+          {loading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : cronList.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No scheduled jobs yet</p>
+          ) : cronList.map((job: any) => (
             <div key={job.id} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3">
               <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                job.status === "active" ? "bg-green-500" : "bg-amber-500"
+                job.isActive ? "bg-green-500" : "bg-amber-500"
               }`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium">{job.name}</p>
-                  <Badge variant={job.status === "active" ? "default" : "secondary"} className="text-xs">
-                    {job.status}
+                  <Badge variant={job.isActive ? "default" : "secondary"} className="text-xs">
+                    {job.isActive ? "active" : "paused"}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Pipeline: {job.pipeline} &middot; Schedule: <code className="text-xs bg-muted px-1 py-0.5 rounded">{job.schedule}</code>
+                  Schedule: <code className="text-xs bg-muted px-1 py-0.5 rounded">{job.expression}</code>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Next run: {job.nextRun} &middot; Last run: {job.lastRun ?? "Never"}
+                  Last run: {job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : "Never"} &middot; {job.runCount ?? 0} runs
                 </p>
               </div>
               <div className="flex gap-1 shrink-0">
-                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => toggleCron(job.id)}>
-                  {job.status === "active" ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-                  {job.status === "active" ? "Pause" : "Resume"}
+                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => toggleJob(job.id)}>
+                  {job.isActive ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+                  {job.isActive ? "Pause" : "Resume"}
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs"><Clock className="h-3 w-3" />Edit</Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => deleteJob(job.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -966,6 +992,16 @@ function CronJobsTab() {
 }
 
 function NotificationsTab() {
+  const { data: notifications = [], loading, refetch } = useQuery(
+    "settings:notifications",
+    () => api.settings.getNotifications(),
+  )
+
+  const { mutate: toggleRead } = useMutation(
+    ({ id, read }: { id: string; read: boolean }) => api.settings.updateNotification({ id, read }),
+    { onSuccess: refetch },
+  )
+
   return (
     <div className="space-y-8">
       <Card>
@@ -979,7 +1015,7 @@ function NotificationsTab() {
             <div className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
               <div>
                 <p className="text-sm font-medium">Email Notifications</p>
-                <p className="text-xs text-muted-foreground">Send notifications to john.doe@flowmind.ai</p>
+                <p className="text-xs text-muted-foreground">Send notifications to your email</p>
               </div>
               <Switch defaultChecked />
             </div>
@@ -990,26 +1026,23 @@ function NotificationsTab() {
               </div>
               <Switch defaultChecked />
             </div>
-            <div className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
-              <div>
-                <p className="text-sm font-medium">Slack Notifications</p>
-                <p className="text-xs text-muted-foreground">Post to #flowmind-alerts channel</p>
-              </div>
-              <Switch />
-            </div>
           </div>
 
           <Separator />
 
           <div className="space-y-4">
-            <SectionTitle>Events</SectionTitle>
-            {notificationEvents.map(event => (
-              <div key={event.id} className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">{event.label}</p>
-                  <p className="text-xs text-muted-foreground">{event.description}</p>
+            <SectionTitle>Recent Notifications</SectionTitle>
+            {loading ? (
+              <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : notifications.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No notifications yet</p>
+            ) : notifications.map((n: any) => (
+              <div key={n.id} className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{n.title}</p>
+                  <p className="text-xs text-muted-foreground">{n.body ?? n.type} &middot; {new Date(n.createdAt).toLocaleString()}</p>
                 </div>
-                <Switch defaultChecked={["pipeline-failed", "security-alert", "low-credits"].includes(event.id)} />
+                <Switch checked={n.read} onCheckedChange={(checked) => toggleRead({ id: n.id, read: checked })} />
               </div>
             ))}
           </div>
@@ -1020,6 +1053,32 @@ function NotificationsTab() {
 }
 
 function OrganizationTab() {
+  const { data: org, loading: orgLoading, refetch: refetchOrg } = useQuery(
+    "settings:org",
+    () => api.settings.getOrg(),
+  )
+  const { data: members = [], loading: membersLoading } = useQuery(
+    "settings:orgMembers",
+    () => api.settings.getOrgMembers(),
+  )
+  const { mutate: updateOrg } = useMutation(
+    (input: { name?: string; slug?: string }) => api.settings.updateOrg(input),
+    { onSuccess: refetchOrg },
+  )
+  const [orgName, setOrgName] = useState("")
+  const [orgSlug, setOrgSlug] = useState("")
+
+  useEffect(() => {
+    if (org) {
+      setOrgName(org.name ?? "")
+      setOrgSlug(org.slug ?? "")
+    }
+  }, [org])
+
+  if (orgLoading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+  }
+
   return (
     <div className="space-y-8">
       <Card>
@@ -1028,32 +1087,33 @@ function OrganizationTab() {
           <CardDescription>Manage your organization details</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="h-14 w-14 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold text-lg">
-              FM
-            </div>
-            <div className="flex-1">
-              <p className="font-medium">FlowMind AI</p>
-              <p className="text-sm text-muted-foreground">flowmind.ai &middot; Created Sep 2025</p>
-            </div>
-            <Button variant="outline" size="sm">Edit Logo</Button>
-          </div>
-          <Separator />
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Organization Name</label>
-              <Input defaultValue="FlowMind AI" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Website</label>
-              <Input defaultValue="https://flowmind.ai" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Description</label>
-            <Input defaultValue="Next-generation AI Workflow Orchestration Platform" />
-          </div>
-          <Button>Save Changes</Button>
+          {org ? (
+            <>
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold text-lg">
+                  {(org.name ?? "O").charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">{org.name}</p>
+                  <p className="text-sm text-muted-foreground">{org.slug} &middot; Created {new Date(org.createdAt).toLocaleDateString()}</p>
+                </div>
+              </div>
+              <Separator />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Organization Name</label>
+                  <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Slug</label>
+                  <Input value={orgSlug} onChange={(e) => setOrgSlug(e.target.value)} />
+                </div>
+              </div>
+              <Button onClick={() => updateOrg({ name: orgName, slug: orgSlug })}>Save Changes</Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">No organization. Create one to collaborate with your team.</p>
+          )}
         </CardContent>
       </Card>
 
@@ -1062,25 +1122,29 @@ function OrganizationTab() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Members</CardTitle>
-              <CardDescription>{mockOrgMembers.length} members in your organization</CardDescription>
+              <CardDescription>{members.length} members in your organization</CardDescription>
             </div>
             <Button size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" />Invite</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {mockOrgMembers.map(member => (
-            <div key={member.id} className="flex items-center gap-3 rounded-lg border bg-surface px-4 py-3">
+          {membersLoading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : members.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No members yet</p>
+          ) : members.map((m: any) => (
+            <div key={m.id} className="flex items-center gap-3 rounded-lg border bg-surface px-4 py-3">
               <div className="h-9 w-9 rounded-full bg-accent flex items-center justify-center text-xs font-medium shrink-0">
-                {member.avatar}
+                {(m.user?.name ?? "U").charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{member.name}</p>
-                <p className="text-xs text-muted-foreground">{member.email}</p>
+                <p className="text-sm font-medium">{m.user?.name ?? "Unknown"}</p>
+                <p className="text-xs text-muted-foreground">{m.user?.email}</p>
               </div>
-              <Badge variant={member.role === "Admin" ? "default" : member.role === "Editor" ? "secondary" : "outline"}>
-                {member.role}
+              <Badge variant={m.role === "OWNER" || m.role === "ADMIN" ? "default" : m.role === "EDITOR" ? "secondary" : "outline"}>
+                {m.role}
               </Badge>
-              <p className="text-xs text-muted-foreground hidden lg:block">Joined {member.joined}</p>
+              <p className="text-xs text-muted-foreground hidden lg:block">{new Date(m.user?.createdAt ?? Date.now()).toLocaleDateString()}</p>
             </div>
           ))}
         </CardContent>
@@ -1092,98 +1156,121 @@ function OrganizationTab() {
           <CardDescription>Track important changes across your organization</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-0">
-            {mockAuditLog.map((entry, i) => (
-              <div key={entry.id} className="flex gap-3 pb-4 relative">
-                {i < mockAuditLog.length - 1 && (
-                  <div className="absolute left-[7px] top-4 bottom-0 w-px bg-border" />
-                )}
-                <div className={`mt-1.5 h-3.5 w-3.5 rounded-full border-2 shrink-0 ${
-                  entry.type === "pipeline" ? "border-blue-500 bg-blue-500/20" :
-                  entry.type === "security" ? "border-red-500 bg-red-500/20" :
-                  entry.type === "org" ? "border-purple-500 bg-purple-500/20" :
-                  entry.type === "billing" ? "border-amber-500 bg-amber-500/20" :
-                  "border-green-500 bg-green-500/20"
-                }`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">{entry.action}</p>
-                  <p className="text-xs text-muted-foreground">{entry.user} &middot; {entry.date}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <AuditLogSection />
         </CardContent>
       </Card>
     </div>
   )
 }
 
+function AuditLogSection() {
+  const { data: auditLog = [], loading } = useQuery(
+    "settings:auditLog",
+    () => api.settings.getAuditLog(),
+  )
+
+  if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+  if (auditLog.length === 0) return <p className="text-sm text-muted-foreground text-center py-4">No audit log entries yet</p>
+
+  return (
+    <div className="space-y-0">
+      {auditLog.map((entry: any, i: number) => (
+        <div key={entry.id} className="flex gap-3 pb-4 relative">
+          {i < auditLog.length - 1 && (
+            <div className="absolute left-[7px] top-4 bottom-0 w-px bg-border" />
+          )}
+          <div className={`mt-1.5 h-3.5 w-3.5 rounded-full border-2 shrink-0 ${
+            entry.action?.includes("deploy") || entry.action?.includes("pipeline") ? "border-blue-500 bg-blue-500/20" :
+            entry.type === "security" || entry.action?.includes("key") ? "border-red-500 bg-red-500/20" :
+            entry.action?.includes("invite") || entry.action?.includes("Member") ? "border-purple-500 bg-purple-500/20" :
+            entry.action?.includes("plan") || entry.action?.includes("billing") ? "border-amber-500 bg-amber-500/20" :
+            entry.action?.includes("model") ? "border-green-500 bg-green-500/20" :
+            "border-green-500 bg-green-500/20"
+          }`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm">{entry.action}</p>
+            <p className="text-xs text-muted-foreground">{entry.details ?? entry.resource} &middot; {new Date(entry.createdAt).toLocaleString()}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function BillingTab() {
+  const { data: subscription, loading: subLoading } = useQuery(
+    "settings:subscription",
+    () => api.settings.getSubscription(),
+  )
+
+  const tier = subscription?.tier ?? "FREE"
+  const planName = tier === "FREE" ? "Free" : tier === "PRO" ? "Pro" : tier === "TEAM" ? "Team" : "Enterprise"
+  const planPrice = tier === "FREE" ? "$0" : tier === "PRO" ? "$19" : tier === "TEAM" ? "$49" : "$99"
+
   return (
     <div className="space-y-8">
       <Card>
         <CardHeader>
           <CardTitle>Current Plan</CardTitle>
-          <CardDescription>You are on the Team plan</CardDescription>
+          <CardDescription>You are on the {planName} plan</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="rounded-lg border bg-surface p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-lg font-bold">Team Plan</p>
-                <p className="text-sm text-muted-foreground">$49 / month &middot; Annual billing</p>
+          {subLoading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <>
+              <div className="rounded-lg border bg-surface p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <p className="text-lg font-bold">{planName} Plan</p>
+                    <p className="text-sm text-muted-foreground">{planPrice} / month</p>
+                  </div>
+                  <Badge>Current</Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Status</p>
+                    <p className="font-medium capitalize">{subscription?.status ?? "active"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Period end</p>
+                    <p className="font-medium">{subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Cancel at period</p>
+                    <p className="font-medium">{subscription?.cancelAtPeriodEnd ? "Yes" : "No"}</p>
+                  </div>
+                </div>
               </div>
-              <Badge>Current</Badge>
-            </div>
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Pipeline runs</p>
-                <p className="font-medium">12,450 / 25,000</p>
+              <div className="flex gap-3">
+                <Button variant="outline">Downgrade</Button>
+                <Button>Upgrade</Button>
               </div>
-              <div>
-                <p className="text-muted-foreground">Team members</p>
-                <p className="font-medium">5 / 15</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Storage</p>
-                <p className="font-medium">8.2 GB / 50 GB</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="outline">Downgrade to Starter ($19/mo)</Button>
-            <Button>Upgrade to Enterprise ($99/mo)</Button>
-          </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle>Usage This Month</CardTitle>
-          <CardDescription>June 2026 billing period</CardDescription>
+          <CardDescription>{new Date().toLocaleString("default", { month: "long", year: "numeric" })} billing period</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-3">
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span>API Calls</span>
-                <span className="text-muted-foreground">142,500 / 200,000</span>
+                <span className="text-muted-foreground">0 / unlimited</span>
               </div>
-              <Progress value={71} />
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>Model Training Hours</span>
-                <span className="text-muted-foreground">24 / 50 hours</span>
-              </div>
-              <Progress value={48} />
+              <Progress value={0} />
             </div>
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span>Storage Used</span>
-                <span className="text-muted-foreground">8.2 / 50 GB</span>
+                <span className="text-muted-foreground">0 / unlimited</span>
               </div>
-              <Progress value={16} />
+              <Progress value={0} />
             </div>
           </div>
         </CardContent>
@@ -1196,15 +1283,7 @@ function BillingTab() {
             <CardDescription>Manage your payment details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-3 rounded-lg border bg-surface px-4 py-3">
-              <CreditCard className="h-5 w-5 text-muted-foreground" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Visa ending in 4242</p>
-                <p className="text-xs text-muted-foreground">Expires 12/2028</p>
-              </div>
-              <Badge variant="secondary">Default</Badge>
-              <Button variant="ghost" size="sm" className="h-8 text-xs">Update</Button>
-            </div>
+            <p className="text-sm text-muted-foreground text-center py-4">No payment method on file</p>
             <Button variant="outline" size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" />Add Payment Method</Button>
           </CardContent>
         </Card>
@@ -1215,20 +1294,7 @@ function BillingTab() {
             <CardDescription>View and download past invoices</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {mockInvoices.map(inv => (
-              <div key={inv.id} className="flex items-center justify-between rounded-lg border bg-surface px-4 py-2.5">
-                <div>
-                  <p className="text-sm font-medium">{inv.period}</p>
-                  <p className="text-xs text-muted-foreground">{inv.date} &middot; {inv.amount}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={inv.status === "paid" ? "secondary" : "default"} className="text-xs">{inv.status}</Badge>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+            <p className="text-sm text-muted-foreground text-center py-4">No invoices yet</p>
           </CardContent>
         </Card>
       </div>
@@ -1237,30 +1303,60 @@ function BillingTab() {
 }
 
 function SecurityTab() {
+  const { data: apiTokens = [], loading: tokensLoading, refetch: refetchTokens } = useQuery(
+    "settings:apiTokens",
+    () => api.settings.getApiTokens(),
+  )
+  const { data: sessions = [], loading: sessionsLoading } = useQuery(
+    "settings:sessions",
+    () => api.settings.getSessions(),
+  )
+
+  const { mutate: createToken } = useMutation(
+    (name: string) => api.settings.createApiToken({ name }),
+    { onSuccess: refetchTokens },
+  )
+
+  const { mutate: deleteToken } = useMutation(
+    (id: string) => api.settings.deleteApiToken(id),
+    { onSuccess: refetchTokens },
+  )
+
+  const [tokenName, setTokenName] = useState("")
+  const [showCreate, setShowCreate] = useState(false)
+  const [newTokenValue, setNewTokenValue] = useState<string | null>(null)
+
+  const handleCreate = async () => {
+    if (!tokenName) return
+    const result = await createToken(tokenName)
+    if (result) {
+      setNewTokenValue((result as any).token)
+      setTokenName("")
+    }
+  }
+
   return (
     <div className="space-y-8">
       <Card>
         <CardHeader>
           <CardTitle>Active Sessions</CardTitle>
-          <CardDescription>Manage your active login sessions</CardDescription>
+          <CardDescription>Your active login sessions</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {mockSessions.map(session => (
+          {(sessions as any[]).map((session: any) => (
             <div key={session.id} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3">
               <Smartphone className="h-5 w-5 text-muted-foreground shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium">{session.device}</p>
-                  {session.current && <Badge variant="default" className="text-xs">Current</Badge>}
+                  <p className="text-sm font-medium">{session.title || "Session"}</p>
+                  <Badge variant="default" className="text-xs">{session._count?.messages || 0} msgs</Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">{session.browser} &middot; {session.ip} &middot; {session.lastActive}</p>
+                <p className="text-xs text-muted-foreground">Last active: {new Date(session.updatedAt).toLocaleString()}</p>
               </div>
-              {!session.current && (
-                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-destructive">
-                  <LogOut className="h-3 w-3" />
-                  Revoke
-                </Button>
-              )}
+              <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-destructive">
+                <LogOut className="h-3 w-3" />
+                Revoke
+              </Button>
             </div>
           ))}
         </CardContent>
@@ -1282,22 +1378,6 @@ function SecurityTab() {
             </div>
             <Switch defaultChecked />
           </div>
-          <div className="rounded-lg border bg-surface p-4">
-            <p className="text-sm font-medium mb-2">Setup Instructions</p>
-            <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
-              <li>Install an authenticator app on your device</li>
-              <li>Scan the QR code or enter the setup key manually</li>
-              <li>Enter the 6-digit code from the app to verify</li>
-            </ol>
-            <div className="mt-4 p-4 rounded-lg bg-accent/50 border border-border">
-              <div className="flex items-center justify-center mb-2">
-                <div className="h-24 w-24 bg-muted rounded-lg flex items-center justify-center text-muted-foreground text-xs">
-                  QR Code
-                </div>
-              </div>
-              <p className="text-xs text-center text-muted-foreground font-mono">JBSWY3DPEHPK3PXP</p>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -1308,28 +1388,49 @@ function SecurityTab() {
               <CardTitle>API Tokens</CardTitle>
               <CardDescription>Generate tokens for programmatic access</CardDescription>
             </div>
-            <Button size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" />Generate Token</Button>
+            <Button size="sm" className="gap-2" onClick={() => setShowCreate(!showCreate)}><Plus className="h-3.5 w-3.5" />Generate Token</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {mockApiTokens.map(t => (
+          {showCreate && (
+            <div className="rounded-lg border border-primary/30 bg-primary/[0.02] p-4 space-y-3">
+              {newTokenValue ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-emerald-400">Token created! Copy it now — it won&apos;t be shown again.</p>
+                  <div className="flex gap-2">
+                    <code className="flex-1 text-xs bg-muted px-2 py-1.5 rounded font-mono break-all">{newTokenValue}</code>
+                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(newTokenValue); setNewTokenValue(null); setShowCreate(false) }}>
+                      <Copy className="h-3 w-3" /> Copy
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Input value={tokenName} onChange={(e) => setTokenName(e.target.value)} placeholder="Token name" className="h-8 text-sm" />
+                  <div className="flex gap-2">
+                    <Button size="sm" className="h-8 text-xs" onClick={handleCreate} disabled={!tokenName}>Generate</Button>
+                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowCreate(false)}>Cancel</Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {tokensLoading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : apiTokens.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No API tokens yet</p>
+          ) : apiTokens.map((t: any) => (
             <div key={t.id} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3">
               <Key className="h-5 w-5 text-muted-foreground shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">{t.name}</p>
-                <p className="text-xs text-muted-foreground font-mono">{t.token}</p>
+                <p className="text-xs text-muted-foreground font-mono">••••{t.lastFour}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Created {t.created} &middot; Expires {t.expires} &middot; Last used {t.lastUsed}
+                  Created {new Date(t.createdAt).toLocaleDateString()} &middot; Last used {t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleDateString() : "Never"}
                 </p>
-                <div className="flex gap-1 mt-1">
-                  {t.scopes.map(s => (
-                    <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
-                  ))}
-                </div>
               </div>
               <div className="flex gap-1 shrink-0">
-                <Button variant="ghost" size="sm" className="h-8 text-xs">Edit</Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => deleteToken(t.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>

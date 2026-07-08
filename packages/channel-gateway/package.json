@@ -8,9 +8,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@flowmind/shared": "workspace:*"
+    "@flowmind/shared": "workspace:*",
+    "nodemailer": "^9.0.3"
   },
   "devDependencies": {
+    "@types/nodemailer": "^8.0.1",
     "typescript": "^5.4.0"
   }
 }

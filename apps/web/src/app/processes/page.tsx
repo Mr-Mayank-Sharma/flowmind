@@ -1,40 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Search, RotateCcw, Activity, Cpu, MemoryStick, StopCircle, RefreshCw, Terminal, Trash2 } from "lucide-react"
+import { Search, Activity, Cpu, MemoryStick, StopCircle, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Card } from "@/components/ui/card"
-
-interface Process {
-  pid: number
-  name: string
-  status: "running" | "sleeping" | "stopped" | "zombie"
-  cpu: string
-  ram: string
-  ramBytes: number
-  user: string
-  uptime: string
-  command: string
-  port?: number
-}
-
-const allProcesses: Process[] = [
-  { pid: 28491, name: "ollama", status: "running", cpu: "2.3%", ram: "1.2 GB", ramBytes: 1_200_000_000, user: "flowmind", uptime: "12h 34m", command: "/usr/bin/ollama serve", port: 11434 },
-  { pid: 28512, name: "lm-studio", status: "running", cpu: "0.8%", ram: "2.1 GB", ramBytes: 2_100_000_000, user: "flowmind", uptime: "8h 12m", command: "./lm-studio --api --port 1234", port: 1234 },
-  { pid: 28534, name: "comfyui", status: "running", cpu: "5.1%", ram: "3.4 GB", ramBytes: 3_400_000_000, user: "flowmind", uptime: "6h 45m", command: "python main.py --listen --port 8188", port: 8188 },
-  { pid: 28567, name: "hermes-agent", status: "running", cpu: "1.2%", ram: "0.4 GB", ramBytes: 400_000_000, user: "flowmind", uptime: "4h 20m", command: "node dist/index.js", port: 3001 },
-  { pid: 28589, name: "localai", status: "running", cpu: "0.9%", ram: "0.8 GB", ramBytes: 800_000_000, user: "flowmind", uptime: "2h 15m", command: "./local-ai --port 8080", port: 8080 },
-  { pid: 1234, name: "postgres", status: "sleeping", cpu: "0.3%", ram: "0.8 GB", ramBytes: 800_000_000, user: "postgres", uptime: "24h 00m", command: "postgres -D /var/lib/postgresql/data", port: 5432 },
-  { pid: 5678, name: "redis-server", status: "running", cpu: "0.1%", ram: "0.1 GB", ramBytes: 100_000_000, user: "redis", uptime: "24h 00m", command: "redis-server *:6379", port: 6379 },
-  { pid: 9012, name: "nginx", status: "running", cpu: "0.0%", ram: "0.05 GB", ramBytes: 50_000_000, user: "www-data", uptime: "24h 00m", command: "nginx: master process", port: 80 },
-  { pid: 3456, name: "dockerd", status: "running", cpu: "0.5%", ram: "0.3 GB", ramBytes: 300_000_000, user: "root", uptime: "24h 00m", command: "dockerd -H unix://" },
-  { pid: 7890, name: "python3", status: "stopped", cpu: "0.0%", ram: "0.2 GB", ramBytes: 200_000_000, user: "flowmind", uptime: "0h 30m", command: "python3 train_model.py" },
-  { pid: 1111, name: "node", status: "running", cpu: "1.8%", ram: "0.6 GB", ramBytes: 600_000_000, user: "flowmind", uptime: "3h 00m", command: "node server.js" },
-  { pid: 2222, name: "opencode", status: "zombie", cpu: "0.0%", ram: "0.01 GB", ramBytes: 10_000_000, user: "flowmind", uptime: "1h 00m", command: "opencode --port 8080" },
-]
+import { api } from "@/lib/api"
+import { useQuery } from "@/hooks/use-query"
 
 const statusBadge: Record<string, { label: string; color: string }> = {
   running: { label: "Running", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -43,14 +16,38 @@ const statusBadge: Record<string, { label: string; color: string }> = {
   zombie: { label: "Zombie", color: "bg-red-500/10 text-red-400 border-red-500/20" },
 }
 
+interface Process {
+  pid: number
+  name: string
+  status: string
+  cpu: string
+  ram: string
+  ramBytes: number
+  user: string
+  uptime: string
+  command: string
+  port: number | null
+}
+
 export default function ProcessesPage() {
   const [search, setSearch] = useState("")
   const [selectedPids, setSelectedPids] = useState<Set<number>>(new Set())
   const [sortBy, setSortBy] = useState<"cpu" | "ram" | "name" | "pid">("cpu")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
 
+  const { data: allProcesses = [], loading, refetch } = useQuery(
+    "processes:list",
+    () => api.system.listProcesses(),
+    { staleTime: 5_000 },
+  )
+
+  useEffect(() => {
+    const interval = setInterval(refetch, 5_000)
+    return () => clearInterval(interval)
+  }, [refetch])
+
   const filtered = allProcesses
-    .filter((p) => !search || p.name.includes(search.toLowerCase()) || p.command.includes(search))
+    .filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.command.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => {
       let cmp = 0
       if (sortBy === "cpu") cmp = parseFloat(a.cpu) - parseFloat(b.cpu)
@@ -74,12 +71,19 @@ export default function ProcessesPage() {
   const totalRAMbytes = allProcesses.reduce((acc, p) => acc + p.ramBytes, 0)
   const totalRAM = (totalRAMbytes / 1_000_000_000).toFixed(1)
 
-  const handleKill = (pid: number) => {
-    console.log("Kill", pid)
+  const handleKill = async (pid: number) => {
+    try {
+      const result = await api.system.killProcess(pid)
+      if (result.success) refetch()
+    } catch {}
   }
 
-  const handleRestart = (pid: number) => {
-    console.log("Restart", pid)
+  const handleKillSelected = async () => {
+    for (const pid of selectedPids) {
+      try { await api.system.killProcess(pid) } catch {}
+    }
+    setSelectedPids(new Set())
+    refetch()
   }
 
   return (
@@ -111,15 +115,11 @@ export default function ProcessesPage() {
               />
             </div>
             <div className="flex items-center gap-1 ml-auto">
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1" disabled={selectedPids.size === 0}>
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1" disabled={selectedPids.size === 0} onClick={handleKillSelected}>
                 <StopCircle className="h-3 w-3" />
                 Kill ({selectedPids.size})
               </Button>
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1" disabled={selectedPids.size === 0}>
-                <RefreshCw className="h-3 w-3" />
-                Restart
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={refetch} disabled={loading}>
                 <RefreshCw className="h-3 w-3" />
                 Refresh
               </Button>
@@ -192,7 +192,7 @@ export default function ProcessesPage() {
                       <td className="px-3 py-2.5">
                         <Badge variant="secondary" className={cn("text-[10px]", sb.color)}>{sb.label}</Badge>
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-xs">{proc.cpu}</td>
+                      <td className="px-3 py-2.5 font-mono text-xs">{proc.cpu}%</td>
                       <td className="px-3 py-2.5 font-mono text-xs">{proc.ram}</td>
                       <td className="px-3 py-2.5 text-xs text-muted-foreground">{proc.user}</td>
                       <td className="px-3 py-2.5 text-xs text-muted-foreground">{proc.uptime}</td>
@@ -201,9 +201,6 @@ export default function ProcessesPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleRestart(proc.pid)} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Restart">
-                            <RefreshCw className="h-3.5 w-3.5" />
-                          </button>
                           <button onClick={() => handleKill(proc.pid)} className="p-1 text-muted-foreground hover:text-red-400 transition-colors" title="Kill">
                             <StopCircle className="h-3.5 w-3.5" />
                           </button>
@@ -215,7 +212,9 @@ export default function ProcessesPage() {
               </tbody>
             </table>
           </div>
-          {filtered.length === 0 && (
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">Loading processes...</div>
+          ) : filtered.length === 0 && (
             <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
               No processes match your search
             </div>
@@ -234,9 +233,6 @@ export default function ProcessesPage() {
           <span className="flex items-center gap-1">
             <MemoryStick className="h-3 w-3" />
             Total RAM: {totalRAM} GB
-          </span>
-          <span className="text-[10px] text-muted-foreground ml-auto">
-            Click a process name for details
           </span>
         </div>
       </div>

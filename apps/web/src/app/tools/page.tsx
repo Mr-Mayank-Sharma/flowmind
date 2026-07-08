@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,35 +10,7 @@ import {
   Search, Wrench, Code, FileCode, Globe, Database, GitBranch, Mail, MessageSquare, Image,
   Terminal, Webhook, Link, Lock, Unlock, Play, CheckCircle, XCircle, ExternalLink, Sliders
 } from "lucide-react"
-
-interface Tool {
-  id: string
-  name: string
-  description: string
-  category: "filesystem" | "code" | "web" | "database" | "communication" | "ai" | "integration"
-  enabled: boolean
-  auth: boolean
-  usage: number
-  lastUsed: string
-  icon: any
-}
-
-const initialTools: Tool[] = [
-  { id: "t1", name: "Read File", description: "Read contents of a file from the filesystem", category: "filesystem", enabled: true, auth: false, usage: 1245, lastUsed: "2 min ago", icon: FileCode },
-  { id: "t2", name: "Write File", description: "Write content to a file on the filesystem", category: "filesystem", enabled: true, auth: false, usage: 892, lastUsed: "5 min ago", icon: FileCode },
-  { id: "t3", name: "Search Files", description: "Search for files matching a pattern", category: "filesystem", enabled: true, auth: false, usage: 567, lastUsed: "15 min ago", icon: Search },
-  { id: "t4", name: "Execute Code", description: "Run code in a sandboxed environment (Python, JS, Go)", category: "code", enabled: true, auth: true, usage: 2341, lastUsed: "1 min ago", icon: Terminal },
-  { id: "t5", name: "Lint & Format", description: "Lint and auto-format source code files", category: "code", enabled: true, auth: false, usage: 678, lastUsed: "1 hour ago", icon: Code },
-  { id: "t6", name: "Git Diff", description: "Show git diff for staged/unstaged changes", category: "code", enabled: true, auth: false, usage: 456, lastUsed: "3 hours ago", icon: GitBranch },
-  { id: "t7", name: "Git Commit", description: "Create a git commit with a message", category: "code", enabled: true, auth: true, usage: 234, lastUsed: "1 day ago", icon: GitBranch },
-  { id: "t8", name: "Web Fetch", description: "Fetch content from a URL", category: "web", enabled: true, auth: false, usage: 3456, lastUsed: "30 sec ago", icon: Globe },
-  { id: "t9", name: "Web Search", description: "Search the web for information", category: "web", enabled: true, auth: true, usage: 2890, lastUsed: "10 sec ago", icon: Search },
-  { id: "t10", name: "Database Query", description: "Execute SQL queries against connected databases", category: "database", enabled: false, auth: true, usage: 123, lastUsed: "1 week ago", icon: Database },
-  { id: "t11", name: "Send Email", description: "Send an email via SMTP", category: "communication", enabled: true, auth: true, usage: 567, lastUsed: "2 hours ago", icon: Mail },
-  { id: "t12", name: "Slack Message", description: "Send a message to a Slack channel", category: "communication", enabled: false, auth: true, usage: 89, lastUsed: "2 weeks ago", icon: MessageSquare },
-  { id: "t13", name: "Image Generation", description: "Generate images using Stable Diffusion", category: "ai", enabled: true, auth: false, usage: 456, lastUsed: "10 min ago", icon: Image },
-  { id: "t14", name: "Webhook", description: "Trigger a webhook URL", category: "integration", enabled: true, auth: true, usage: 234, lastUsed: "1 hour ago", icon: Webhook },
-]
+import { api } from "@/lib/api"
 
 const categoryIcons: Record<string, any> = {
   filesystem: FileCode, code: Code, web: Globe, database: Database,
@@ -46,12 +18,21 @@ const categoryIcons: Record<string, any> = {
 }
 
 export default function ToolsPage() {
-  const [tools, setTools] = useState(initialTools)
+  const [tools, setTools] = useState<any[]>([])
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState<string>("All")
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
 
   const categories = ["All", "filesystem", "code", "web", "database", "communication", "ai", "integration"] as const
+
+  const fetchTools = async () => {
+    try {
+      const list = await api.tools.list()
+      setTools(list)
+    } catch {}
+  }
+
+  useEffect(() => { fetchTools() }, [])
 
   const filtered = tools.filter((t) => {
     if (category !== "All" && t.category !== category) return false
@@ -59,8 +40,11 @@ export default function ToolsPage() {
     return true
   })
 
-  const toggleTool = (id: string) => {
-    setTools((prev) => prev.map((t) => t.id === id ? { ...t, enabled: !t.enabled } : t))
+  const toggleTool = async (id: string) => {
+    try {
+      await api.tools.toggle(id)
+      fetchTools()
+    } catch {}
   }
 
   const currentTool = selectedTool ? tools.find((t) => t.id === selectedTool) : null
@@ -103,7 +87,7 @@ export default function ToolsPage() {
         <div className={cn(!selectedTool && "xl:col-span-3")}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {filtered.map((tool) => {
-              const Icon = tool.icon
+              const CatIcon = categoryIcons[tool.category] || FileCode
               return (
                 <div key={tool.id}
                   className={cn(
@@ -116,7 +100,7 @@ export default function ToolsPage() {
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center", tool.enabled ? "bg-primary/10" : "bg-muted")}>
-                        <Icon className={cn("h-4 w-4", tool.enabled ? "text-primary" : "text-muted-foreground")} />
+                        <CatIcon className={cn("h-4 w-4", tool.enabled ? "text-primary" : "text-muted-foreground")} />
                       </div>
                       <div>
                         <h3 className="text-sm font-semibold">{tool.name}</h3>
@@ -149,7 +133,7 @@ export default function ToolsPage() {
             <Card className="p-5">
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  {(() => { const I = currentTool.icon; return <I className="h-5 w-5 text-primary" /> })()}
+                  {(() => { const I = categoryIcons[currentTool.category] || FileCode; return <I className="h-5 w-5 text-primary" /> })()}
                 </div>
                 <div>
                   <h3 className="font-semibold">{currentTool.name}</h3>

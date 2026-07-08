@@ -1,60 +1,75 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { MessageSquare, Sparkles } from "lucide-react";
+import { MessageSquare, Sparkles, Loader2 } from "lucide-react";
 import { Button, ScrollArea } from "@flowmind/ui";
 import { useChatStore } from "@/hooks/chat-store";
 import { MessageBubble } from "./message-bubble";
 
+const LoadingIndicator = () => (
+  <div className="flex-1 flex items-center justify-center bg-background">
+    <div className="flex items-center gap-3 text-muted-foreground">
+      <Loader2 className="h-5 w-5 animate-spin" />
+      <span className="text-sm">Loading conversations...</span>
+    </div>
+  </div>
+)
+
+const EmptyState = () => {
+  const createSession = useChatStore((s) => s.createSession)
+  return (
+    <div className="flex-1 flex items-center justify-center bg-background">
+      <div className="text-center max-w-md px-4">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+          <MessageSquare className="h-8 w-8 text-primary" />
+        </div>
+        <h2 className="text-xl font-semibold text-foreground mb-2">
+          Welcome to FlowMind Chat
+        </h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Start a new conversation or select an existing one from the sidebar.
+        </p>
+        <Button onClick={createSession}>
+          <Sparkles className="mr-2 h-4 w-4" />
+          Start New Chat
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+const NewConversation = () => (
+  <div className="flex-1 flex items-center justify-center bg-background">
+    <div className="text-center max-w-md px-4">
+      <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+        <MessageSquare className="h-8 w-8 text-primary" />
+      </div>
+      <h2 className="text-xl font-semibold text-foreground mb-2">
+        New Conversation
+      </h2>
+      <p className="text-sm text-muted-foreground">
+        Send a message to start chatting with FlowMind.
+      </p>
+    </div>
+  </div>
+)
+
 export function ChatArea() {
-  const { currentSessionId, messages, isStreaming, createSession } = useChatStore();
+  const { currentSessionId, messages, isStreaming, loading } = useChatStore();
   const msgs = currentSessionId ? messages[currentSessionId] || [] : [];
-  const scrollRef = useRef<HTMLDivElement>(null);
+
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs.length, msgs[msgs.length - 1]?.content]);
+  }, [msgs.length]);
 
-  if (!currentSessionId) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="text-center max-w-md px-4">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-            <MessageSquare className="h-8 w-8 text-primary" />
-          </div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">
-            Welcome to FlowMind Chat
-          </h2>
-          <p className="text-sm text-muted-foreground mb-6">
-            Start a new conversation or select an existing one from the sidebar.
-          </p>
-          <Button onClick={createSession}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            Start New Chat
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingIndicator />;
 
-  if (msgs.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="text-center max-w-md px-4">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-            <MessageSquare className="h-8 w-8 text-primary" />
-          </div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">
-            New Conversation
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Send a message to start chatting with FlowMind.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!currentSessionId) return <EmptyState />;
+
+  if (msgs.length === 0) return <NewConversation />;
 
   return (
     <div className="flex-1 overflow-hidden bg-background" ref={scrollRef}>

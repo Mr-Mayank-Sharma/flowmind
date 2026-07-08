@@ -62,7 +62,7 @@ export function NotificationCenter() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-lg border border-border bg-surface shadow-dropdown animate-fade-in">
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 w-80 max-w-[calc(100vw-16px)] rounded-lg border border-border bg-surface shadow-dropdown animate-fade-in">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-semibold">Notifications</h3>
               {unreadCount > 0 && (

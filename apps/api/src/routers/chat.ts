@@ -1,6 +1,8 @@
-import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
+import { z } from "zod"
+import { TRPCError } from "@trpc/server"
+import { router, protectedProcedure } from "../middleware/trpc"
+import { chatService } from "../services"
+import { MessageRole } from "@flowmind/shared"
 
 export const chatRouter = router({
   sendMessage: protectedProcedure
@@ -14,20 +16,27 @@ export const chatRouter = router({
     .mutation(async ({ input, ctx }) => {
       const session = await ctx.prisma.session.findUnique({
         where: { id: input.sessionId },
-      });
+      })
       if (!session || session.userId !== ctx.userId) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" })
       }
 
-      const message = await ctx.prisma.message.create({
-        data: {
-          sessionId: input.sessionId,
-          role: "USER",
-          content: input.content,
-        },
-      });
+      const saveMessage = (role: MessageRole, content: string) =>
+        ctx.prisma.message.create({
+          data: { sessionId: input.sessionId, role, content },
+        })
 
-      return { message, streamUrl: `/api/chat/stream/${input.sessionId}` };
+      const result = await chatService.sendMessage(
+        { ...input, userId: ctx.userId },
+        saveMessage,
+      )
+
+      await ctx.prisma.session.update({
+        where: { id: input.sessionId },
+        data: { updatedAt: new Date() },
+      })
+
+      return { message: result.message, streamUrl: `/api/chat/stream/${input.sessionId}` }
     }),
 
   getSessions: protectedProcedure
@@ -39,15 +48,15 @@ export const chatRouter = router({
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
         select: { id: true, title: true, createdAt: true, updatedAt: true },
-      });
+      })
 
-      let nextCursor: string | undefined;
+      let nextCursor: string | undefined
       if (sessions.length > input.limit) {
-        sessions.pop();
-        nextCursor = sessions[sessions.length - 1]?.id;
+        sessions.pop()
+        nextCursor = sessions[sessions.length - 1]?.id
       }
 
-      return { sessions, nextCursor };
+      return { sessions, nextCursor }
     }),
 
   getSession: protectedProcedure
@@ -56,11 +65,11 @@ export const chatRouter = router({
       const session = await ctx.prisma.session.findUnique({
         where: { id: input.id },
         include: { messages: { orderBy: { createdAt: "asc" } } },
-      });
+      })
       if (!session || session.userId !== ctx.userId) {
-        throw new TRPCError({ code: "NOT_FOUND" });
+        throw new TRPCError({ code: "NOT_FOUND" })
       }
-      return session;
+      return session
     }),
 
   createSession: protectedProcedure
@@ -68,7 +77,7 @@ export const chatRouter = router({
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.session.create({
         data: { userId: ctx.userId, title: input.title || "New Chat" },
-      });
+      })
     }),
 
   deleteSession: protectedProcedure
@@ -76,8 +85,8 @@ export const chatRouter = router({
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.session.deleteMany({
         where: { id: input.id, userId: ctx.userId },
-      });
-      return { success: true };
+      })
+      return { success: true }
     }),
 
   searchSessions: protectedProcedure
@@ -90,6 +99,6 @@ export const chatRouter = router({
         },
         take: input.limit,
         orderBy: { updatedAt: "desc" },
-      });
+      })
     }),
-});
+})

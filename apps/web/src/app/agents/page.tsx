@@ -5,78 +5,47 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Search, Bot, Plus, Play, Square, Settings, MessageSquare, BarChart3, Cpu, Trash2, ExternalLink, Loader2, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import { Search, Bot, Plus, Play, Square, Settings, MessageSquare, BarChart3, Cpu, Trash2, Loader2, CheckCircle, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-interface Agent {
-  id: string
-  name: string
-  description: string
-  model: string
-  status: "running" | "stopped" | "error" | "deploying"
-  tools: number
-  memory: string
-  temperature: number
-  maxTokens: number
-  lastActive: string
-  messages: number
-  successRate: number
-}
-
-const initialAgents: Agent[] = [
-  { id: "a1", name: "Customer Support Agent", description: "Handles customer inquiries, complaints, and returns", model: "mistral:7b", status: "running", tools: 5, memory: "2.1 GB", temperature: 0.3, maxTokens: 2048, lastActive: "2 min ago", messages: 1247, successRate: 94 },
-  { id: "a2", name: "Code Reviewer", description: "Reviews pull requests and suggests improvements", model: "codellama:7b", status: "running", tools: 4, memory: "1.8 GB", temperature: 0.2, maxTokens: 4096, lastActive: "5 min ago", messages: 856, successRate: 91 },
-  { id: "a3", name: "Data Analyst", description: "Analyzes datasets and generates reports", model: "hermes-2-pro", status: "stopped", tools: 7, memory: "3.2 GB", temperature: 0.4, maxTokens: 8192, lastActive: "1 hour ago", messages: 432, successRate: 88 },
-  { id: "a4", name: "Sales Assistant", description: "Qualifies leads and schedules demos", model: "phi-3-mini", status: "running", tools: 3, memory: "0.9 GB", temperature: 0.5, maxTokens: 1024, lastActive: "Just now", messages: 2134, successRate: 96 },
-  { id: "a5", name: "Content Writer", description: "Creates blog posts, social media content, and copy", model: "mixtral:8x7b", status: "error", tools: 2, memory: "4.5 GB", temperature: 0.7, maxTokens: 4096, lastActive: "3 hours ago", messages: 678, successRate: 72 },
-  { id: "a6", name: "DevOps Bot", description: "Monitors infrastructure and manages deployments", model: "hermes-2-dpo", status: "running", tools: 8, memory: "1.5 GB", temperature: 0.1, maxTokens: 2048, lastActive: "30 sec ago", messages: 3456, successRate: 99 },
-]
+import { api } from "@/lib/api"
+import { useQuery, useMutation } from "@/hooks/use-query"
 
 const statusConfig: Record<string, { label: string; color: string; dot: string }> = {
-  running: { label: "Running", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-500" },
-  stopped: { label: "Stopped", color: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground" },
-  error: { label: "Error", color: "bg-red-500/10 text-red-400 border-red-500/20", dot: "bg-red-500" },
-  deploying: { label: "Deploying", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", dot: "bg-blue-500" },
+  RUNNING: { label: "Running", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-500" },
+  STOPPED: { label: "Stopped", color: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground" },
+  ERROR: { label: "Error", color: "bg-red-500/10 text-red-400 border-red-500/20", dot: "bg-red-500" },
+  DEPLOYING: { label: "Deploying", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", dot: "bg-blue-500" },
 }
 
 export default function AgentsPage() {
-  const [agents, setAgents] = useState(initialAgents)
   const [search, setSearch] = useState("")
   const [showCreate, setShowCreate] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [newAgent, setNewAgent] = useState({ name: "", description: "", model: "mistral:7b", temperature: 0.3, maxTokens: 2048 })
 
-  const filtered = agents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+  const { data: agents = [], loading, refetch } = useQuery(
+    "agents:list",
+    () => api.agents.list(),
+  )
 
-  const handleToggleAgent = (id: string) => {
-    setAgents((prev) => prev.map((a) => {
-      if (a.id !== id) return a
-      const newStatus = a.status === "running" ? "stopped" : "deploying" as const
-      return { ...a, status: newStatus }
-    }))
-    setTimeout(() => {
-      setAgents((prev) => prev.map((a) => {
-        if (a.id !== id || a.status !== "deploying") return a
-        return { ...a, status: "running" as const }
-      }))
-    }, 2000)
-  }
+  const { mutate: createAgent } = useMutation(
+    (input: typeof newAgent) => api.agents.create(input),
+    { onSuccess: () => { setShowCreate(false); setNewAgent({ name: "", description: "", model: "mistral:7b", temperature: 0.3, maxTokens: 2048 }); refetch() } },
+  )
 
-  const handleCreateAgent = () => {
-    const id = `a${Date.now()}`
-    setAgents((prev) => [{
-      id, name: newAgent.name, description: newAgent.description, model: newAgent.model,
-      status: "deploying" as const, tools: 0, memory: "0.5 GB", temperature: newAgent.temperature,
-      maxTokens: newAgent.maxTokens, lastActive: "Just now", messages: 0, successRate: 100,
-    }, ...prev])
-    setTimeout(() => {
-      setAgents((prev) => prev.map((a) => a.id === id ? { ...a, status: "running" as const } : a))
-    }, 2000)
-    setShowCreate(false)
-    setNewAgent({ name: "", description: "", model: "mistral:7b", temperature: 0.3, maxTokens: 2048 })
-  }
+  const { mutate: deleteAgent } = useMutation(
+    (id: string) => api.agents.delete(id),
+    { onSuccess: refetch },
+  )
 
-  const selectedAgentData = selectedAgent ? agents.find((a) => a.id === selectedAgent) : null
+  const { mutate: toggleAgent } = useMutation(
+    (id: string) => api.agents.toggle(id),
+    { onSuccess: refetch },
+  )
+
+  const filtered = agents.filter((a: any) => a.name.toLowerCase().includes(search.toLowerCase()))
+
+  const selectedAgentData = selectedAgent ? agents.find((a: any) => a.id === selectedAgent) : null
 
   return (
     <div className="min-h-screen bg-background">
@@ -90,7 +59,7 @@ export default function AgentsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-xs">{agents.filter((a) => a.status === "running").length}/{agents.length} active</Badge>
+              <Badge variant="secondary" className="text-xs">{agents.filter((a: any) => a.status === "RUNNING").length}/{agents.length} active</Badge>
               <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => setShowCreate(!showCreate)}>
                 <Plus className="h-3.5 w-3.5" />
                 New Agent
@@ -143,14 +112,18 @@ export default function AgentsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pt-2">
-                  <Button size="sm" className="h-8 text-xs" onClick={handleCreateAgent}>Create Agent</Button>
+                  <Button size="sm" className="h-8 text-xs" onClick={() => createAgent(newAgent)} disabled={!newAgent.name}>Create Agent</Button>
                   <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowCreate(false)}>Cancel</Button>
                 </div>
               </div>
             </Card>
           )}
 
-          {filtered.map((agent) => {
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : filtered.map((agent: any) => {
             const sc = statusConfig[agent.status] ?? { label: agent.status, color: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground" }
             return (
               <div key={agent.id}
@@ -162,8 +135,8 @@ export default function AgentsPage() {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center", agent.status === "running" ? "bg-emerald-500/10" : agent.status === "error" ? "bg-red-500/10" : "bg-muted")}>
-                      <Bot className={cn("h-4 w-4", agent.status === "running" ? "text-emerald-400" : agent.status === "error" ? "text-red-400" : "text-muted-foreground")} />
+                    <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center", agent.status === "RUNNING" ? "bg-emerald-500/10" : agent.status === "ERROR" ? "bg-red-500/10" : "bg-muted")}>
+                      <Bot className={cn("h-4 w-4", agent.status === "RUNNING" ? "text-emerald-400" : agent.status === "ERROR" ? "text-red-400" : "text-muted-foreground")} />
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold">{agent.name}</h3>
@@ -171,7 +144,7 @@ export default function AgentsPage() {
                     </div>
                   </div>
                   <div className={cn("flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-medium", sc.color)}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full", sc.dot, agent.status === "running" && "animate-pulse")} />
+                    <span className={cn("h-1.5 w-1.5 rounded-full", sc.dot, agent.status === "RUNNING" && "animate-pulse")} />
                     {sc.label}
                   </div>
                 </div>
@@ -182,7 +155,7 @@ export default function AgentsPage() {
                   <span className={cn(agent.successRate >= 90 ? "text-emerald-400" : agent.successRate >= 75 ? "text-amber-400" : "text-red-400")}>
                     {agent.successRate}% success
                   </span>
-                  <span className="ml-auto">{agent.lastActive}</span>
+                  <span className="ml-auto">{new Date(agent.updatedAt).toLocaleDateString()}</span>
                 </div>
               </div>
             )
@@ -205,7 +178,7 @@ export default function AgentsPage() {
                   { label: "Tools Available", value: String(selectedAgentData.tools) },
                   { label: "Messages Processed", value: String(selectedAgentData.messages) },
                   { label: "Success Rate", value: `${selectedAgentData.successRate}%` },
-                  { label: "Last Active", value: selectedAgentData.lastActive },
+                  { label: "Last Active", value: new Date(selectedAgentData.updatedAt).toLocaleString() },
                 ].map((item) => (
                   <div key={item.label}>
                     <span className="text-xs text-muted-foreground">{item.label}</span>
@@ -214,9 +187,9 @@ export default function AgentsPage() {
                 ))}
               </div>
               <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/50">
-                <Button size="sm" className="h-7 text-xs gap-1.5" onClick={() => handleToggleAgent(selectedAgentData.id)}>
-                  {selectedAgentData.status === "running" ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                  {selectedAgentData.status === "running" ? "Stop" : "Start"}
+                <Button size="sm" className="h-7 text-xs gap-1.5" onClick={() => toggleAgent(selectedAgentData.id)}>
+                  {selectedAgentData.status === "RUNNING" ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                  {selectedAgentData.status === "RUNNING" ? "Stop" : "Start"}
                 </Button>
                 <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
                   <MessageSquare className="h-3 w-3" />
@@ -226,7 +199,7 @@ export default function AgentsPage() {
                   <BarChart3 className="h-3 w-3" />
                   Metrics
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 text-red-400 hover:text-red-400 ml-auto">
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 text-red-400 hover:text-red-400 ml-auto" onClick={() => deleteAgent(selectedAgentData.id)}>
                   <Trash2 className="h-3 w-3" />
                   Delete
                 </Button>

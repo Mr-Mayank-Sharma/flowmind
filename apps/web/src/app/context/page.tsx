@@ -15,78 +15,40 @@ import {
   Lightbulb,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { api } from "@/lib/api"
+import { useQuery } from "@/hooks/use-query"
 
-interface Session {
-  id: string
-  name: string
-  agentName: string
-  tokens: number
-  memoryCount: number
-  lastActive: string
-  status: "active" | "idle" | "archived"
+function relativeTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`
+  const days = Math.floor(hours / 24)
+  return `${days} day${days > 1 ? "s" : ""} ago`
 }
-
-interface Skill {
-  id: string
-  name: string
-  description: string
-  category: string
-  version: string
-  enabled: boolean
-  usageCount: number
-}
-
-interface MemoryEntry {
-  id: string
-  type: "episodic" | "semantic" | "procedural"
-  content: string
-  agentName: string
-  timestamp: string
-  relevance: number
-}
-
-const sessions: Session[] = [
-  { id: "s1", name: "Code Review Session", agentName: "Code Reviewer", tokens: 45230, memoryCount: 12, lastActive: "2 min ago", status: "active" },
-  { id: "s2", name: "Research Deep Dive", agentName: "Research Assistant", tokens: 128450, memoryCount: 34, lastActive: "15 min ago", status: "active" },
-  { id: "s3", name: "Content Planning", agentName: "Content Writer", tokens: 18200, memoryCount: 8, lastActive: "1 hour ago", status: "idle" },
-  { id: "s4", name: "Data Pipeline Debug", agentName: "DevOps Bot", tokens: 67200, memoryCount: 19, lastActive: "3 hours ago", status: "idle" },
-  { id: "s5", name: "Customer Ticket #4521", agentName: "Customer Support", tokens: 8900, memoryCount: 5, lastActive: "1 day ago", status: "archived" },
-  { id: "s6", name: "Market Analysis Q1", agentName: "Data Analyst", tokens: 234000, memoryCount: 42, lastActive: "2 days ago", status: "archived" },
-]
-
-const skills: Skill[] = [
-  { id: "sk1", name: "Web Search", description: "Search and extract information from the web", category: "Utility", version: "2.1.0", enabled: true, usageCount: 145 },
-  { id: "sk2", name: "Code Analysis", description: "Analyze and review source code", category: "Development", version: "1.4.2", enabled: true, usageCount: 89 },
-  { id: "sk3", name: "Data Visualization", description: "Create charts and visual representations", category: "Analytics", version: "1.0.5", enabled: true, usageCount: 67 },
-  { id: "sk4", name: "Sentiment Analysis", description: "Analyze text sentiment and emotion", category: "NLP", version: "2.0.1", enabled: true, usageCount: 34 },
-  { id: "sk5", name: "Summarization", description: "Summarize long documents and articles", category: "NLP", version: "1.3.0", enabled: true, usageCount: 203 },
-  { id: "sk6", name: "Translation", description: "Translate content between languages", category: "NLP", version: "1.1.0", enabled: false, usageCount: 12 },
-  { id: "sk7", name: "Document Parsing", description: "Parse and extract data from documents", category: "Utility", version: "2.2.0", enabled: true, usageCount: 78 },
-  { id: "sk8", name: "SQL Query Builder", description: "Generate and optimize SQL queries", category: "Development", version: "1.0.3", enabled: false, usageCount: 45 },
-]
-
-const memories: MemoryEntry[] = [
-  { id: "m1", type: "episodic", content: "User requested code review for PR #142 with focus on security vulnerabilities", agentName: "Code Reviewer", timestamp: "2 min ago", relevance: 0.95 },
-  { id: "m2", type: "semantic", content: "The project uses Next.js 14 with App Router and server components", agentName: "Research Assistant", timestamp: "15 min ago", relevance: 0.88 },
-  { id: "m3", type: "procedural", content: "When reviewing code: check imports, validate types, run linter, verify tests", agentName: "Code Reviewer", timestamp: "1 hour ago", relevance: 0.76 },
-  { id: "m4", type: "episodic", content: "User prefers detailed explanations with code examples in responses", agentName: "Content Writer", timestamp: "3 hours ago", relevance: 0.82 },
-  { id: "m5", type: "semantic", content: "API keys should never be logged or exposed in debug output", agentName: "DevOps Bot", timestamp: "1 day ago", relevance: 0.91 },
-  { id: "m6", type: "procedural", content: "Database connection retry logic: max 3 attempts, exponential backoff", agentName: "DevOps Bot", timestamp: "2 days ago", relevance: 0.69 },
-  { id: "m7", type: "episodic", content: "Customer reported issue with login timeout on mobile devices", agentName: "Customer Support", timestamp: "3 days ago", relevance: 0.73 },
-  { id: "m8", type: "semantic", content: "Market analysis shows 23% growth in AI agent adoption Q1 2025", agentName: "Data Analyst", timestamp: "4 days ago", relevance: 0.65 },
-]
-
-// memory type icon config removed - rendered inline below
 
 export default function ContextPage() {
-  const [activeSessions, setActiveSessions] = useState(sessions)
   const [memorySearch, setMemorySearch] = useState("")
 
-  const filteredMemories = memories.filter(m =>
+  const { data: sessions = [], loading: sessionsLoading } = useQuery(
+    "context:sessions",
+    () => api.context.getSessions(),
+  )
+  const { data: skills = [], loading: skillsLoading } = useQuery(
+    "context:skills",
+    () => api.context.getSkills(),
+  )
+  const { data: memories = [], loading: memoriesLoading } = useQuery(
+    "context:memories",
+    () => api.context.getMemories(),
+  )
+
+  const filteredMemories = memories.filter((m: any) =>
     m.content.toLowerCase().includes(memorySearch.toLowerCase())
   )
 
@@ -108,7 +70,7 @@ export default function ContextPage() {
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Database className="h-3.5 w-3.5" />
-            <span>{(memories.length + skills.length + activeSessions.length).toLocaleString()} items</span>
+            <span>{(memories.length + skills.length + sessions.length).toLocaleString()} items</span>
           </div>
         </div>
 
@@ -130,7 +92,7 @@ export default function ContextPage() {
 
           <TabsContent value="sessions">
             <div className="grid gap-3">
-              {activeSessions.map(session => (
+              {sessions.map((session: any) => (
                 <Card key={session.id} className="hover:border-primary/30 transition-colors">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -158,7 +120,7 @@ export default function ContextPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {session.lastActive}
+                          {relativeTime(session.lastActive)}
                         </span>
                         <Badge variant={sessionStatusColors[session.status]} className="text-[10px] h-5">
                           {session.status}
@@ -241,7 +203,7 @@ export default function ContextPage() {
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {memory.timestamp}
+                              {relativeTime(memory.timestamp)}
                             </span>
                             <span className="flex items-center gap-1">
                               <Tag className="h-3 w-3" />

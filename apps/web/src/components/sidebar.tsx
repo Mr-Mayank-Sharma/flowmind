@@ -28,6 +28,7 @@ import {
   Clock,
   Wrench,
   Terminal,
+  Building2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -48,6 +49,7 @@ const navItems = [
   { href: "/mcp", label: "MCP Hub", icon: Server },
   { href: "/knowledge", label: "Knowledge Base", icon: Book },
   { href: "/tools", label: "Tool Registry", icon: Wrench },
+  { href: "/tools-v2", label: "Developer Tools", icon: Terminal },
   { href: "/jobs", label: "Scheduled Jobs", icon: Clock },
   { href: "/context", label: "Context Engine", icon: Brain },
   { href: "/marketplace", label: "Marketplace", icon: Store },
@@ -57,6 +59,7 @@ const navItems = [
   { href: "/playground", label: "API Playground", icon: Terminal },
   { href: "/docs", label: "Documentation", icon: Book },
   { href: "/governance", label: "Governance", icon: Shield },
+  { href: "/workspace", label: "Cloud Console", icon: Building2 },
 ]
 
 const bottomItems = [

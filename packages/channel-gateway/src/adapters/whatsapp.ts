@@ -53,8 +53,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const body = payload as Record<string, unknown>
     const entry = (body.entry as Array<Record<string, unknown>> | undefined)?.[0]
     const change = (entry?.changes as Array<Record<string, unknown>> | undefined)?.[0]
-    const msg = change?.value?.messages?.[0] as Record<string, unknown> | undefined
-    const contact = change?.value?.contacts?.[0] as Record<string, unknown> | undefined
+    const value = change?.value as Record<string, unknown> | undefined
+    const msg = (value?.messages as Array<Record<string, unknown>> | undefined)?.[0]
+    const contact = (value?.contacts as Array<Record<string, unknown>> | undefined)?.[0]
     if (!msg) return null
 
     const textBody =
@@ -70,6 +71,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
           ? 'audio'
           : 'document'
 
+    const mediaEntry = msg[mediaType] as Record<string, unknown> | undefined
+
     return {
       id: String(msg.id ?? ''),
       channelType: 'whatsapp',
@@ -80,13 +83,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
         ? [
             {
               url: '',
-              mimeType: String(msg[mediaType]?.mime_type ?? 'application/octet-stream'),
-              name: String(msg[mediaType]?.filename ?? `media.${mediaType}`),
+              mimeType: String(mediaEntry?.mime_type ?? 'application/octet-stream'),
+              name: String(mediaEntry?.filename ?? `media.${mediaType}`),
             },
           ]
         : undefined,
-      voiceUrl: msg.audio?.mime_type === 'audio/ogg; codecs=opus' ? '' : undefined,
-      replyTo: msg.context?.id as string | undefined,
+      voiceUrl: msg.audio && (msg.audio as Record<string, unknown>).mime_type === 'audio/ogg; codecs=opus' ? '' : undefined,
+      replyTo: (msg.context as Record<string, unknown> | undefined)?.id as string | undefined,
       metadata: {
         wamId: entry?.id,
         profile: contact?.profile,

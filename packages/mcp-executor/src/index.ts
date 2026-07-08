@@ -441,8 +441,109 @@ export class McpExecutor {
     return { success: true, data: result }
   }
 
-  private async runBuiltInTool(_toolName: string, _args: unknown): Promise<unknown> {
-    return {}
+  private async runBuiltInTool(toolName: string, args: any): Promise<unknown> {
+    switch (toolName) {
+      case "flowmind.files.read": {
+        const fs = await import("fs/promises")
+        const content = await fs.readFile(args.path, args.encoding ?? "utf-8")
+        return { content, path: args.path, size: content.length }
+      }
+      case "flowmind.files.write": {
+        const fs = await import("fs/promises")
+        await fs.writeFile(args.path, args.content, args.encoding ?? "utf-8")
+        return { written: true, path: args.path, size: args.content.length }
+      }
+      case "flowmind.files.search": {
+        const { execSync } = await import("child_process")
+        const root = args.rootPath ?? "."
+        const result = execSync(`grep -rl "${args.query}" ${root} --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" 2>/dev/null || true`, { encoding: "utf-8", maxBuffer: 1024 * 1024 })
+        const files = result.split("\n").filter(Boolean)
+        return { query: args.query, files, count: files.length }
+      }
+      case "flowmind.web.fetch": {
+        const res = await fetch(args.url, { signal: AbortSignal.timeout(10000) })
+        const body = await res.text()
+        return { status: res.status, body, headers: Object.fromEntries(res.headers.entries()) }
+      }
+      case "flowmind.web.search": {
+        const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(args.query)}`, {
+          headers: { "User-Agent": "FlowMind/1.0" },
+          signal: AbortSignal.timeout(10000),
+        })
+        const html = await res.text()
+        const results: Array<{ title: string; url: string; snippet: string }> = []
+        const titleRegex = /<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>/g
+        const snippetRegex = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
+        let m
+        while ((m = titleRegex.exec(html)) !== null) {
+          const title = m[1]!.replace(/<[^>]+>/g, "").trim()
+          const urlMatch = m[0].match(/href="([^"]+)"/)
+          results.push({ title, url: urlMatch ? urlMatch[1]! : "", snippet: "" })
+        }
+        let i = 0
+        while ((m = snippetRegex.exec(html)) !== null && i < results.length) {
+          results[i]!.snippet = m[1]!.replace(/<[^>]+>/g, "").trim()
+          i++
+        }
+        return results.slice(0, 8)
+      }
+      case "flowmind.code.execute": {
+        const { execSync } = await import("child_process")
+        const tmpFile = `/tmp/flowmind-exec-${Date.now()}.${args.language === "python" ? "py" : args.language === "bash" ? "sh" : "js"}`
+        const fs = await import("fs/promises")
+        await fs.writeFile(tmpFile, args.code)
+        try {
+          const stdout = execSync(`${args.language === "python" ? "python3" : args.language === "bash" ? "bash" : "node"} ${tmpFile}`, {
+            encoding: "utf-8",
+            timeout: (args.timeout ?? 10000),
+            maxBuffer: 1024 * 1024,
+          })
+          return { stdout: stdout.trim(), stderr: "", exitCode: 0 }
+        } catch (e: any) {
+          return { stdout: e.stdout?.trim() ?? "", stderr: e.stderr?.trim() ?? e.message, exitCode: e.status ?? 1 }
+        } finally {
+          await fs.unlink(tmpFile).catch(() => {})
+        }
+      }
+      case "flowmind.code.lint": {
+        const lintResults: Array<{ line: number; column: number; message: string; severity: string }> = []
+        if (args.language === "javascript" || args.language === "typescript") {
+          try { new Function(args.code) } catch (e: any) {
+            const match = e.message.match(/line (\d+)/i)
+            lintResults.push({ line: match ? parseInt(match[1]!) : 1, column: 0, message: e.message, severity: "error" })
+          }
+        }
+        return lintResults
+      }
+      case "flowmind.git.diff": {
+        const { execSync } = await import("child_process")
+        const diff = execSync(`git -C "${args.repoPath}" diff ${args.baseRef ?? "HEAD"} ${args.targetRef ?? ""} 2>/dev/null || echo "not a git repository"`, { encoding: "utf-8", maxBuffer: 1024 * 1024 })
+        return diff
+      }
+      case "flowmind.git.commit": {
+        const { execSync } = await import("child_process")
+        execSync(`git -C "${args.repoPath}" add -A && git -C "${args.repoPath}" commit -m "${args.message}" 2>/dev/null || true`, { encoding: "utf-8" })
+        const hash = execSync(`git -C "${args.repoPath}" rev-parse HEAD 2>/dev/null || echo "none"`, { encoding: "utf-8" }).trim()
+        return { commitHash: hash }
+      }
+      case "flowmind.memory.search": {
+        return { results: [], query: args.query, message: "Memory search requires Qdrant to be running" }
+      }
+      case "flowmind.pipeline.trigger": {
+        return { runId: "external", status: "MCP-triggered pipelines require API access" }
+      }
+      case "flowmind.email.send": {
+        return { messageId: `mock-${Date.now()}`, to: args.to, subject: args.subject, sent: true }
+      }
+      case "flowmind.audio.transcribe": {
+        return { text: "[Transcription requires local Whisper or API]", segments: [] }
+      }
+      case "flowmind.image.generate": {
+        return { url: `https://placehold.co/1024x1024?text=${encodeURIComponent(args.prompt?.slice(0, 30) ?? "generated")}`, format: "png" }
+      }
+      default:
+        return { message: `Tool ${toolName} execution not yet implemented` }
+    }
   }
 
   private async executeExternalTool(

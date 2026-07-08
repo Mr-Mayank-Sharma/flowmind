@@ -5,10 +5,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Star, Download, ExternalLink, Copy } from "lucide-react"
 import Link from "next/link"
+import type { ReactNode } from "react"
 
 interface FlowCardProps {
   id: string
-  icon: string
+  icon: ReactNode
   title: string
   description: string
   category: string

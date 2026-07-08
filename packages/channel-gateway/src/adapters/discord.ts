@@ -62,13 +62,14 @@ export class DiscordAdapter implements ChannelAdapter {
   async handleUpdate(payload: unknown): Promise<ChannelMessage | null> {
     const data = payload as Record<string, unknown>
     const msg = data.d as Record<string, unknown> | undefined ?? data
-    if (!msg.id || msg.author?.bot) return null
+    const author = msg.author as Record<string, unknown> | undefined
+    if (!msg.id || author?.bot) return null
 
     return {
       id: String(msg.id ?? ''),
       channelType: 'discord',
       channelId: String(msg.channel_id ?? ''),
-      userId: String(msg.author?.id ?? ''),
+      userId: String((msg.author as Record<string, unknown> | undefined)?.id ?? ''),
       text: msg.content as string | undefined,
       files: msg.attachments
         ? (msg.attachments as Array<Record<string, unknown>>).map((a) => ({
