@@ -89,7 +89,7 @@ async function main() {
 
   try {
     await server.listen({ port: PORT, host: HOST });
-    console.log(`FlowMind API running on http://${HOST}:${PORT}`);
+    server.log.info(`FlowMind API running on http://${HOST}:${PORT}`);
   } catch (err) {
     server.log.error(err);
     process.exit(1);

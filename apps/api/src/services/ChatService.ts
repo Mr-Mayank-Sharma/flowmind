@@ -78,21 +78,13 @@ export class ChatService {
       } catch { }
       reply = await callAgentRuntimeWithRetry(enhancedInput)
     } catch (err) {
-      logger.error("Agent runtime call failed after all retries", {
-        error: err as Error,
-        sessionId: input.sessionId,
-        durationMs: Date.now() - startTime,
-      })
+      logger.error({ err, sessionId: input.sessionId, durationMs: Date.now() - startTime }, "Agent runtime call failed after all retries")
       reply = "I encountered an error processing your request. Please try again."
     }
 
     const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
 
-    logger.info("Message processed", {
-      sessionId: input.sessionId,
-      durationMs: Date.now() - startTime,
-      userId: input.userId,
-    })
+    logger.info({ sessionId: input.sessionId, durationMs: Date.now() - startTime, userId: input.userId }, "Message processed")
 
     return { message: assistantMessage, reply }
   }

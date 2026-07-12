@@ -126,7 +126,7 @@ export const knowledgeRouter = router({
             data: { status: "READY" },
           })
         }).catch((err) => {
-          console.error("Embedding indexing failed:", err)
+          ctx.req.log.error({ err }, "Embedding indexing failed")
           ctx.prisma.knowledgeDocument.update({
             where: { id: doc.id },
             data: { status: "ERROR" },

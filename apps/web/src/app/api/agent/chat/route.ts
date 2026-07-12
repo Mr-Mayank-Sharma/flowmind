@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
       toolCalls: [],
     })
   } catch (err: any) {
+    console.error(JSON.stringify({ level: "error", timestamp: new Date().toISOString(), message: "Agent chat route failed", error: err.message }))
     return NextResponse.json({ content: `Error: ${err.message}` }, { status: 500 })
   }
 }
