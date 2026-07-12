@@ -1,7 +1,11 @@
+import vm from "vm"
 import { prisma } from "@flowmind/db"
+
+const SKILL_TIMEOUT_MS = 5000
 
 export interface SkillDefinition {
   id: string
+  userId: string
   name: string
   description: string
   triggerPattern?: string
@@ -22,10 +26,32 @@ export interface SkillResult {
   durationMs: number
 }
 
+function runSandboxed(code: string, input: string, userId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Skill execution timed out"))
+    }, SKILL_TIMEOUT_MS)
+
+    try {
+      const sandbox = { input, userId, __result__: "" }
+      vm.createContext(sandbox)
+
+      const wrappedCode = `__result__ = (function(){ ${code} })(input, userId)`
+      vm.runInContext(wrappedCode, sandbox, { timeout: SKILL_TIMEOUT_MS })
+
+      clearTimeout(timer)
+      resolve(String((sandbox as any).__result__ ?? ""))
+    } catch (err) {
+      clearTimeout(timer)
+      reject(err)
+    }
+  })
+}
+
 export class SkillEngine {
   async register(skill: SkillDefinition): Promise<void> {
     const existing = await prisma.skill.findFirst({
-      where: { userId: skill.id.split("_")[0] ?? "", name: skill.name },
+      where: { userId: skill.userId, name: skill.name },
     })
     if (existing) {
       await prisma.skill.update({
@@ -41,7 +67,7 @@ export class SkillEngine {
     } else {
       await prisma.skill.create({
         data: {
-          userId: skill.id.split("_")[0] ?? "",
+          userId: skill.userId,
           name: skill.name,
           description: skill.description,
           triggerPattern: skill.triggerPattern,
@@ -63,14 +89,18 @@ export class SkillEngine {
     if (!skill.isActive) throw new Error(`Skill ${skill.name} is disabled`)
 
     try {
-      const fn = new Function("input", "userId", skill.code)
-      const result = await fn(context.input, context.userId)
-      const output = String(result ?? "")
+      const output = await runSandboxed(skill.code, context.input, context.userId)
 
       await prisma.skill.update({
         where: { id: skillId },
-        data: { useCount: { increment: 1 }, successRate: 100 },
+        data: {
+          useCount: { increment: 1 },
+          successCount: { increment: 1 },
+          successRate: undefined,
+        },
       })
+
+      await this.recalculateSuccessRate(skillId)
 
       return { output, success: true, durationMs: Date.now() - start }
     } catch (err) {
@@ -78,10 +108,28 @@ export class SkillEngine {
 
       await prisma.skill.update({
         where: { id: skillId },
-        data: { useCount: { increment: 1 }, successRate: 0 },
+        data: {
+          useCount: { increment: 1 },
+          successRate: undefined,
+        },
       })
+
+      await this.recalculateSuccessRate(skillId)
 
       return { output: errorMsg, success: false, durationMs: Date.now() - start }
     }
+  }
+
+  private async recalculateSuccessRate(skillId: string): Promise<void> {
+    const skill = await prisma.skill.findUnique({
+      where: { id: skillId },
+      select: { useCount: true, successCount: true },
+    })
+    if (!skill || skill.useCount === 0) return
+    const rate = Math.round((skill.successCount / skill.useCount) * 100)
+    await prisma.skill.update({
+      where: { id: skillId },
+      data: { successRate: rate },
+    })
   }
 }

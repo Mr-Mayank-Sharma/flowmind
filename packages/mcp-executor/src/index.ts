@@ -41,18 +41,24 @@ export const OAUTH_PROVIDERS: Record<string, OAuthConfig> = {
   },
 }
 
-const CLIENT_IDS: Record<string, string> = {
-  github: process.env.GITHUB_CLIENT_ID ?? "",
-  slack: process.env.SLACK_CLIENT_ID ?? "",
-  google: process.env.GOOGLE_CLIENT_ID ?? "",
-  notion: process.env.NOTION_CLIENT_ID ?? "",
+function getClientId(provider: string): string | undefined {
+  const map: Record<string, string | undefined> = {
+    github: process.env.GITHUB_CLIENT_ID,
+    slack: process.env.SLACK_CLIENT_ID,
+    google: process.env.GOOGLE_CLIENT_ID,
+    notion: process.env.NOTION_CLIENT_ID,
+  }
+  return map[provider]
 }
 
-const CLIENT_SECRETS: Record<string, string> = {
-  github: process.env.GITHUB_CLIENT_SECRET ?? "",
-  slack: process.env.SLACK_CLIENT_SECRET ?? "",
-  google: process.env.GOOGLE_CLIENT_SECRET ?? "",
-  notion: process.env.NOTION_CLIENT_SECRET ?? "",
+function getClientSecret(provider: string): string | undefined {
+  const map: Record<string, string | undefined> = {
+    github: process.env.GITHUB_CLIENT_SECRET,
+    slack: process.env.SLACK_CLIENT_SECRET,
+    google: process.env.GOOGLE_CLIENT_SECRET,
+    notion: process.env.NOTION_CLIENT_SECRET,
+  }
+  return map[provider]
 }
 
 export type OAuthToken = {
@@ -362,7 +368,7 @@ export class McpExecutor {
       throw new Error(`Unknown OAuth provider: ${provider}`)
     }
 
-    const clientId = CLIENT_IDS[provider]
+    const clientId = getClientId(provider)
     if (!clientId) {
       throw new Error(`No client ID configured for ${provider}`)
     }
@@ -421,8 +427,8 @@ export class McpExecutor {
       throw new Error(`Unknown OAuth provider: ${session.provider}`)
     }
 
-    const clientId = CLIENT_IDS[session.provider] ?? ""
-    const clientSecret = CLIENT_SECRETS[session.provider] ?? ""
+    const clientId = getClientId(session.provider) ?? ""
+    const clientSecret = getClientSecret(session.provider) ?? ""
 
     const body: Record<string, string> = {
       grant_type: "authorization_code",

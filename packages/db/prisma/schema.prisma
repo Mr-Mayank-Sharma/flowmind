@@ -192,6 +192,7 @@ model Skill {
   code           String
   version        Int      @default(1)
   successRate    Float?
+  successCount   Int      @default(0)
   useCount       Int      @default(0)
   isActive       Boolean  @default(true)
 

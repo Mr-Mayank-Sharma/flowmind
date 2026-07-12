@@ -8,6 +8,7 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
+    "test": "turbo test",
     "db:generate": "pnpm --filter @flowmind/db db:generate",
     "db:migrate": "pnpm --filter @flowmind/db db:migrate",
     "db:seed": "pnpm --filter @flowmind/db db:seed",

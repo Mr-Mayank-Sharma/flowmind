@@ -51,7 +51,7 @@ export const billingRouter = router({
     }),
 
   getInvoices: protectedProcedure
-    .query(async () => {
-      return [];
+    .query(async ({ ctx }) => {
+      return BillingService.getInvoices(ctx.userId);
     }),
 });

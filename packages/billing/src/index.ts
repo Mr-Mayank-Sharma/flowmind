@@ -378,6 +378,36 @@ async function manageTeamSeats(input: TeamSeatInput): Promise<void> {
   });
 }
 
+export interface InvoiceData {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  date: string;
+  hostedUrl: string | null;
+  pdfUrl: string | null;
+}
+
+async function getInvoices(userId: string): Promise<InvoiceData[]> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.stripeId) return [];
+
+  const invoices = await stripe.invoices.list({
+    customer: user.stripeId,
+    limit: 50,
+  });
+
+  return invoices.data.map((inv) => ({
+    id: inv.id,
+    amount: inv.amount_due,
+    currency: inv.currency,
+    status: inv.status ?? "unknown",
+    date: new Date((inv.created ?? 0) * 1000).toISOString(),
+    hostedUrl: inv.hosted_invoice_url ?? null,
+    pdfUrl: inv.invoice_pdf ?? null,
+  }));
+}
+
 export const BillingService = {
   createCheckoutSession,
   createPortalSession,
@@ -387,5 +417,6 @@ export const BillingService = {
   downgradeToFree,
   notifyPaymentFailed,
   getUsageMetrics,
+  getInvoices,
   manageTeamSeats,
 };
