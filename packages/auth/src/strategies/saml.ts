@@ -1,3 +1,4 @@
+import { DOMParser } from "@xmldom/xmldom";
 import { Strategy as SamlStrategy, SamlConfig, VerifyWithoutRequest, Profile } from "passport-saml";
 
 export interface SamlUserProfile {
@@ -15,34 +16,33 @@ export interface IdpMetadata {
   issuer: string;
 }
 
+function getTagAttribute(doc: XMLDocument, localName: string, attribute: string): string | null {
+  const elements = doc.getElementsByTagNameNS("*", localName);
+  const el = elements.length > 0 ? elements[0] : doc.getElementsByTagName(localName)[0];
+  return el?.getAttribute(attribute) ?? null;
+}
+
 function parseIdpMetadata(xml: string): IdpMetadata {
-  const entryPoint = extractTag(xml, "SingleSignOnService", "Location");
-  const logoutUrl = extractTag(xml, "SingleLogoutService", "Location") || undefined;
-  const cert = extractCertFromMetadata(xml);
-  const issuer = extractTag(xml, "EntityDescriptor", "entityID");
+  let doc: XMLDocument;
+  try {
+    doc = new DOMParser().parseFromString(xml, "text/xml") as unknown as XMLDocument;
+  } catch {
+    throw new Error("Invalid SAML metadata: XML parsing failed");
+  }
+
+  const entryPoint = getTagAttribute(doc, "SingleSignOnService", "Location");
+  const logoutUrl = getTagAttribute(doc, "SingleLogoutService", "Location") || undefined;
+  const issuer = getTagAttribute(doc, "EntityDescriptor", "entityID") || "unknown-issuer";
+
+  const certEls = doc.getElementsByTagNameNS("*", "X509Certificate");
+  const certEl = certEls.length > 0 ? certEls[0] : doc.getElementsByTagName("X509Certificate")[0];
+  const cert = certEl?.textContent?.replace(/\s+/g, "") || undefined;
 
   if (!entryPoint) {
     throw new Error("Invalid SAML metadata: missing SingleSignOnService Location");
   }
 
-  return {
-    entryPoint,
-    logoutUrl,
-    cert,
-    issuer: issuer || "unknown-issuer",
-  };
-}
-
-function extractTag(xml: string, tagName: string, attribute: string): string | null {
-  const regex = new RegExp(`<${tagName}[^>]*${attribute}="([^"]*)"`, "i");
-  const match = xml.match(regex);
-  return match?.[1] ?? null;
-}
-
-function extractCertFromMetadata(xml: string): string | undefined {
-  const match = xml.match(/<X509Certificate>([\s\S]*?)<\/X509Certificate>/i);
-  if (!match?.[1]) return undefined;
-  return match[1].replace(/\s+/g, "");
+  return { entryPoint, logoutUrl, cert, issuer };
 }
 
 function createSamlStrategy(

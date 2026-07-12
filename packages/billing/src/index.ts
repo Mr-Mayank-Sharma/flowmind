@@ -80,6 +80,11 @@ export interface StripeWebhookEvent {
   };
 }
 
+async function handleStripeWebhook(rawBody: string, signature: string): Promise<void> {
+  const event = stripe.webhooks.constructEvent(rawBody, signature, WEBHOOK_SECRET);
+  await handleWebhook(event as unknown as StripeWebhookEvent);
+}
+
 async function handleWebhook(event: StripeWebhookEvent): Promise<void> {
   switch (event.type) {
     case "checkout.session.completed": {
@@ -317,6 +322,19 @@ export interface TeamSeatInput {
   quantity: number;
 }
 
+async function createPortalSession(userId: string): Promise<string> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
+  if (!user.stripeId) throw new Error("No Stripe customer ID");
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: user.stripeId,
+    return_url: `${process.env.APP_URL ?? "http://localhost:3000"}/settings/billing`,
+  });
+
+  return session.url;
+}
+
 async function manageTeamSeats(input: TeamSeatInput): Promise<void> {
   const org = await prisma.org.findUnique({
     where: { id: input.orgId },
@@ -362,6 +380,8 @@ async function manageTeamSeats(input: TeamSeatInput): Promise<void> {
 
 export const BillingService = {
   createCheckoutSession,
+  createPortalSession,
+  handleStripeWebhook,
   handleWebhook,
   syncSubscription,
   downgradeToFree,

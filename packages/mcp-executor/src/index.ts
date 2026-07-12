@@ -1,4 +1,6 @@
 import { z } from "zod"
+import crypto from "crypto"
+import { prisma } from "@flowmind/db"
 
 export type OAuthConfig = {
   authUrl: string
@@ -37,6 +39,20 @@ export const OAUTH_PROVIDERS: Record<string, OAuthConfig> = {
     scopes: [],
     pkce: false,
   },
+}
+
+const CLIENT_IDS: Record<string, string> = {
+  github: process.env.GITHUB_CLIENT_ID ?? "",
+  slack: process.env.SLACK_CLIENT_ID ?? "",
+  google: process.env.GOOGLE_CLIENT_ID ?? "",
+  notion: process.env.NOTION_CLIENT_ID ?? "",
+}
+
+const CLIENT_SECRETS: Record<string, string> = {
+  github: process.env.GITHUB_CLIENT_SECRET ?? "",
+  slack: process.env.SLACK_CLIENT_SECRET ?? "",
+  google: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  notion: process.env.NOTION_CLIENT_SECRET ?? "",
 }
 
 export type OAuthToken = {
@@ -173,146 +189,26 @@ const toolInputSchemas: Record<string, z.ZodTypeAny> = {
 }
 
 export const BUILT_IN_TOOLS: BuiltInTool[] = [
-  {
-    name: "flowmind.files.read",
-    category: "Filesystem",
-    description: "Read files from user's workspace",
-    inputSchema: toolInputSchemas["flowmind.files.read"]!,
-    outputSchema: z.string(),
-  },
-  {
-    name: "flowmind.files.write",
-    category: "Filesystem",
-    description: "Write and create files",
-    inputSchema: toolInputSchemas["flowmind.files.write"]!,
-    outputSchema: z.object({ path: z.string(), size: z.number() }),
-  },
-  {
-    name: "flowmind.files.search",
-    category: "Filesystem",
-    description: "Full-text search across workspace",
-    inputSchema: toolInputSchemas["flowmind.files.search"]!,
-    outputSchema: z.array(z.object({ path: z.string(), snippet: z.string() })),
-  },
-  {
-    name: "flowmind.code.execute",
-    category: "Code",
-    description: "Run code in sandboxed Docker container",
-    inputSchema: toolInputSchemas["flowmind.code.execute"]!,
-    outputSchema: z.object({ stdout: z.string(), stderr: z.string(), exitCode: z.number() }),
-  },
-  {
-    name: "flowmind.code.lint",
-    category: "Code",
-    description: "Lint and format code with language-specific tools",
-    inputSchema: toolInputSchemas["flowmind.code.lint"]!,
-    outputSchema: z.array(z.object({ line: z.number(), column: z.number(), message: z.string(), severity: z.string() })),
-  },
-  {
-    name: "flowmind.git.diff",
-    category: "Git",
-    description: "Show git diff for a repository",
-    inputSchema: toolInputSchemas["flowmind.git.diff"]!,
-    outputSchema: z.string(),
-  },
-  {
-    name: "flowmind.git.commit",
-    category: "Git",
-    description: "Commit staged changes with a message",
-    inputSchema: toolInputSchemas["flowmind.git.commit"]!,
-    outputSchema: z.object({ commitHash: z.string() }),
-  },
-  {
-    name: "flowmind.git.pr",
-    category: "Git",
-    description: "Create a pull request on GitHub/GitLab",
-    inputSchema: toolInputSchemas["flowmind.git.pr"]!,
-    outputSchema: z.object({ url: z.string().url(), number: z.number() }),
-  },
-  {
-    name: "flowmind.web.fetch",
-    category: "Web",
-    description: "Fetch and parse web page content",
-    inputSchema: toolInputSchemas["flowmind.web.fetch"]!,
-    outputSchema: z.object({ status: z.number(), body: z.string(), headers: z.record(z.string()) }),
-  },
-  {
-    name: "flowmind.web.search",
-    category: "Web",
-    description: "Search the web (self-hosted Searxng)",
-    inputSchema: toolInputSchemas["flowmind.web.search"]!,
-    outputSchema: z.array(z.object({ title: z.string(), url: z.string(), snippet: z.string() })),
-  },
-  {
-    name: "flowmind.db.query",
-    category: "Database",
-    description: "Execute SQL query on connected databases",
-    inputSchema: toolInputSchemas["flowmind.db.query"]!,
-    outputSchema: z.array(z.record(z.unknown())),
-  },
-  {
-    name: "flowmind.email.send",
-    category: "Communication",
-    description: "Send email via SMTP or Mailgun",
-    inputSchema: toolInputSchemas["flowmind.email.send"]!,
-    outputSchema: z.object({ messageId: z.string() }),
-  },
-  {
-    name: "flowmind.slack.message",
-    category: "Communication",
-    description: "Post message to Slack channel",
-    inputSchema: toolInputSchemas["flowmind.slack.message"]!,
-    outputSchema: z.object({ ts: z.string(), channel: z.string() }),
-  },
-  {
-    name: "flowmind.github.issue",
-    category: "Project",
-    description: "Create or update GitHub issue",
-    inputSchema: toolInputSchemas["flowmind.github.issue"]!,
-    outputSchema: z.object({ id: z.number(), url: z.string(), number: z.number() }),
-  },
-  {
-    name: "flowmind.notion.page",
-    category: "Project",
-    description: "Create or update Notion page",
-    inputSchema: toolInputSchemas["flowmind.notion.page"]!,
-    outputSchema: z.object({ id: z.string(), url: z.string() }),
-  },
-  {
-    name: "flowmind.memory.search",
-    category: "AI",
-    description: "Search agent memories via vector + FTS",
-    inputSchema: toolInputSchemas["flowmind.memory.search"]!,
-    outputSchema: z.array(z.object({ id: z.string(), content: z.string(), score: z.number() })),
-  },
-  {
-    name: "flowmind.skill.run",
-    category: "AI",
-    description: "Execute a stored FlowMind skill",
-    inputSchema: toolInputSchemas["flowmind.skill.run"]!,
-    outputSchema: z.unknown(),
-  },
-  {
-    name: "flowmind.pipeline.trigger",
-    category: "AI",
-    description: "Trigger a workflow pipeline by ID",
-    inputSchema: toolInputSchemas["flowmind.pipeline.trigger"]!,
-    outputSchema: z.object({ runId: z.string(), status: z.string() }),
-  },
-  {
-    name: "flowmind.image.generate",
-    category: "Media",
-    description: "Generate image (local Stable Diffusion or API)",
-    inputSchema: toolInputSchemas["flowmind.image.generate"]!,
-    outputSchema: z.object({ url: z.string(), format: z.string() }),
-  },
-  {
-    name: "flowmind.audio.transcribe",
-    category: "Media",
-    description: "Transcribe audio file (local Whisper)",
-    inputSchema: toolInputSchemas["flowmind.audio.transcribe"]!,
-    outputSchema: z.object({ text: z.string(), segments: z.array(z.unknown()) }),
-  },
+  { name: "flowmind.files.read", category: "Filesystem", description: "Read files from user's workspace", inputSchema: toolInputSchemas["flowmind.files.read"]!, outputSchema: z.string() },
+  { name: "flowmind.files.write", category: "Filesystem", description: "Write and create files", inputSchema: toolInputSchemas["flowmind.files.write"]!, outputSchema: z.object({ path: z.string(), size: z.number() }) },
+  { name: "flowmind.files.search", category: "Filesystem", description: "Full-text search across workspace", inputSchema: toolInputSchemas["flowmind.files.search"]!, outputSchema: z.array(z.object({ path: z.string(), snippet: z.string() })) },
+  { name: "flowmind.code.execute", category: "Code", description: "Run code in sandboxed Docker container", inputSchema: toolInputSchemas["flowmind.code.execute"]!, outputSchema: z.object({ stdout: z.string(), stderr: z.string(), exitCode: z.number() }) },
+  { name: "flowmind.code.lint", category: "Code", description: "Lint and format code with language-specific tools", inputSchema: toolInputSchemas["flowmind.code.lint"]!, outputSchema: z.array(z.object({ line: z.number(), column: z.number(), message: z.string(), severity: z.string() })) },
+  { name: "flowmind.git.diff", category: "Git", description: "Show git diff for a repository", inputSchema: toolInputSchemas["flowmind.git.diff"]!, outputSchema: z.string() },
+  { name: "flowmind.git.commit", category: "Git", description: "Commit staged changes with a message", inputSchema: toolInputSchemas["flowmind.git.commit"]!, outputSchema: z.object({ commitHash: z.string() }) },
+  { name: "flowmind.git.pr", category: "Git", description: "Create a pull request on GitHub/GitLab", inputSchema: toolInputSchemas["flowmind.git.pr"]!, outputSchema: z.object({ url: z.string().url(), number: z.number() }) },
+  { name: "flowmind.web.fetch", category: "Web", description: "Fetch and parse web page content", inputSchema: toolInputSchemas["flowmind.web.fetch"]!, outputSchema: z.object({ status: z.number(), body: z.string(), headers: z.record(z.string()) }) },
+  { name: "flowmind.web.search", category: "Web", description: "Search the web (self-hosted Searxng)", inputSchema: toolInputSchemas["flowmind.web.search"]!, outputSchema: z.array(z.object({ title: z.string(), url: z.string(), snippet: z.string() })) },
+  { name: "flowmind.db.query", category: "Database", description: "Execute SQL query on connected databases", inputSchema: toolInputSchemas["flowmind.db.query"]!, outputSchema: z.array(z.record(z.unknown())) },
+  { name: "flowmind.email.send", category: "Communication", description: "Send email via SMTP or Mailgun", inputSchema: toolInputSchemas["flowmind.email.send"]!, outputSchema: z.object({ messageId: z.string() }) },
+  { name: "flowmind.slack.message", category: "Communication", description: "Post message to Slack channel", inputSchema: toolInputSchemas["flowmind.slack.message"]!, outputSchema: z.object({ ts: z.string(), channel: z.string() }) },
+  { name: "flowmind.github.issue", category: "Project", description: "Create or update GitHub issue", inputSchema: toolInputSchemas["flowmind.github.issue"]!, outputSchema: z.object({ id: z.number(), url: z.string(), number: z.number() }) },
+  { name: "flowmind.notion.page", category: "Project", description: "Create or update Notion page", inputSchema: toolInputSchemas["flowmind.notion.page"]!, outputSchema: z.object({ id: z.string(), url: z.string() }) },
+  { name: "flowmind.memory.search", category: "AI", description: "Search agent memories via vector + FTS", inputSchema: toolInputSchemas["flowmind.memory.search"]!, outputSchema: z.array(z.object({ id: z.string(), content: z.string(), score: z.number() })) },
+  { name: "flowmind.skill.run", category: "AI", description: "Execute a stored FlowMind skill", inputSchema: toolInputSchemas["flowmind.skill.run"]!, outputSchema: z.unknown() },
+  { name: "flowmind.pipeline.trigger", category: "AI", description: "Trigger a workflow pipeline by ID", inputSchema: toolInputSchemas["flowmind.pipeline.trigger"]!, outputSchema: z.object({ runId: z.string(), status: z.string() }) },
+  { name: "flowmind.image.generate", category: "Media", description: "Generate image (local Stable Diffusion or API)", inputSchema: toolInputSchemas["flowmind.image.generate"]!, outputSchema: z.object({ url: z.string(), format: z.string() }) },
+  { name: "flowmind.audio.transcribe", category: "Media", description: "Transcribe audio file (local Whisper)", inputSchema: toolInputSchemas["flowmind.audio.transcribe"]!, outputSchema: z.object({ text: z.string(), segments: z.array(z.unknown()) }) },
 ]
 
 export class McpServerRegistry {
@@ -404,6 +300,21 @@ export type TokenStore = {
   refreshToken(userId: string, provider: string): Promise<OAuthToken>
 }
 
+// In-memory store for pending OAuth sessions (short-lived, lost on restart)
+const pendingOAuthSessions = new Map<string, { provider: string; codeVerifier: string; userId: string; expiresAt: number }>()
+
+function generateCodeVerifier(): string {
+  return crypto.randomBytes(32).toString("base64url")
+}
+
+function generateCodeChallenge(verifier: string): string {
+  return crypto.createHash("sha256").update(verifier).digest("base64url")
+}
+
+function generateState(): string {
+  return crypto.randomBytes(16).toString("hex")
+}
+
 export class McpExecutor {
   private registry: McpServerRegistry
   private connectionPool: McpConnectionPool
@@ -439,6 +350,158 @@ export class McpExecutor {
 
     const result = await this.runBuiltInTool(toolName, validation.data!)
     return { success: true, data: result }
+  }
+
+  async initiateOAuthFlow(
+    provider: string,
+    redirectUri: string,
+    userId: string,
+  ): Promise<{ url: string; state: string }> {
+    const config = OAUTH_PROVIDERS[provider]
+    if (!config) {
+      throw new Error(`Unknown OAuth provider: ${provider}`)
+    }
+
+    const clientId = CLIENT_IDS[provider]
+    if (!clientId) {
+      throw new Error(`No client ID configured for ${provider}`)
+    }
+
+    const state = generateState()
+    const codeVerifier = config.pkce ? generateCodeVerifier() : ""
+    const codeChallenge = codeVerifier ? generateCodeChallenge(codeVerifier) : ""
+
+    const params: Record<string, string> = {
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: config.scopes.join(" "),
+      state,
+    }
+
+    if (config.pkce && codeChallenge) {
+      params.code_challenge = codeChallenge
+      params.code_challenge_method = "S256"
+    }
+
+    const authUrl = `${config.authUrl}?${new URLSearchParams(params).toString()}`
+
+    pendingOAuthSessions.set(state, {
+      provider,
+      codeVerifier,
+      userId,
+      expiresAt: Date.now() + 600_000, // 10 min expiry
+    })
+
+    // Clean expired sessions periodically
+    if (pendingOAuthSessions.size % 10 === 0) {
+      for (const [key, session] of pendingOAuthSessions) {
+        if (session.expiresAt < Date.now()) pendingOAuthSessions.delete(key)
+      }
+    }
+
+    return { url: authUrl, state }
+  }
+
+  async handleOAuthCallback(
+    code: string,
+    state: string,
+  ): Promise<OAuthToken> {
+    const session = pendingOAuthSessions.get(state)
+    if (!session) {
+      throw new Error("OAuth session expired or invalid state parameter")
+    }
+    if (session.expiresAt < Date.now()) {
+      pendingOAuthSessions.delete(state)
+      throw new Error("OAuth session has expired")
+    }
+
+    const config = OAUTH_PROVIDERS[session.provider]
+    if (!config) {
+      throw new Error(`Unknown OAuth provider: ${session.provider}`)
+    }
+
+    const clientId = CLIENT_IDS[session.provider] ?? ""
+    const clientSecret = CLIENT_SECRETS[session.provider] ?? ""
+
+    const body: Record<string, string> = {
+      grant_type: "authorization_code",
+      code,
+      client_id: clientId,
+      redirect_uri: `${process.env.APP_URL ?? "http://localhost:3000"}/mcp/oauth/callback`,
+    }
+
+    if (config.pkce && session.codeVerifier) {
+      body.code_verifier = session.codeVerifier
+    } else {
+      body.client_secret = clientSecret
+    }
+
+    const tokenRes = await fetch(config.tokenUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!tokenRes.ok) {
+      const errBody = await tokenRes.text()
+      throw new Error(`Token exchange failed: ${tokenRes.status} ${errBody}`)
+    }
+
+    const tokenData = await tokenRes.json() as Record<string, unknown>
+    const accessToken = (tokenData.access_token ?? tokenData.accessToken) as string
+    const refreshToken = (tokenData.refresh_token ?? tokenData.refreshToken) as string | undefined
+    const expiresIn = (tokenData.expires_in ?? tokenData.expiresIn ?? 3600) as number
+    const scopes = ((tokenData.scope ?? tokenData.scopes) as string ?? config.scopes.join(" ")).split(" ").filter(Boolean)
+
+    if (!accessToken) {
+      throw new Error("No access token in response")
+    }
+
+    pendingOAuthSessions.delete(state)
+
+    // Persist to DB
+    await prisma.mcpToken.upsert({
+      where: { id: `${session.userId}_${session.provider}` },
+      update: {
+        accessToken,
+        refreshToken: refreshToken ?? null,
+        scope: scopes.join(" "),
+        expiresAt: new Date(Date.now() + (expiresIn as number) * 1000),
+      },
+      create: {
+        id: `${session.userId}_${session.provider}`,
+        userId: session.userId,
+        provider: session.provider,
+        accessToken,
+        refreshToken: refreshToken ?? null,
+        scope: scopes.join(" "),
+        expiresAt: new Date(Date.now() + (expiresIn as number) * 1000),
+      },
+    })
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresAt: new Date(Date.now() + (expiresIn as number) * 1000),
+      scopes: scopes as string[],
+    }
+  }
+
+  async getStoredToken(userId: string, provider: string): Promise<OAuthToken | null> {
+    const record = await prisma.mcpToken.findFirst({
+      where: { userId, provider },
+    })
+    if (!record) return null
+    return {
+      accessToken: record.accessToken,
+      refreshToken: record.refreshToken ?? undefined,
+      expiresAt: record.expiresAt ?? new Date(0),
+      scopes: record.scope.split(" ").filter(Boolean),
+    }
   }
 
   private async runBuiltInTool(toolName: string, args: any): Promise<unknown> {
@@ -552,34 +615,5 @@ export class McpExecutor {
     _userId: string,
   ): Promise<{ success: boolean; data?: unknown; error?: string }> {
     return { success: false, error: "External tools not yet implemented" }
-  }
-
-  async initiateOAuthFlow(
-    provider: string,
-    _redirectUri: string,
-    _userId: string,
-  ): Promise<{ url: string; codeVerifier?: string }> {
-    const config = OAUTH_PROVIDERS[provider]
-    if (!config) {
-      throw new Error(`Unknown OAuth provider: ${provider}`)
-    }
-
-    const params = new URLSearchParams()
-    const codeVerifier = config.pkce ? "TODO: generate PKCE code verifier" : undefined
-
-    return { url: `${config.authUrl}?${params.toString()}`, codeVerifier }
-  }
-
-  async handleOAuthCallback(
-    provider: string,
-    _code: string,
-    _codeVerifier?: string,
-    _userId?: string,
-  ): Promise<OAuthToken> {
-    return {
-      accessToken: "TODO: exchange code for token",
-      expiresAt: new Date(Date.now() + 3600_000),
-      scopes: OAUTH_PROVIDERS[provider]?.scopes ?? [],
-    }
   }
 }

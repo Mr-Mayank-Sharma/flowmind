@@ -6,6 +6,7 @@ import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { appRouter } from "./routers";
 import { createContext } from "./middleware/context";
 import { prisma } from "@flowmind/db";
+import { BillingService } from "@flowmind/billing";
 
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 const HOST = process.env.API_HOST || "0.0.0.0";
@@ -62,6 +63,28 @@ async function main() {
       data: { userId, name, description, graph: graph as any, isActive: false, status: "DRAFT" },
     });
     return reply.send(pipeline);
+  });
+
+  await server.register(async (scoped) => {
+    scoped.addContentTypeParser("application/json", { parseAs: "buffer", bodyLimit: 65536 }, (_req, body, done) => {
+      done(null, body);
+    });
+    scoped.post("/api/stripe/webhook", async (req, reply) => {
+      const signature = req.headers["stripe-signature"] as string;
+      const rawBody = (req.body as Buffer).toString();
+
+      if (!signature || !rawBody) {
+        return reply.status(400).send({ error: "Missing stripe-signature header or body" });
+      }
+
+      try {
+        await BillingService.handleStripeWebhook(rawBody, signature);
+        return reply.send({ received: true });
+      } catch (err) {
+        req.log.error(err, "Stripe webhook handling failed");
+        return reply.status(400).send({ error: "Webhook signature verification failed" });
+      }
+    });
   });
 
   try {

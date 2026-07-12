@@ -72,6 +72,23 @@ export class WhatsAppAdapter implements ChannelAdapter {
           : 'document'
 
     const mediaEntry = msg[mediaType] as Record<string, unknown> | undefined
+    const mediaId = mediaEntry?.id as string | undefined
+
+    let fileUrl = ''
+    if (mediaId && this.accessToken) {
+      try {
+        const mediaRes = await fetch(
+          `https://graph.facebook.com/${this.apiVersion}/${mediaId}`,
+          { headers: { Authorization: `Bearer ${this.accessToken}` } },
+        )
+        if (mediaRes.ok) {
+          const mediaData = await mediaRes.json() as { url?: string }
+          fileUrl = mediaData.url ?? ''
+        }
+      } catch {
+        // Media download failed; return empty URL
+      }
+    }
 
     return {
       id: String(msg.id ?? ''),
@@ -82,13 +99,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
       files: hasMedia
         ? [
             {
-              url: '',
+              url: fileUrl,
               mimeType: String(mediaEntry?.mime_type ?? 'application/octet-stream'),
               name: String(mediaEntry?.filename ?? `media.${mediaType}`),
             },
           ]
         : undefined,
-      voiceUrl: msg.audio && (msg.audio as Record<string, unknown>).mime_type === 'audio/ogg; codecs=opus' ? '' : undefined,
+      voiceUrl: msg.audio && (msg.audio as Record<string, unknown>).mime_type === 'audio/ogg; codecs=opus' ? fileUrl : undefined,
       replyTo: (msg.context as Record<string, unknown> | undefined)?.id as string | undefined,
       metadata: {
         wamId: entry?.id,
@@ -100,8 +117,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   async setupWebhook(url: string): Promise<void> {
-    // WhatsApp Cloud API webhooks are configured in the Meta Developer dashboard
-    // This method is a placeholder for programmatic registration if Meta exposes it
     await Promise.resolve(url)
   }
 

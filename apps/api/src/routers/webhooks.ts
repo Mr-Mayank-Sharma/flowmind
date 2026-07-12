@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../middleware/trpc";
 
-function extractText(channel: string, body: any): { text: string; userId: string; channelId: string } {
+function extractText(channel: string, body: any): { text: string; userId: string; channelId: string; media?: { id: string; type: string; mimeType: string; filename: string } } {
   switch (channel) {
     case "telegram":
       return {
@@ -21,12 +21,24 @@ function extractText(channel: string, body: any): { text: string; userId: string
         userId: body?.author?.id ?? body?.member?.user?.id ?? "",
         channelId: body?.channel_id ?? "",
       };
-    case "whatsapp":
+    case "whatsapp": {
+      const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+      const mediaTypes = ["image", "video", "audio", "document"];
+      let media: { id: string; type: string; mimeType: string; filename: string } | undefined;
+      for (const mt of mediaTypes) {
+        const entry = msg?.[mt];
+        if (entry?.id) {
+          media = { id: entry.id, type: mt, mimeType: entry.mime_type ?? "", filename: entry.filename ?? `media.${mt}` };
+          break;
+        }
+      }
       return {
-        text: body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body ?? "",
-        userId: body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from ?? "",
+        text: msg?.text?.body ?? "",
+        userId: msg?.from ?? "",
         channelId: body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id ?? "",
+        media,
       };
+    }
     default:
       return {
         text: typeof body?.text === "string" ? body.text : JSON.stringify(body),
@@ -37,6 +49,20 @@ function extractText(channel: string, body: any): { text: string; userId: string
 }
 
 export const webhooksRouter = router({
+  whatsapp: publicProcedure
+    .input(z.object({ body: z.any() }))
+    .mutation(async ({ input }) => {
+      const extracted = extractText("whatsapp", input.body);
+      const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
+      await fetch(`${agentUrl}/webhook/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: "whatsapp", payload: { ...extracted, raw: input.body } }),
+        signal: AbortSignal.timeout(5_000),
+      }).catch(() => {});
+      return { received: true, text: extracted.text, channelId: extracted.channelId };
+    }),
+
   ingest: publicProcedure
     .input(z.object({
       channel: z.enum(["telegram", "slack", "discord", "whatsapp", "generic"]).default("generic"),
@@ -49,17 +75,16 @@ export const webhooksRouter = router({
         return { received: false, error: "invalid secret" };
       }
 
-      const { text, userId, channelId } = extractText(input.channel, input.body);
+      const extracted = extractText(input.channel, input.body);
 
       const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
       await fetch(`${agentUrl}/webhook/ingest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: input.channel, payload: { text, userId, channelId, raw: input.body } }),
+        body: JSON.stringify({ channel: input.channel, payload: { ...extracted, raw: input.body } }),
         signal: AbortSignal.timeout(5_000),
       }).catch(() => {});
-
-      return { received: true, channel: input.channel, text: text.slice(0, 200), userId, channelId };
+      return { received: true, channel: input.channel, text: extracted.text.slice(0, 200), userId: extracted.userId, channelId: extracted.channelId };
     }),
 
   telegram: publicProcedure

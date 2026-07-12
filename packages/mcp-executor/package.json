@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@flowmind/db": "workspace:*",
     "@flowmind/shared": "workspace:*",
     "zod": "^3.22.0"
   },

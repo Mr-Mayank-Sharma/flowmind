@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../middleware/trpc";
+import { SkillEngine } from "@flowmind/skill-engine";
+
+const skillEngine = new SkillEngine();
 
 const builtinTools = [
   { id: "read-file", name: "Read File", description: "Read contents of a file from the filesystem", category: "filesystem", auth: false },
@@ -37,6 +40,16 @@ export const toolsRouter = router({
           skillId: skill?.id ?? null,
         };
       });
+    }),
+
+  execute: protectedProcedure
+    .input(z.object({ skillId: z.string(), input: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await skillEngine.execute(input.skillId, {
+        userId: ctx.userId,
+        input: input.input,
+      })
+      return result
     }),
 
   toggle: protectedProcedure

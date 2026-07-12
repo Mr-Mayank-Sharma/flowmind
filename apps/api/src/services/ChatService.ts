@@ -1,5 +1,8 @@
 import { CircuitBreaker, withRetry, logger } from "../infrastructure"
 import { MessageRole } from "@flowmind/shared"
+import { ContextEngine, type ContextChunk } from "@flowmind/context-engine"
+
+const contextEngine = new ContextEngine()
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
 
@@ -65,7 +68,15 @@ export class ChatService {
 
     let reply: string
     try {
-      reply = await callAgentRuntimeWithRetry(input)
+      let enhancedInput = input
+      try {
+        const chunks = await contextEngine.search({ text: input.content, userId: input.userId, topK: 3 })
+        if (chunks.length > 0) {
+          const contextStr = chunks.map((c: ContextChunk) => c.content).join("\n\n")
+          enhancedInput = { ...input, content: `Context:\n${contextStr}\n\nUser: ${input.content}` }
+        }
+      } catch { }
+      reply = await callAgentRuntimeWithRetry(enhancedInput)
     } catch (err) {
       logger.error("Agent runtime call failed after all retries", {
         error: err as Error,
