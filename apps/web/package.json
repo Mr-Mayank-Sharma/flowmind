@@ -51,6 +51,7 @@
     "eslint-config-next": "^14.2.0",
     "postcss": "^8.4.0",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "@flowmind/api": "workspace:*"
   }
 }

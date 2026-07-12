@@ -2,6 +2,8 @@
   "name": "@flowmind/api",
   "version": "0.1.0",
   "private": true,
+  "main": "./src/routers/index.ts",
+  "types": "./src/routers/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
