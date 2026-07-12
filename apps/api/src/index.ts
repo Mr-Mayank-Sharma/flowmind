@@ -45,8 +45,13 @@ async function main() {
   });
 
   await server.register(rateLimit, {
-    max: 100,
-    timeWindow: "1 minute",
+    max: parseInt(process.env.RATE_LIMIT_MAX || "200", 10),
+    timeWindow: process.env.RATE_LIMIT_WINDOW || "1 minute",
+    keyGenerator: (req) => {
+      const userId = (req as any).userId;
+      if (userId) return `user:${userId}`;
+      return req.ip;
+    },
   });
 
   await server.register(fastifyTRPCPlugin, {
