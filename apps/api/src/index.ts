@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/node";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
+import { collectDefaultMetrics, register } from "prom-client";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { appRouter } from "./routers";
 import { createContext } from "./middleware/context";
@@ -53,7 +54,17 @@ async function main() {
     trpcOptions: { router: appRouter, createContext },
   });
 
-  server.get("/health", async () => ({ status: "ok", version: "0.1.0" }));
+  collectDefaultMetrics();
+
+  server.get("/health", async () => {
+    const dbOk = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
+    return { status: dbOk ? "ok" : "degraded", version: "0.1.0", uptime: process.uptime(), db: dbOk };
+  });
+
+  server.get("/metrics", async (_req, reply) => {
+    reply.header("content-type", register.contentType);
+    return register.metrics();
+  });
 
   server.post<{ Body: { name: string; description: string; userId: string } }>("/api/internal/create-pipeline", async (req, reply) => {
     const { name, description, userId } = req.body;
