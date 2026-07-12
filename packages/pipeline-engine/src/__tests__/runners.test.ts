@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { executeNode, getRunner } from "../runners";
 import type { PipelineNode, ExecutionContext, PipelineGraph, NodeOutput } from "../types";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function makeContext(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
@@ -84,7 +88,23 @@ describe("executeNode", () => {
     expect((result.output as any).result).toBe(true);
   });
 
-  it("executes httpRequest with real fetch", async () => {
+  it("executes httpRequest and returns mocked response", async () => {
+    const responseBody = { args: {}, origin: "127.0.0.1" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 200,
+      statusText: "OK",
+      headers: { entries: () => [["content-type", "application/json"]] },
+      text: () => Promise.resolve(JSON.stringify(responseBody)),
+    }));
+
+    const node: PipelineNode = { id: "n1", type: "httpRequest", label: "Fetch", position: { x: 0, y: 0 }, config: { url: "https://httpbin.org/get", method: "GET" } };
+    const ctx = makeContext();
+    const result = await executeNode(node, ctx);
+    expect((result.output as any).status).toBe(200);
+    expect((result.output as any).body).toEqual(responseBody);
+  });
+
+  it.skip("executes httpRequest with real fetch (integration)", async () => {
     vi.setConfig({ testTimeout: 15_000 });
     const node: PipelineNode = { id: "n1", type: "httpRequest", label: "Fetch", position: { x: 0, y: 0 }, config: { url: "https://httpbin.org/get", method: "GET" } };
     const ctx = makeContext();

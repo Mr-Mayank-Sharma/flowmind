@@ -1,6 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { PipelineEngine } from "../engine";
 import type { PipelineGraph } from "../types";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const engine = new PipelineEngine();
 
@@ -11,6 +15,13 @@ describe("PipelineEngine", () => {
   });
 
   it("executes a simple trigger to httpRequest pipeline", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 200,
+      statusText: "OK",
+      headers: { entries: () => [["content-type", "application/json"]] },
+      text: () => Promise.resolve(JSON.stringify({})),
+    }));
+
     const graph: PipelineGraph = {
       nodes: [
         { id: "n1", type: "manualTrigger", label: "Start", position: { x: 0, y: 0 }, config: {} },
@@ -25,7 +36,7 @@ describe("PipelineEngine", () => {
     expect(result.outputs[0]!.nodeId).toBe("n1");
     expect(result.outputs[1]!.nodeId).toBe("n2");
     expect((result.outputs[1]!.output as any).status).toBe(200);
-  }, 15_000);
+  });
 
   it("executes codeExecute node within a pipeline", async () => {
     const graph: PipelineGraph = {
@@ -40,9 +51,16 @@ describe("PipelineEngine", () => {
     expect(result.status).toBe("success");
     const lastOutput = result.outputs[result.outputs.length - 1]!.output as any;
     expect(lastOutput.result).toBe(42);
-  }, 15_000);
+  });
 
   it("executes condition and follows the path", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 200,
+      statusText: "OK",
+      headers: { entries: () => [["content-type", "application/json"]] },
+      text: () => Promise.resolve(JSON.stringify({})),
+    }));
+
     const graph: PipelineGraph = {
       nodes: [
         { id: "n1", type: "manualTrigger", label: "Start", position: { x: 0, y: 0 }, config: {} },
@@ -58,9 +76,11 @@ describe("PipelineEngine", () => {
     const result = await engine.execute("r3", "p1", graph, {});
     expect(result.status).toBe("success");
     expect(result.outputs).toHaveLength(3);
-  }, 15_000);
+  });
 
   it("reports error when a node fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
+
     const graph: PipelineGraph = {
       nodes: [
         { id: "n1", type: "manualTrigger", label: "Start", position: { x: 0, y: 0 }, config: {} },
@@ -72,7 +92,7 @@ describe("PipelineEngine", () => {
     const result = await engine.execute("r4", "p1", graph, {});
     expect(result.status).toBe("error");
     expect(result.outputs[1]!.error).toBeDefined();
-  }, 15_000);
+  });
 
   it("returns runId and timing info", async () => {
     const graph: PipelineGraph = {
