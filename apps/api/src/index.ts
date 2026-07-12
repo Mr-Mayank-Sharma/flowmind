@@ -1,4 +1,5 @@
 import "dotenv/config";
+import * as Sentry from "@sentry/node";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -7,6 +8,13 @@ import { appRouter } from "./routers";
 import { createContext } from "./middleware/context";
 import { prisma } from "@flowmind/db";
 import { BillingService } from "@flowmind/billing";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || "",
+  environment: process.env.NODE_ENV || "development",
+  integrations: [Sentry.fastifyIntegration()],
+  tracesSampleRate: 1.0,
+});
 
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 const HOST = process.env.API_HOST || "0.0.0.0";

@@ -1,8 +1,15 @@
 "use client"
 
 import { Component, type ReactNode, type ErrorInfo } from "react"
+import * as Sentry from "@sentry/react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || "",
+  environment: process.env.NODE_ENV || "development",
+  tracesSampleRate: 1.0,
+})
 
 interface Props {
   children: ReactNode
@@ -25,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ErrorBoundary caught:", error, errorInfo)
+    Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } })
   }
 
   render() {
