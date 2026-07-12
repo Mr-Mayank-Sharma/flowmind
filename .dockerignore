@@ -1,0 +1,8 @@
+node_modules
+.git
+.next
+apps/desktop/dist
+desktop/dist
+*.tsbuildinfo
+.turbo
+coverage
