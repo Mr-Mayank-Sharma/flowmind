@@ -4,9 +4,13 @@
   "private": true,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
   "dependencies": {
-    "@flowmind/db": "workspace:*"
+    "@flowmind/db": "workspace:*",
+    "isolated-vm": "^7.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

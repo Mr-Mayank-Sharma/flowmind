@@ -131,8 +131,33 @@ describe("SkillEngine - sandbox security", () => {
 
     const result = await engine.execute("test-skill-1", { userId: "user-1", input: "x" });
     expect(result.success).toBe(false);
-    expect(result.output).toMatch(/timeout|timed out/i);
+    expect(result.output).toMatch(/timeout|timed out|execution terminated/i);
   }, 10000);
+
+  it("prevents memory bomb from crashing host process", async () => {
+    const { prisma } = await import("@flowmind/db");
+    vi.mocked(prisma.skill.findUnique).mockResolvedValue({
+      id: "test-skill-1",
+      userId: "user-1",
+      name: "test",
+      description: "",
+      triggerPattern: null,
+      code: "let a = []; while(true) { a.push(new Array(100000).fill('x')); if (a.length > 500) break; } return 'survived'",
+      version: 1,
+      isActive: true,
+      successRate: null,
+      successCount: 0,
+      useCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(prisma.skill.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.skill.update).mockResolvedValue({} as any);
+
+    const result = await engine.execute("test-skill-1", { userId: "user-1", input: "x" });
+    expect(result.success).toBe(false);
+    expect(result.output).toMatch(/memory|disposed|timed? out/i);
+  });
 
   it("prevents require access", async () => {
     const { prisma } = await import("@flowmind/db");

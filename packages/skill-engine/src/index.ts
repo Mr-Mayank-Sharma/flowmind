@@ -1,7 +1,8 @@
-import vm from "vm"
+import ivm from "isolated-vm"
 import { prisma } from "@flowmind/db"
 
 const SKILL_TIMEOUT_MS = 5000
+const SKILL_MEMORY_MB = 128
 
 export interface SkillDefinition {
   id: string
@@ -27,25 +28,25 @@ export interface SkillResult {
 }
 
 function runSandboxed(code: string, input: string, userId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("Skill execution timed out"))
-    }, SKILL_TIMEOUT_MS)
+  const isolate = new ivm.Isolate({ memoryLimit: SKILL_MEMORY_MB })
+  const context = isolate.createContextSync()
 
-    try {
-      const sandbox = { input, userId, __result__: "" }
-      vm.createContext(sandbox)
+  const jail = context.global
+  jail.setSync("input", new ivm.ExternalCopy(input).copyInto())
+  jail.setSync("userId", new ivm.ExternalCopy(userId).copyInto())
 
-      const wrappedCode = `__result__ = (function(){ ${code} })(input, userId)`
-      vm.runInContext(wrappedCode, sandbox, { timeout: SKILL_TIMEOUT_MS })
-
-      clearTimeout(timer)
-      resolve(String((sandbox as any).__result__ ?? ""))
-    } catch (err) {
-      clearTimeout(timer)
-      reject(err)
-    }
-  })
+  try {
+    const script = isolate.compileScriptSync(`(function(){ ${code} })(input, userId)`)
+    const result = script.runSync(context, { timeout: SKILL_TIMEOUT_MS })
+    context.release()
+    isolate.dispose()
+    return Promise.resolve(String(result ?? ""))
+  } catch (err) {
+    context.release()
+    isolate.dispose()
+    const message = err instanceof Error ? err.message : String(err)
+    return Promise.reject(new Error(message))
+  }
 }
 
 export class SkillEngine {
