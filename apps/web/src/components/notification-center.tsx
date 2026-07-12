@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Bell, CheckCheck, X, Info, AlertTriangle, CheckCircle, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
 
 interface Notification {
   id: string
@@ -13,13 +14,16 @@ interface Notification {
   read: boolean
 }
 
-const mockNotifications: Notification[] = [
-  { id: "1", title: "Pipeline completed", message: "Customer Support Agent pipeline finished successfully.", type: "success", time: "2 min ago", read: false },
-  { id: "2", title: "Agent deployed", message: "Sales Assistant v2.1 deployed to production.", type: "info", time: "15 min ago", read: false },
-  { id: "3", title: "High latency detected", message: "LLM response time exceeded 5s threshold.", type: "warning", time: "1 hour ago", read: false },
-  { id: "4", title: "API key expiring", message: "OpenAI API key expires in 7 days.", type: "error", time: "3 hours ago", read: true },
-  { id: "5", title: "Storage alert", message: "Context store at 82% capacity.", type: "warning", time: "5 hours ago", read: true },
-]
+function toClientNotif(raw: any): Notification {
+  return {
+    id: raw.id,
+    title: raw.title,
+    message: raw.body ?? raw.title,
+    type: raw.type === "error" ? "error" : raw.type === "warning" ? "warning" : raw.type === "success" ? "success" : "info",
+    time: raw.createdAt ? new Date(raw.createdAt).toLocaleDateString() : "",
+    read: raw.read ?? false,
+  }
+}
 
 const iconMap = {
   info: Info,
@@ -37,10 +41,20 @@ const colorMap = {
 
 export function NotificationCenter() {
   const [open, setOpen] = useState(false)
-  const [notifications, setNotifications] = useState(mockNotifications)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    api.settings.getNotifications().then((data: any[]) => {
+      setNotifications((data ?? []).map(toClientNotif))
+    }).catch(() => {}).finally(() => setLoaded(true))
+  }, [])
+
   const unreadCount = notifications.filter((n) => !n.read).length
 
   const markAllRead = () => {
+    const updates = notifications.filter((n) => !n.read).map((n) => n.id)
+    Promise.all(updates.map((id) => api.settings.updateNotification({ id, read: true }).catch(() => {})))
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
   }
 
@@ -73,7 +87,11 @@ export function NotificationCenter() {
               )}
             </div>
             <div className="max-h-80 overflow-y-auto">
-              {notifications.length === 0 ? (
+              {!loaded ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Bell className="h-6 w-6 animate-pulse" />
+                </div>
+              ) : notifications.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                   <Bell className="h-8 w-8" />
                   <p className="text-sm">No notifications</p>

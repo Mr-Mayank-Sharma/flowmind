@@ -17,6 +17,8 @@
     "desktop": "pnpm --filter @flowmind/desktop start",
     "desktop:dev": "pnpm --filter @flowmind/desktop dev",
     "desktop:build": "pnpm --filter @flowmind/desktop build",
+    "setup": "pnpm install && pnpm db:migrate && pnpm db:seed",
+    "postinstall": "pnpm db:generate",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

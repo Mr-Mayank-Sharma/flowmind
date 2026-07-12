@@ -1,6 +1,16 @@
 import { prisma } from "./index";
 import bcrypt from "bcryptjs";
 
+const CATEGORIES = [
+  { name: "SEO & Content Marketing", slug: "seo-content-marketing", icon: "Search", description: "SEO optimization and content creation workflows", sortOrder: 1 },
+  { name: "Research & Intelligence", slug: "research-intelligence", icon: "Brain", description: "Research and competitive analysis workflows", sortOrder: 2 },
+  { name: "Video & Media Production", slug: "video-media-production", icon: "Video", description: "Video and media creation workflows", sortOrder: 3 },
+  { name: "Photo & Visual Design", slug: "photo-visual-design", icon: "Image", description: "Design and visual asset creation workflows", sortOrder: 4 },
+  { name: "Content Writing", slug: "content-writing", icon: "FileText", description: "Writing and copy creation workflows", sortOrder: 5 },
+  { name: "Marketing Automation", slug: "marketing-automation", icon: "Megaphone", description: "Marketing campaign and outreach workflows", sortOrder: 6 },
+  { name: "Business Operations", slug: "business-operations", icon: "Building2", description: "Business process automation workflows", sortOrder: 7 },
+];
+
 const DEFAULT_FLOWS = [
   {
     category: "SEO & Content Marketing",
@@ -139,6 +149,15 @@ async function seed() {
   });
 
   console.log(`  Admin: admin@flowmind.ai / admin123`);
+
+  for (const cat of CATEGORIES) {
+    await prisma.flowCategory.upsert({
+      where: { slug: cat.slug },
+      update: {},
+      create: cat,
+    });
+  }
+  console.log(`  Created ${CATEGORIES.length} categories`);
 
   for (const flow of DEFAULT_FLOWS) {
     const pipeline = await prisma.pipeline.create({

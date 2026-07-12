@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Search, Bot, Plus, Play, Square, Settings, MessageSquare, BarChart3, Cpu, Trash2, Loader2, CheckCircle, AlertTriangle } from "lucide-react"
+import { Search, Bot, Plus, Play, Square, Settings, MessageSquare, BarChart3, Trash2, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
@@ -206,47 +206,7 @@ export default function AgentsPage() {
               </div>
             </Card>
 
-            <Card className="p-5">
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                <Cpu className="h-4 w-4 text-muted-foreground" />
-                Resource Usage
-              </h3>
-              <div className="space-y-3">
-                {[
-                  { label: "CPU", value: 34, color: "bg-blue-500" },
-                  { label: "RAM", value: 56, color: "bg-emerald-500" },
-                ].map((m) => (
-                  <div key={m.label}>
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">{m.label}</span>
-                      <span className="font-mono">{m.value}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className={cn("h-full rounded-full transition-all", m.color)} style={{ width: `${m.value}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
 
-            <Card className="p-5">
-              <h3 className="text-sm font-semibold mb-3">Recent Activity</h3>
-              <div className="space-y-2">
-                {[
-                  { type: "success" as const, msg: "Processed 15 support tickets", time: "2 min ago" },
-                  { type: "info" as const, msg: "Context window at 72% capacity", time: "15 min ago" },
-                  { type: "warning" as const, msg: "Response time exceeded 3s threshold", time: "1 hour ago" },
-                ].map((act, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs">
-                    {act.type === "success" ? <CheckCircle className="h-3 w-3 text-emerald-400 mt-0.5" /> :
-                     act.type === "warning" ? <AlertTriangle className="h-3 w-3 text-amber-400 mt-0.5" /> :
-                     <Loader2 className="h-3 w-3 text-blue-400 mt-0.5 animate-spin-slow" />}
-                    <span className="text-foreground/80">{act.msg}</span>
-                    <span className="text-muted-foreground ml-auto shrink-0">{act.time}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
           </div>
         )}
       </div>

@@ -77,15 +77,26 @@ export default function MarketplacePage() {
             >
               All
             </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.slug)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${selectedCategory === cat.slug ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:bg-accent"}`}
-              >
-                {cat.name}
-              </button>
-            ))}
+            {categories.length > 0
+              ? categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.name)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${selectedCategory === cat.name ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:bg-accent"}`}
+                >
+                  {cat.name}
+                </button>
+              ))
+              : [...new Set(flows.map((f: any) => f.category).filter(Boolean))].map((cat: string) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${selectedCategory === cat ? "bg-primary text-primary-foreground" : "bg-surface text-muted-foreground hover:bg-accent"}`}
+                >
+                  {cat}
+                </button>
+              ))
+            }
           </div>
         </div>
 

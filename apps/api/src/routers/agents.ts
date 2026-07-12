@@ -2,6 +2,17 @@ import { z } from "zod"
 import { TRPCError } from "@trpc/server"
 import { router, protectedProcedure } from "../middleware/trpc"
 
+const RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
+
+async function runtimeHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${RUNTIME_URL}/health`, { signal: AbortSignal.timeout(3000) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export const agentsRouter = router({
   list: protectedProcedure
     .query(async ({ ctx }) => {
@@ -69,7 +80,16 @@ export const agentsRouter = router({
       if (!agent || agent.userId !== ctx.userId) {
         throw new TRPCError({ code: "NOT_FOUND" })
       }
-      const newStatus = agent.status === "RUNNING" ? "STOPPED" : "DEPLOYING"
+
+      if (agent.status === "RUNNING") {
+        return ctx.prisma.agent.update({
+          where: { id: input.id },
+          data: { status: "STOPPED" },
+        })
+      }
+
+      const alive = await runtimeHealth()
+      const newStatus = alive ? "RUNNING" : "ERROR"
       return ctx.prisma.agent.update({
         where: { id: input.id },
         data: { status: newStatus },

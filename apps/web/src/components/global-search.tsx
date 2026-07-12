@@ -18,20 +18,7 @@ const pages = [
   { href: "/settings", label: "Settings" },
 ]
 
-const mockMarketplaceFlows = [
-  { href: "/marketplace/sentiment-analysis", label: "Sentiment Analysis Pipeline" },
-  { href: "/marketplace/customer-support", label: "Customer Support Agent" },
-  { href: "/marketplace/data-extraction", label: "Data Extraction Workflow" },
-  { href: "/marketplace/summarization", label: "Text Summarization" },
-  { href: "/marketplace/image-gen", label: "Image Generation Pipeline" },
-]
 
-const mockAgents = [
-  { href: "/agents/assistant-1", label: "Research Assistant" },
-  { href: "/agents/assistant-2", label: "Code Review Bot" },
-  { href: "/agents/assistant-3", label: "Data Analyst" },
-  { href: "/agents/assistant-4", label: "Writing Assistant" },
-]
 
 type Result = { href: string; label: string; category: string }
 
@@ -44,8 +31,6 @@ export function GlobalSearch() {
 
   const allResults: Result[] = [
     ...pages.map((p) => ({ ...p, category: "Pages" })),
-    ...mockMarketplaceFlows.map((f) => ({ ...f, category: "Marketplace" })),
-    ...mockAgents.map((a) => ({ ...a, category: "Agents" })),
   ]
 
   const filtered = query.trim()

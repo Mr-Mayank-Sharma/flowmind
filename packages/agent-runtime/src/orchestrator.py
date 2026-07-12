@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import re
 from typing import Any, AsyncGenerator
+
+import httpx
 
 from src.context_engine import ContextEngine
 from src.llm_router import LLMRouter
 from src.models import Memory, StreamChunk
 from src.resilience import ToolExecutor
 from src.skill_engine import SkillEngine
+
+API_URL = os.environ.get("FLOWMIND_API_URL", "http://localhost:3001")
 
 SYSTEM_PROMPT = (
     "You are FlowMind Agent, an AI assistant that helps users build and manage workflows. "
@@ -52,7 +58,7 @@ class AgentOrchestrator:
         parts.append(f"User: {message}")
         return "\n\n".join(parts)
 
-    async def _handle_tools(self, text: str) -> list[StreamChunk]:
+    async def _handle_tools(self, text: str, user_message: str) -> list[StreamChunk]:
         chunks: list[StreamChunk] = []
         tool_triggers = {
             "create_skill": self.skill_engine.create_skill,
@@ -62,6 +68,38 @@ class AgentOrchestrator:
                 chunks.append(StreamChunk.tool_call(name, {}))
                 result = await handler(name=f"{name}_result", description="", code="")
                 chunks.append(StreamChunk.tool_result(name, f"Skill created: {result.id}"))
+
+        pipeline_patterns = [
+            r"create\s+a\s+pipeline",
+            r"create\s+a\s+workflow",
+            r"make\s+a\s+pipeline",
+            r"build\s+a\s+pipeline",
+            r"create\s+pipeline\s+for",
+        ]
+        combined = f"{text} {user_message}".lower()
+        if any(re.search(p, combined) for p in pipeline_patterns):
+            lines = user_message.strip().split("\n")
+            pipeline_name = lines[0][:80] if lines else "New Pipeline"
+            pipeline_desc = user_message.strip()[:500]
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.post(
+                        f"{API_URL}/api/internal/create-pipeline",
+                        json={"name": pipeline_name, "description": pipeline_desc, "userId": self.user_id},
+                    )
+                    if r.is_success:
+                        data = r.json()
+                        pipeline_id = data.get("id", "")
+                        chunks.append(StreamChunk.tool_call("create_pipeline", {"pipeline_id": pipeline_id}))
+                        chunks.append(StreamChunk.tool_result(
+                            "create_pipeline",
+                            f"Pipeline created! Open it at /pipelines/{pipeline_id}",
+                        ))
+                    else:
+                        chunks.append(StreamChunk.tool_result("create_pipeline", f"Failed to create pipeline: {r.text}"))
+            except Exception as e:
+                chunks.append(StreamChunk.tool_result("create_pipeline", f"Error creating pipeline: {e}"))
+
         return chunks
 
     async def stream_response(
@@ -85,10 +123,6 @@ class AgentOrchestrator:
                     )
                 )
 
-        tool_chunks = await self._handle_tools(prompt)
-        for tc in tool_chunks:
-            yield tc
-
     async def send_message(
         self, message: str, context: list[dict[str, Any]] | None = None
     ) -> str:
@@ -96,4 +130,12 @@ class AgentOrchestrator:
         async for chunk in self.stream_response(message, context):
             if chunk.type == "token":
                 tokens.append(chunk.content)
-        return "".join(tokens)
+
+        result = "".join(tokens)
+
+        tool_chunks = await self._handle_tools(result, message)
+        tool_results = [tc for tc in tool_chunks if tc.type == "tool_result"]
+        if tool_results:
+            result += "\n\n" + "\n".join(tc.content for tc in tool_results)
+
+        return result
