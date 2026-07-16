@@ -15,11 +15,37 @@ from src.resilience import ToolExecutor
 from src.skill_engine import SkillEngine
 
 API_URL = os.environ.get("FLOWMIND_API_URL", "http://localhost:3001")
+MAX_AGENT_ITERATIONS = 10
 
 SYSTEM_PROMPT = (
-    "You are FlowMind Agent, an AI assistant that helps users build and manage workflows. "
-    "You have access to context, skills, and tools. Be concise and helpful."
+    "You are FlowMind Agent, an AI assistant that helps users build websites, apps, "
+    "and automation workflows. You can use tools to read and write files, run commands, "
+    "search the web, and more."
 )
+
+TOOL_CALLING_PROMPT = """
+You have access to these tools:
+
+- write(filePath: str, content: str) — Create or overwrite a file
+- read(filePath: str) — Read the contents of a file
+- edit(filePath: str, oldString: str, newString: str) — Replace text in a file
+- bash(command: str, timeout: int, workdir: str) — Execute a shell command
+- grep(pattern: str, path: str) — Search files for a pattern
+- glob(pattern: str) — Find files matching a pattern
+- websearch(query: str) — Search the web for information
+- webfetch(url: str) — Fetch content from a URL
+
+To use a tool, output EXACTLY this format (with the actual arguments):
+
+<tool name="write">
+filePath: /absolute/path/to/file.html
+content: <!DOCTYPE html>
+<html>...
+</tool>
+
+After the tool executes, you will see its result. You can use multiple tools in sequence.
+When you are done, respond naturally to the user with a summary of what was done.
+"""
 
 TOOLS_DESCRIPTION = (
     "Available tools:\n"
@@ -52,6 +78,20 @@ class AgentOrchestrator:
         async for chunk in self.llm_router.stream_response(prompt, provider_name, model_name):
             yield chunk
 
+    async def _stream_chat(
+        self, messages: list[dict], system_prompt: str = ""
+    ) -> AsyncGenerator[StreamChunk, None]:
+        full_messages = []
+        if system_prompt:
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(messages)
+
+        await self.llm_router.discover_models()
+        config = {"estimated_tokens": sum(len(m.get("content", "").split()) for m in full_messages), "prefer_local": True}
+        provider_name, model_name = self.llm_router.select_provider(config)
+        async for chunk in self.llm_router.stream_chat(provider_name, model_name, full_messages):
+            yield chunk
+
     async def _build_prompt(self, message: str, context_blocks: list[dict[str, Any]]) -> str:
         parts = [SYSTEM_PROMPT]
 
@@ -69,7 +109,30 @@ class AgentOrchestrator:
             parts.append(f"Conversation history:\n{history_text}")
 
         parts.append(f"User: {message}")
+        parts.append(TOOL_CALLING_PROMPT)
         return "\n\n".join(parts)
+
+    # ── Tool Call Parsing ──────────────────────────────────────────────
+
+    TOOL_CALL_RE = re.compile(
+        r'<tool\s+name=["\'](\w+)["\']>\s*\n(.*?)\n</tool>',
+        re.DOTALL,
+    )
+
+    def _parse_tool_calls(self, text: str) -> list[dict]:
+        calls: list[dict] = []
+        for match in self.TOOL_CALL_RE.finditer(text):
+            name = match.group(1)
+            body = match.group(2).strip()
+            args: dict[str, Any] = {}
+            for line in body.split("\n"):
+                line = line.strip()
+                if ":" in line:
+                    key, _, val = line.partition(":")
+                    args[key.strip()] = val.strip()
+            if name and args:
+                calls.append({"name": name, "args": args})
+        return calls
 
     def _extract_json(self, text: str) -> dict | None:
         text = text.strip()
@@ -96,6 +159,8 @@ class AgentOrchestrator:
             for content in matches[:5]:
                 blocks.append(("output.txt", content.strip()))
         return blocks
+
+    # ── Fallback Portfolio Template ────────────────────────────────────
 
     @staticmethod
     def _portfolio_fallback(user_message: str) -> list[tuple[str, str]]:
@@ -217,6 +282,8 @@ footer { text-align: center; padding: 2rem; color: #777; font-size: .85rem; bord
             ("/home/mayanksharma/Desktop/portfolio/style.css", css),
         ]
 
+    # ── Tool Execution Bridge ──────────────────────────────────────────
+
     async def _execute_via_api(self, tool_id: str, args: dict) -> str:
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -231,60 +298,79 @@ footer { text-align: center; padding: 2rem; color: #777; font-size: .85rem; bord
         except Exception as e:
             return f"Error: {e}"
 
-    async def _handle_tools(self, text: str, user_message: str) -> list[StreamChunk]:
-        chunks: list[StreamChunk] = []
+    # ── Agent Loop ─────────────────────────────────────────────────────
 
-        tool_triggers = {
-            "create_skill": self.skill_engine.create_skill,
-        }
-        for name, handler in tool_triggers.items():
-            if name in text:
-                chunks.append(StreamChunk.tool_call(name, {}))
-                result = await handler(name=f"{name}_result", description="", code="")
-                chunks.append(StreamChunk.tool_result(name, f"Skill created: {result.id}"))
+    async def _agent_loop(
+        self, user_message: str, context_blocks: list[dict]
+    ) -> tuple[str, list[tuple[str, str]]]:
+        conversations: list[dict] = []
+        all_tool_results: list[tuple[str, str]] = []
+        final_text = ""
+        used_plan = False
 
-        pipeline_patterns = [
-            r"create\s+a\s+pipeline",
-            r"create\s+a\s+workflow",
-            r"make\s+a\s+pipeline",
-            r"build\s+a\s+pipeline",
-            r"create\s+pipeline\s+for",
-        ]
-        combined = f"{text} {user_message}".lower()
-        if any(re.search(p, combined) for p in pipeline_patterns):
-            lines = user_message.strip().split("\n")
-            pipeline_name = lines[0][:80] if lines else "New Pipeline"
-            pipeline_desc = user_message.strip()[:500]
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    r = await client.post(
-                        f"{API_URL}/api/internal/create-pipeline",
-                        json={"name": pipeline_name, "description": pipeline_desc, "userId": self.user_id},
-                    )
-                    if r.is_success:
-                        data = r.json()
-                        pipeline_id = data.get("id", "")
-                        chunks.append(StreamChunk.tool_call("create_pipeline", {"pipeline_id": pipeline_id}))
-                        chunks.append(StreamChunk.tool_result(
-                            "create_pipeline",
-                            f"Pipeline created! Open it at /pipelines/{pipeline_id}",
-                        ))
-                    else:
-                        chunks.append(StreamChunk.tool_result("create_pipeline", f"Failed to create pipeline: {r.text}"))
-            except Exception as e:
-                chunks.append(StreamChunk.tool_result("create_pipeline", f"Error creating pipeline: {e}"))
+        if context_blocks:
+            ctx_text = "\n".join(
+                f"[{b.get('source', 'unknown')}]: {b.get('content', '')}"
+                for b in context_blocks
+            )
+            if ctx_text:
+                conversations.append({"role": "system", "content": f"Relevant context:\n{ctx_text}"})
 
-        execution_keywords = [
-            "make", "create", "build", "generate", "scaffold", "write a",
-            "develop", "implement", "portfolio", "website", "landing page", "app",
-        ]
-        if any(kw in combined for kw in execution_keywords):
-            tool_chunks = await self._plan_and_execute(user_message)
-            chunks.extend(tool_chunks)
+        if self._history:
+            history_text = "\n".join(
+                f"{m.role}: {m.content}" for m in self._history[-10:]
+            )
+            conversations.append({"role": "system", "content": f"Conversation history:\n{history_text}"})
 
-        return chunks
+        conversations.append({"role": "user", "content": user_message})
 
-    async def _plan_and_execute(self, user_message: str) -> list[StreamChunk]:
+        for iteration in range(MAX_AGENT_ITERATIONS):
+            system = SYSTEM_PROMPT + "\n\n" + TOOL_CALLING_PROMPT
+
+            response = ""
+            async for chunk in self._stream_chat(conversations, system_prompt=system):
+                if chunk.type == "token":
+                    response += chunk.content
+                if chunk.type == "error":
+                    break
+
+            tool_calls = self._parse_tool_calls(response)
+
+            if not tool_calls:
+                final_text = response
+                break
+
+            conversations.append({"role": "assistant", "content": response})
+
+            for tc in tool_calls:
+                name = tc["name"]
+                args = tc["args"]
+                result = await self._execute_via_api(name, args)
+                all_tool_results.append((name, result))
+                conversations.append({
+                    "role": "system",
+                    "content": f"Tool [{name}] result:\n{result[:500]}",
+                })
+                used_plan = True
+
+        if not final_text:
+            final_text = response if "response" in dir() else "I completed the task."
+
+        if not used_plan:
+            execution_keywords = [
+                "make", "create", "build", "generate", "scaffold", "write a",
+                "develop", "implement", "portfolio", "website", "landing page", "app",
+            ]
+            combined = f"{final_text} {user_message}".lower()
+            if any(kw in combined for kw in execution_keywords):
+                plan_chunks = await self._plan_and_execute_fallback(user_message)
+                for pc in plan_chunks:
+                    if pc.type == "tool_result":
+                        all_tool_results.append((pc.content, pc.metadata.get("result", "")))
+
+        return final_text, all_tool_results
+
+    async def _plan_and_execute_fallback(self, user_message: str) -> list[StreamChunk]:
         chunks: list[StreamChunk] = []
 
         plan_prompt = (
@@ -335,6 +421,55 @@ footer { text-align: center; padding: 2rem; color: #777; font-size: .85rem; bord
             chunks.append(StreamChunk.tool_result(f"write_{name}", result))
         return chunks
 
+    # ── Old-style tool triggers (pipeline + skill creation) ────────────
+
+    async def _handle_tools(self, text: str, user_message: str) -> list[StreamChunk]:
+        chunks: list[StreamChunk] = []
+
+        tool_triggers = {
+            "create_skill": self.skill_engine.create_skill,
+        }
+        for name, handler in tool_triggers.items():
+            if name in text:
+                chunks.append(StreamChunk.tool_call(name, {}))
+                result = await handler(name=f"{name}_result", description="", code="")
+                chunks.append(StreamChunk.tool_result(name, f"Skill created: {result.id}"))
+
+        pipeline_patterns = [
+            r"create\s+a\s+pipeline",
+            r"create\s+a\s+workflow",
+            r"make\s+a\s+pipeline",
+            r"build\s+a\s+pipeline",
+            r"create\s+pipeline\s+for",
+        ]
+        combined = f"{text} {user_message}".lower()
+        if any(re.search(p, combined) for p in pipeline_patterns):
+            lines = user_message.strip().split("\n")
+            pipeline_name = lines[0][:80] if lines else "New Pipeline"
+            pipeline_desc = user_message.strip()[:500]
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.post(
+                        f"{API_URL}/api/internal/create-pipeline",
+                        json={"name": pipeline_name, "description": pipeline_desc, "userId": self.user_id},
+                    )
+                    if r.is_success:
+                        data = r.json()
+                        pipeline_id = data.get("id", "")
+                        chunks.append(StreamChunk.tool_call("create_pipeline", {"pipeline_id": pipeline_id}))
+                        chunks.append(StreamChunk.tool_result(
+                            "create_pipeline",
+                            f"Pipeline created! Open it at /pipelines/{pipeline_id}",
+                        ))
+                    else:
+                        chunks.append(StreamChunk.tool_result("create_pipeline", f"Failed to create pipeline: {r.text}"))
+            except Exception as e:
+                chunks.append(StreamChunk.tool_result("create_pipeline", f"Error creating pipeline: {e}"))
+
+        return chunks
+
+    # ── Public API ─────────────────────────────────────────────────────
+
     async def stream_response(
         self, message: str, context: list[dict[str, Any]] | None = None
     ) -> AsyncGenerator[StreamChunk, None]:
@@ -359,21 +494,25 @@ footer { text-align: center; padding: 2rem; color: #777; font-size: .85rem; bord
     async def send_message(
         self, message: str, context: list[dict[str, Any]] | None = None
     ) -> str:
-        tokens: list[str] = []
-        async for chunk in self.stream_response(message, context):
-            if chunk.type == "token":
-                tokens.append(chunk.content)
+        context_blocks = context or []
 
-        result = "".join(tokens)
+        self._history.append(Memory(user_id=self.user_id, content=message, role="user"))
 
-        tool_chunks = await self._handle_tools(result, message)
-        tool_results = [tc for tc in tool_chunks if tc.type == "tool_result"]
+        final_text, tool_results = await self._agent_loop(message, context_blocks)
+
         if tool_results:
             lines = []
-            for tc in tool_results:
-                content = tc.content
-                summary = content[:200] + "..." if len(content) > 200 else content
-                lines.append(f"[{tc.metadata.get('result', tc.content[:60])}]")
-            result += "\n\n--- Tool Results ---\n" + "\n".join(lines)
+            for name, result in tool_results:
+                summary = result[:200] + "..." if len(result) > 200 else result
+                lines.append(f"- {name}: {summary}")
+            final_text += "\n\n--- Tool Results ---\n" + "\n".join(lines)
 
-        return result
+        self._history.append(
+            Memory(
+                user_id=self.user_id,
+                content=final_text,
+                role="assistant",
+            )
+        )
+
+        return final_text
