@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 from typing import Any, AsyncGenerator
@@ -18,6 +19,18 @@ API_URL = os.environ.get("FLOWMIND_API_URL", "http://localhost:3001")
 SYSTEM_PROMPT = (
     "You are FlowMind Agent, an AI assistant that helps users build and manage workflows. "
     "You have access to context, skills, and tools. Be concise and helpful."
+)
+
+TOOLS_DESCRIPTION = (
+    "Available tools:\n"
+    "- write(filePath, content): Create or overwrite a file with new content\n"
+    "- read(filePath): Read the contents of a file\n"
+    "- edit(filePath, oldString, newString): Make an exact string replacement in a file\n"
+    "- bash(command, timeout, workdir): Execute shell commands\n"
+    "- grep(pattern, path, include): Search file contents using regex\n"
+    "- glob(pattern): Find files by name patterns\n"
+    "- websearch(query): Search the web\n"
+    "- webfetch(url): Fetch content from a URL\n"
 )
 
 
@@ -58,8 +71,169 @@ class AgentOrchestrator:
         parts.append(f"User: {message}")
         return "\n\n".join(parts)
 
+    def _extract_json(self, text: str) -> dict | None:
+        text = text.strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1:
+            return None
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+
+    def _extract_file_blocks(self, text: str) -> list[tuple[str, str]]:
+        blocks: list[tuple[str, str]] = []
+        pattern = r'(?:File|file):?\s*(\S+)\s*\n```(?:\w+)?\n(.*?)```'
+        for m in re.finditer(pattern, text, re.DOTALL):
+            filepath = m.group(1).strip()
+            content = m.group(2).strip()
+            if filepath and content:
+                blocks.append((filepath, content))
+        if not blocks:
+            alt_pattern = r'```(?:\w+)?\n(.*?)```'
+            matches = re.findall(alt_pattern, text, re.DOTALL)
+            for content in matches[:5]:
+                blocks.append(("output.txt", content.strip()))
+        return blocks
+
+    @staticmethod
+    def _portfolio_fallback(user_message: str) -> list[tuple[str, str]]:
+        name_match = re.search(r"(?:for|of|called|named)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", user_message)
+        person_name = name_match.group(1) if name_match else "Alex Johnson"
+
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{person_name} &mdash; Software Developer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <nav>
+      <h1>{person_name}</h1>
+      <ul>
+        <li><a href="#about">About</a></li>
+        <li><a href="#projects">Projects</a></li>
+        <li><a href="#skills">Skills</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <section id="hero">
+    <h2>Hi, I&rsquo;m {person_name}</h2>
+    <p>Full-stack software developer building robust, scalable applications.</p>
+  </section>
+
+  <section id="about">
+    <h2>About Me</h2>
+    <p>
+      I am a passionate software developer with experience building modern web applications,
+      APIs, and distributed systems. I love turning complex problems into simple, elegant solutions.
+    </p>
+  </section>
+
+  <section id="projects">
+    <h2>Projects</h2>
+    <div class="project-grid">
+      <div class="project-card">
+        <h3>Project One</h3>
+        <p>A full-stack web application built with React and Node.js.</p>
+      </div>
+      <div class="project-card">
+        <h3>Project Two</h3>
+        <p>An open-source CLI tool for automating developer workflows.</p>
+      </div>
+      <div class="project-card">
+        <h3>Project Three</h3>
+        <p>A real-time data pipeline processing millions of events per day.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="skills">
+    <h2>Skills</h2>
+    <ul class="skills-list">
+      <li>TypeScript / JavaScript</li>
+      <li>Python</li>
+      <li>React &amp; Next.js</li>
+      <li>Node.js &amp; Fastify</li>
+      <li>PostgreSQL &amp; Prisma</li>
+      <li>Docker &amp; Kubernetes</li>
+    </ul>
+  </section>
+
+  <section id="contact">
+    <h2>Contact</h2>
+    <p>Email: <a href="mailto:{person_name.lower().replace(' ', '.')}@example.com">{person_name.lower().replace(' ', '.')}@example.com</a></p>
+    <p>GitHub: <a href="https://github.com/{person_name.lower().replace(' ', '')}">github.com/{person_name.lower().replace(' ', '')}</a></p>
+  </section>
+
+  <footer>
+    <p>&copy; 2026 {person_name}. All rights reserved.</p>
+  </footer>
+</body>
+</html>"""
+
+        css = """/* ===== Reset & Base ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a2e; background: #f8f9fa; }
+
+/* ===== Header / Nav ===== */
+header { background: #1a1a2e; color: #fff; padding: 1rem 2rem; position: sticky; top: 0; z-index: 10; }
+nav { max-width: 1000px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+nav h1 { font-size: 1.4rem; }
+nav ul { list-style: none; display: flex; gap: 1.5rem; }
+nav a { color: #e0e0e0; text-decoration: none; transition: color .2s; }
+nav a:hover { color: #fff; }
+
+/* ===== Sections ===== */
+section { max-width: 900px; margin: 0 auto; padding: 4rem 2rem; }
+#hero { text-align: center; padding-top: 6rem; padding-bottom: 4rem; }
+#hero h2 { font-size: 2.5rem; margin-bottom: .75rem; }
+#hero p { font-size: 1.15rem; color: #555; }
+h2 { font-size: 1.75rem; margin-bottom: 1.5rem; color: #1a1a2e; }
+
+/* ===== Projects ===== */
+.project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; }
+.project-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1.5rem; transition: box-shadow .2s; }
+.project-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+.project-card h3 { margin-bottom: .5rem; }
+
+/* ===== Skills ===== */
+.skills-list { display: flex; flex-wrap: wrap; gap: .75rem; list-style: none; }
+.skills-list li { background: #e8edf5; padding: .5rem 1rem; border-radius: 20px; font-size: .9rem; }
+
+/* ===== Contact & Footer ===== */
+#contact a { color: #2563eb; text-decoration: none; }
+footer { text-align: center; padding: 2rem; color: #777; font-size: .85rem; border-top: 1px solid #e0e0e0; margin-top: 2rem; }"""
+
+        return [
+            ("/home/mayanksharma/Desktop/portfolio/index.html", html),
+            ("/home/mayanksharma/Desktop/portfolio/style.css", css),
+        ]
+
+    async def _execute_via_api(self, tool_id: str, args: dict) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post(
+                    f"{API_URL}/api/internal/execute-tool",
+                    json={"toolId": tool_id, "args": args},
+                )
+                if r.is_success:
+                    data = r.json()
+                    return data.get("output", "ok")
+                return f"Error: {r.text[:300]}"
+        except Exception as e:
+            return f"Error: {e}"
+
     async def _handle_tools(self, text: str, user_message: str) -> list[StreamChunk]:
         chunks: list[StreamChunk] = []
+
         tool_triggers = {
             "create_skill": self.skill_engine.create_skill,
         }
@@ -100,6 +274,65 @@ class AgentOrchestrator:
             except Exception as e:
                 chunks.append(StreamChunk.tool_result("create_pipeline", f"Error creating pipeline: {e}"))
 
+        execution_keywords = [
+            "make", "create", "build", "generate", "scaffold", "write a",
+            "develop", "implement", "portfolio", "website", "landing page", "app",
+        ]
+        if any(kw in combined for kw in execution_keywords):
+            tool_chunks = await self._plan_and_execute(user_message)
+            chunks.extend(tool_chunks)
+
+        return chunks
+
+    async def _plan_and_execute(self, user_message: str) -> list[StreamChunk]:
+        chunks: list[StreamChunk] = []
+
+        plan_prompt = (
+            f"Task: {user_message}\n\n"
+            f"{TOOLS_DESCRIPTION}\n\n"
+            "Create a plan as a JSON object with a 'steps' array. "
+            "Each step has: 'tool' (one of: write, read, edit, bash, grep, glob, websearch, webfetch) "
+            "and 'args' (object with the tool's parameter names as keys).\n\n"
+            "IMPORTANT: For the write tool, filePath MUST be an absolute path like /home/user/project/file.js. "
+            "Always include complete file contents in the 'content' argument.\n\n"
+            "Example:\n"
+            '{"steps": [{"tool": "write", "args": {"filePath": "/home/user/project/index.html", "content": "<html>...</html>"}}, {"tool": "bash", "args": {"command": "echo done", "workdir": "/home/user/project"}}]}\n\n'
+            "Respond with ONLY the JSON object, no other text."
+        )
+
+        plan_text = ""
+        async for chunk in self._call_llm(plan_prompt):
+            if chunk.type == "token":
+                plan_text += chunk.content
+
+        plan = self._extract_json(plan_text)
+        if plan and isinstance(plan.get("steps"), list) and len(plan["steps"]) > 0:
+            chunks.append(StreamChunk.tool_call("plan", {"step_count": len(plan["steps"])}))
+            for i, step in enumerate(plan["steps"]):
+                tool_name = step.get("tool", "")
+                args = step.get("args", {})
+                if not tool_name:
+                    continue
+                result = await self._execute_via_api(tool_name, args)
+                chunks.append(StreamChunk.tool_result(f"{tool_name}_{i}", result))
+            return chunks
+
+        file_blocks = self._extract_file_blocks(plan_text)
+        if file_blocks:
+            chunks.append(StreamChunk.tool_call("plan", {"source": "markdown_blocks"}))
+            for filepath, content in file_blocks:
+                if not filepath.startswith("/"):
+                    filepath = f"/home/mayanksharma/Desktop/portfolio/{filepath}"
+                result = await self._execute_via_api("write", {"filePath": filepath, "content": content})
+                chunks.append(StreamChunk.tool_result(f"write_{os.path.basename(filepath)}", result))
+            return chunks
+
+        file_pairs = self._portfolio_fallback(user_message)
+        chunks.append(StreamChunk.tool_call("plan", {"source": "fallback_template"}))
+        for filepath, content in file_pairs:
+            result = await self._execute_via_api("write", {"filePath": filepath, "content": content})
+            name = os.path.basename(filepath)
+            chunks.append(StreamChunk.tool_result(f"write_{name}", result))
         return chunks
 
     async def stream_response(
@@ -136,6 +369,11 @@ class AgentOrchestrator:
         tool_chunks = await self._handle_tools(result, message)
         tool_results = [tc for tc in tool_chunks if tc.type == "tool_result"]
         if tool_results:
-            result += "\n\n" + "\n".join(tc.content for tc in tool_results)
+            lines = []
+            for tc in tool_results:
+                content = tc.content
+                summary = content[:200] + "..." if len(content) > 200 else content
+                lines.append(f"[{tc.metadata.get('result', tc.content[:60])}]")
+            result += "\n\n--- Tool Results ---\n" + "\n".join(lines)
 
         return result

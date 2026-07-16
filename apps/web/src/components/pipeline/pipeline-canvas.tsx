@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import ReactFlow, {
   Background,
   Controls,
@@ -116,6 +116,20 @@ function CanvasInner({
   const [showRuns, setShowRuns] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
+
+  useEffect(() => {
+    if (pipelineId === "new") return
+    api.pipeline.getById(pipelineId).then((data) => {
+      if (data?.graph) {
+        const g = typeof data.graph === "string" ? JSON.parse(data.graph) : data.graph
+        if (g.nodes) setNodes(g.nodes)
+        if (g.edges) setEdges(g.edges)
+      }
+      if (data?.name) setPipelineName(data.name)
+      if (data?.version) setVersion(data.version)
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineId])
 
   const onConnect = useCallback(
     (params: Connection) => {

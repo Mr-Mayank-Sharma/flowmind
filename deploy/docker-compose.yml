@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   api:
@@ -23,17 +26,23 @@ services:
     environment:
       DATABASE_URL: postgresql://flowmind:flowmind@postgres:5432/flowmind
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      NODE_ENV: production
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
     build:
       context: .
       dockerfile: Dockerfile
-      target: web
+      target: web-runner
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
     ports:
       - "3000:3000"
+    environment:
+      NODE_ENV: production
     depends_on:
       - api
     restart: unless-stopped

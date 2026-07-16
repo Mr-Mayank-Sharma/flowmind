@@ -9,6 +9,19 @@ import { appRouter } from "./routers";
 import { createContext } from "./middleware/context";
 import { prisma } from "@flowmind/db";
 import { BillingService } from "@flowmind/billing";
+import {
+  toolRegistry,
+  createReadTool,
+  createWriteTool,
+  createEditTool,
+  createGrepTool,
+  createGlobTool,
+  createBashTool,
+  createWebFetchTool,
+  createWebSearchTool,
+  createApplyPatchTool,
+  createTodoWriteTool,
+} from "@flowmind/tool-system";
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || "",
@@ -88,6 +101,47 @@ async function main() {
     });
     return reply.send(pipeline);
   });
+
+  // Register built-in tools
+  const toolInfos = [
+    createReadTool(),
+    createWriteTool(),
+    createEditTool(),
+    createGrepTool(),
+    createGlobTool(),
+    createBashTool(),
+    createWebFetchTool(),
+    createWebSearchTool(),
+    createApplyPatchTool(),
+    createTodoWriteTool(),
+  ];
+  for (const t of toolInfos) {
+    toolRegistry.register(t);
+  }
+  server.log.info(`Registered ${toolInfos.length} built-in tools for agent execution`);
+
+  // Internal endpoint for Python agent runtime to execute tools
+  server.post<{ Body: { toolId: string; args: Record<string, unknown> } }>(
+    "/api/internal/execute-tool",
+    async (req, reply) => {
+      const { toolId, args } = req.body;
+      if (!toolId) return reply.status(400).send({ error: "toolId required" });
+      const tool = toolRegistry.get(toolId);
+      if (!tool) return reply.status(404).send({ error: `Tool '${toolId}' not found` });
+      try {
+        const result = await tool.execute(args, {
+          sessionId: `internal_${Date.now()}`,
+          messageId: `msg_${Date.now()}`,
+          agent: "system",
+          async ask() {},
+          metadata() {},
+        });
+        return reply.send(result);
+      } catch (err: any) {
+        return reply.status(500).send({ error: err.message });
+      }
+    },
+  );
 
   await server.register(async (scoped) => {
     scoped.addContentTypeParser("application/json", { parseAs: "buffer", bodyLimit: 65536 }, (_req, body, done) => {
