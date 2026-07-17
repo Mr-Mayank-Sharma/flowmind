@@ -93,16 +93,16 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="container px-4 py-6 flex gap-0">
-        <aside className="w-56 shrink-0 sticky top-6 self-start max-h-[calc(100vh-12rem)] overflow-y-auto scrollbar-thin">
-          <nav className="flex flex-col gap-1 pr-4 border-r border-border h-full">
+      <div className="container px-4 py-6 flex flex-col md:flex-row gap-0">
+        <aside className="md:w-56 shrink-0 md:sticky md:top-6 md:self-start md:max-h-[calc(100vh-12rem)] md:overflow-y-auto md:scrollbar-thin mb-4 md:mb-0">
+          <nav className="flex md:flex-col gap-1 md:pr-4 md:border-r md:border-border overflow-x-auto md:overflow-visible scrollbar-thin md:scrollbar-none pb-2 md:pb-0">
             {tabs.map((tab) => {
               const Icon = tab.icon
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left ${
+                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left whitespace-nowrap ${
                     activeTab === tab.id
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -116,7 +116,7 @@ export default function SettingsPage() {
           </nav>
         </aside>
 
-        <main className="flex-1 pl-8 min-w-0">
+        <main className="flex-1 md:pl-8 min-w-0">
           <div className="flex items-center gap-3 mb-6">
             <TabIcon className="h-5 w-5 text-muted-foreground" />
             <h2 className="text-xl font-semibold capitalize">

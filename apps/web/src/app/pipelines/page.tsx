@@ -85,14 +85,14 @@ export default function PipelinesPage() {
   return (
     <div className="min-h-screen bg-background">
       <main className="container px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Pipelines</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Manage your workflow pipelines
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Link href="/templates">
               <Button variant="outline" className="gap-2">
                 <LayoutTemplate className="h-4 w-4" />

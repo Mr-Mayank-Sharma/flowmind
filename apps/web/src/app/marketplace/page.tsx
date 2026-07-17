@@ -98,8 +98,8 @@ export default function MarketplacePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex gap-1 p-1 bg-surface rounded-lg border">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+          <div className="flex gap-1 p-1 bg-surface rounded-lg border shrink-0">
             <button
               onClick={() => { setTab("workflows"); setSelectedCategory(null); setSearchQuery("") }}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === "workflows" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
