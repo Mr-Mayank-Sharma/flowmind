@@ -419,6 +419,28 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
     const result = await context.subPipelineRunner.run(subPipelineId, predecessorData, context)
     return { subPipelineId, result, json: { subPipelineId, result } }
   },
+  async openhumanMessage(node, context) {
+    const exprCtx = buildExpressionContext(context)
+    const message = resolveValue(node.config.message ?? "", exprCtx) as string
+    const conversationId = (node.config.conversationId as string) ?? ""
+    const apiKey = (node.config.apiKey as string) ?? process.env.OPENHUMAN_API_KEY ?? ""
+    const baseUrl = (node.config.baseUrl as string) ?? "https://api.openhuman.ai/v1"
+
+    if (!apiKey) return { error: "No OpenHuman API key configured", sent: false }
+
+    try {
+      const res = await fetch(`${baseUrl}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ conversation_id: conversationId, message }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      const data = await res.json() as Record<string, unknown>
+      return { sent: res.ok, conversationId, messageId: data.id, json: { sent: res.ok, conversationId, response: data } }
+    } catch (err) {
+      return { error: String(err), sent: false }
+    }
+  },
 }
 
 const flowRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {

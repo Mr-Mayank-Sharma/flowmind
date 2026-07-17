@@ -56,6 +56,7 @@ const paletteItems: PaletteItem[] = [
   { type: "sendEmail", label: "Send Email", icon: Mail, category: "Actions" },
   { type: "sendMessage", label: "Send Message", icon: MessageSquare, category: "Actions" },
   { type: "codeExecute", label: "Code Execute", icon: Code, category: "Actions" },
+  { type: "openhumanMessage", label: "OpenHuman Message", icon: MessageSquare, category: "Actions" },
   { type: "condition", label: "Condition", icon: GitBranch, category: "Flow Control" },
   { type: "switch", label: "Switch", icon: SplitSquareHorizontal, category: "Flow Control" },
   { type: "parallelFork", label: "Parallel Fork", icon: ArrowRight, category: "Flow Control" },

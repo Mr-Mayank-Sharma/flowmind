@@ -71,6 +71,7 @@ const defaultNode = (
     merge: "flowNode",
     loop: "flowNode",
     wait: "flowNode",
+    openhumanMessage: "actionNode",
   }
   const iconMap: Record<string, string> = {
     cronTrigger: "Clock",
@@ -95,6 +96,7 @@ const defaultNode = (
     merge: "Merge",
     loop: "Repeat",
     wait: "Clock",
+    openhumanMessage: "MessageSquare",
   }
   const isSkill = type.startsWith("skill.")
   return {
