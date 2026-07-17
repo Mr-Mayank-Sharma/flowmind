@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@flowmind/db": "workspace:*",
-    "isolated-vm": "^7.0.0"
+    "isolated-vm": "^7.0.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

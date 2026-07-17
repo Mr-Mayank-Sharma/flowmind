@@ -1,6 +1,23 @@
 import ivm from "isolated-vm"
 import { prisma } from "@flowmind/db"
 
+export {
+  SkillManifestSchema,
+  SkillInputSchema,
+  SkillOutputSchema,
+  SkillDependencySchema,
+  SkillPermissionSchema,
+  SkillRuntimeSchema,
+  validateManifest,
+  generateSkillTemplate,
+  type SkillManifest,
+  type SkillInput,
+  type SkillOutput,
+  type SkillDependency,
+  type SkillPermission,
+  type SkillRuntime,
+} from "./skill-spec"
+
 const SKILL_TIMEOUT_MS = 5000
 const SKILL_MEMORY_MB = 128
 
