@@ -9,7 +9,8 @@ function buildLLMProvider(): LLMProvider | undefined {
   const openaiKey = process.env.OPENAI_KEY;
   const anthropicKey = process.env.ANTHROPIC_KEY;
   const groqKey = process.env.GROQ_KEY;
-  if (!openaiKey && !anthropicKey && !groqKey) return undefined;
+  const ollamaUrl = process.env.OLLAMA_BASE_URL;
+  if (!openaiKey && !anthropicKey && !groqKey && !ollamaUrl) return undefined;
   const llmEngine = new LLMEngine({
     openaiKey: openaiKey ?? undefined,
     anthropicKey: anthropicKey ?? undefined,
@@ -27,6 +28,7 @@ function buildLLMProvider(): LLMProvider | undefined {
     veniceAIKey: process.env.VENICE_AI_KEY,
     alibabaKey: process.env.ALIBABA_KEY,
     googleKey: process.env.GOOGLE_KEY,
+    ollamaBaseUrl: ollamaUrl ?? undefined,
   });
   return {
     complete: async (req) => {
