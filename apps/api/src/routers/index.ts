@@ -19,6 +19,7 @@ import { consoleRouter } from "./console";
 import { notificationsRouter } from "./notifications";
 import { webhooksRouter } from "./webhooks";
 import { contextRouter } from "./context";
+import { skillsRouter } from "./skills";
 
 export const appRouter = router({
   chat: chatRouter,
@@ -41,6 +42,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   webhooks: webhooksRouter,
   context: contextRouter,
+  skills: skillsRouter,
 });
 
 export type AppRouter = typeof appRouter;
