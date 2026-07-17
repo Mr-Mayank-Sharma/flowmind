@@ -2,6 +2,7 @@ import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, Credenti
 import { buildExecutionPlan, getDirectPredecessors } from "./graph"
 import { executeNode, getRunner } from "./runners"
 import { validateGraph } from "./graph"
+import { providerRegistry } from "@flowmind/provider-registry"
 
 export interface EngineOptions {
   credentialResolver?: CredentialResolver
@@ -297,13 +298,11 @@ export class PipelineEngine {
       ]
     }
     if (nodeType.startsWith("ai")) {
-      return [
-        { label: "GPT-4", value: "gpt-4" },
-        { label: "GPT-3.5", value: "gpt-3.5" },
-        { label: "Claude 3", value: "claude-3" },
-        { label: "Mistral", value: "mistral" },
-        { label: "TinyLlama", value: "tinyllama" },
-      ]
+      return providerRegistry.getModels().map((m) => ({
+        label: `${m.name} (${m.providerId})`,
+        value: m.id,
+        description: `Context: ${m.context} | Max output: ${m.maxOutput}`,
+      }))
     }
     return []
   }

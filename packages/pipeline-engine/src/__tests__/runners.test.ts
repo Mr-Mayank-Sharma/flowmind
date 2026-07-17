@@ -146,6 +146,85 @@ describe("executeNode", () => {
     expect((result.output as any).iterations).toBe(5);
   });
 
+  describe("llm provider integration", () => {
+    it("uses context.llm.complete() when available (bypasses HTTP fallback)", async () => {
+      const mockComplete = vi.fn().mockResolvedValue({ content: "Mock summary result", model: "gpt-4o" });
+
+      const ctx = makeContext({
+        llm: { complete: mockComplete },
+      });
+      addOutput(ctx, "n1", { json: { text: "Long text to summarize" } });
+      ctx.graph = {
+        nodes: [
+          { id: "n1", type: "httpRequest", label: "", position: { x: 0, y: 0 }, config: {} },
+          { id: "n2", type: "summarizer", label: "Summarize", position: { x: 100, y: 0 }, config: { text: "{{ $json.text }}", model: "gpt-4o" } },
+        ],
+        edges: [{ id: "e1", source: "n1", target: "n2" }],
+      };
+
+      const node = ctx.graph.nodes[1]!;
+      const result = await executeNode(node, ctx);
+
+      expect(mockComplete).toHaveBeenCalledTimes(1);
+      expect(mockComplete).toHaveBeenCalledWith({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: "You are a text summarizer. Provide a concise summary capturing the key points." },
+          { role: "user", content: "Summarize the following text concisely:\n\nLong text to summarize" },
+        ],
+        maxTokens: 500,
+      });
+      expect((result.output as any).summary).toBe("Mock summary result");
+    });
+
+    it("returns llm error in output when context.llm.complete() throws", async () => {
+      const mockComplete = vi.fn().mockRejectedValue(new Error("API quota exceeded"));
+
+      const ctx = makeContext({
+        llm: { complete: mockComplete },
+      });
+      addOutput(ctx, "n1", { json: { text: "Some data" } });
+      ctx.graph = {
+        nodes: [
+          { id: "n1", type: "httpRequest", label: "", position: { x: 0, y: 0 }, config: {} },
+          { id: "n2", type: "summarizer", label: "Summarize", position: { x: 100, y: 0 }, config: { text: "{{ $json.text }}", model: "gpt-4o" } },
+        ],
+        edges: [{ id: "e1", source: "n1", target: "n2" }],
+      };
+
+      const node = ctx.graph.nodes[1]!;
+      const result = await executeNode(node, ctx);
+
+      expect(mockComplete).toHaveBeenCalledTimes(1);
+      expect((result.output as any).summary).toContain("LLM error");
+      expect((result.output as any).summary).toContain("API quota exceeded");
+    });
+
+    it("falls back to HTTP AGENT_RUNTIME_URL when llm is not in context", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ content: "HTTP fallback summary" }),
+      }));
+
+      const ctx = makeContext(); // no llm
+      addOutput(ctx, "n1", { json: { text: "Fallback data" } });
+      ctx.graph = {
+        nodes: [
+          { id: "n1", type: "httpRequest", label: "", position: { x: 0, y: 0 }, config: {} },
+          { id: "n2", type: "summarizer", label: "Summarize", position: { x: 100, y: 0 }, config: { text: "{{ $json.text }}", model: "tinyllama" } },
+        ],
+        edges: [{ id: "e1", source: "n1", target: "n2" }],
+      };
+
+      const node = ctx.graph.nodes[1]!;
+      const result = await executeNode(node, ctx);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect((result.output as any).summary).toBe("HTTP fallback summary");
+    });
+  });
+
   it("handles merge with predecessor data", async () => {
     const ctx = makeContext();
     addOutput(ctx, "n0", { data: "hello" });

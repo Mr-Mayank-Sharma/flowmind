@@ -50,7 +50,7 @@ export function buildExpressionContext(context: ExecutionContext): ExpressionCon
 }
 
 function resolvePath(obj: unknown, path: string): unknown {
-  const parts = path.split(".")
+  const parts = path.split(".").filter(Boolean)
   let current = obj
   for (const part of parts) {
     if (current === null || current === undefined) return undefined
