@@ -6,6 +6,7 @@ import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardConten
 import { ArrowLeft, Plus, Trash2, RefreshCw, Server, Wifi, WifiOff, AlertTriangle } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 import { api } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 interface Runtime {
   id: string
@@ -26,6 +27,7 @@ export default function RuntimesPage() {
   const [showRegister, setShowRegister] = useState(false)
   const [form, setForm] = useState({ name: "", endpoint: "", description: "", version: "1.0.0" })
   const [registering, setRegistering] = useState(false)
+  const { toast } = useToast()
 
   const fetchRuntimes = () => {
     api.runtime.list().then((data) => {
@@ -49,8 +51,10 @@ export default function RuntimesPage() {
       setForm({ name: "", endpoint: "", description: "", version: "1.0.0" })
       setShowRegister(false)
       fetchRuntimes()
+      toast({ title: "Runtime registered", variant: "success" })
     } catch (err) {
       console.error("Register failed:", err)
+      toast({ title: "Register failed", variant: "error" })
     } finally {
       setRegistering(false)
     }
@@ -60,8 +64,10 @@ export default function RuntimesPage() {
     try {
       await api.runtime.unregister(id)
       fetchRuntimes()
+      toast({ title: "Runtime removed", variant: "success" })
     } catch (err) {
       console.error("Unregister failed:", err)
+      toast({ title: "Remove failed", variant: "error" })
     }
   }
 

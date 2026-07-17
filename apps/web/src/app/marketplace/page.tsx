@@ -7,6 +7,7 @@ import { Store, Download, Star, Tag, Search, ArrowLeft, Puzzle } from "lucide-re
 import { CardSkeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { api } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 type Tab = "workflows" | "skills"
 
@@ -18,6 +19,7 @@ export default function MarketplacePage() {
   const [loaded, setLoaded] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const { toast } = useToast()
 
   useEffect(() => {
     if (tab === "workflows") {
@@ -44,17 +46,21 @@ export default function MarketplacePage() {
   const handleClone = async (id: string) => {
     try {
       const result = await api.pipeline.cloneFromMarketplace(id)
+      toast({ title: "Workflow cloned to your workspace", variant: "success" })
       window.location.href = `/pipelines/${result.id}`
     } catch (err) {
       console.error("Clone failed:", err)
+      toast({ title: "Clone failed", variant: "error" })
     }
   }
 
   const handleInstallSkill = async (skillId: string) => {
     try {
       await api.skills.install(skillId)
+      toast({ title: "Skill installed", variant: "success" })
     } catch (err) {
       console.error("Install failed:", err)
+      toast({ title: "Install failed", variant: "error" })
     }
   }
 

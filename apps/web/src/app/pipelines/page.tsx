@@ -6,6 +6,7 @@ import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardConten
 import { Plus, Workflow, Clock, Play, Trash2, Store } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 import { api } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 const statusColors: Record<string, "default" | "secondary" | "outline"> = {
   ACTIVE: "default",
@@ -33,6 +34,7 @@ export default function PipelinesPage() {
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [runningId, setRunningId] = useState<string | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     api.pipeline.list().then((res) => {
@@ -48,6 +50,7 @@ export default function PipelinesPage() {
     try {
       await api.pipeline.delete(id)
       setPipelines((prev) => prev.filter(p => p.id !== id))
+      toast({ title: "Pipeline deleted", variant: "success" })
     } finally {
       setDeletingId(null)
     }
@@ -58,6 +61,7 @@ export default function PipelinesPage() {
     try {
       const created = await api.pipeline.create({ name: "New Pipeline", description: "Start building your workflow", graph: { nodes: [], edges: [] } })
       setPipelines((prev) => [{ ...created, nodeCount: 0 }, ...prev])
+      toast({ title: "Pipeline created", variant: "success" })
     } finally {
       setCreating(false)
     }
@@ -69,8 +73,10 @@ export default function PipelinesPage() {
     setRunningId(id)
     try {
       await api.pipeline.trigger(id, {})
+      toast({ title: "Pipeline started", variant: "success" })
     } catch (err) {
       console.error("Trigger failed:", err)
+      toast({ title: "Trigger failed", variant: "error" })
     } finally {
       setRunningId(null)
     }

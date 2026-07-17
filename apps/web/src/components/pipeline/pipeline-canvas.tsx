@@ -28,6 +28,7 @@ import { RunsPanel } from "./runs-panel"
 import { cn } from "@flowmind/ui"
 import { Skeleton, SkeletonNode } from "../ui/skeleton"
 import { api } from "../../lib/api"
+import { useToast } from "../../hooks/use-toast"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
@@ -133,6 +134,7 @@ function CanvasInner({
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const router = useRouter()
+  const { toast } = useToast()
 
   useEffect(() => {
     if (pipelineId === "new") return
@@ -259,8 +261,10 @@ function CanvasInner({
         await api.pipeline.update({ id: pipelineId, name: pipelineName, graph })
         setVersion((v) => v + 1)
       }
+      toast({ title: "Pipeline saved", variant: "success" })
     } catch (err) {
       console.error("Save failed:", err)
+      toast({ title: "Save failed", variant: "error" })
     } finally {
       setSaving(false)
     }
@@ -280,6 +284,7 @@ function CanvasInner({
       const result = await api.pipeline.trigger(pipelineId, {})
       const runId = result.runId
       setCurrentRunId(runId)
+      toast({ title: "Pipeline started", variant: "success" })
 
       if (result.status === "CANCELLED") {
         setNodes((nds) =>
@@ -340,8 +345,10 @@ function CanvasInner({
     if (!currentRunId) return
     try {
       await api.pipeline.cancelRun(currentRunId)
+      toast({ title: "Run cancelled", variant: "info" })
     } catch (err) {
       console.error("Cancel failed:", err)
+      toast({ title: "Cancel failed", variant: "error" })
     }
     setRunning(false)
     setCurrentRunId(null)
