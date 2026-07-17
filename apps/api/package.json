@@ -21,6 +21,7 @@
     "@flowmind/mcp-executor": "workspace:*",
     "@flowmind/pipeline-engine": "workspace:*",
     "@flowmind/provider-registry": "workspace:*",
+    "@flowmind/runtime-registry": "workspace:*",
     "@flowmind/shared": "workspace:*",
     "@flowmind/skill-engine": "workspace:*",
     "@flowmind/tool-system": "workspace:*",
