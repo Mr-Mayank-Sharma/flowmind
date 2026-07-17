@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@flowmind/llm-router": "workspace:*",
     "@flowmind/provider-registry": "workspace:*"
   },
   "devDependencies": {

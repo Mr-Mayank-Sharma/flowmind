@@ -2,6 +2,7 @@ import type { PipelineNode, ExecutionContext, NodeRunner, NodeOutput } from "./t
 import { resolveValue, buildExpressionContext } from "./expressions"
 import { kindForNodeType } from "./types"
 import { getDirectPredecessors } from "./graph"
+import { runAgentLoop, type AgentTool, type ProviderFacade, type CompletionRequest, type CompletionResult, type StreamCallbacks, type Message } from "@flowmind/llm-router"
 
 import nodemailer from "nodemailer"
 
@@ -191,146 +192,117 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
   },
 }
 
-const agentTools: Record<string, (args: string) => Promise<string>> = {
-  async webSearch(args) {
-    const query = args.trim() || "latest news"
-    try {
-      const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`, { signal: AbortSignal.timeout(5000) })
-      if (!res.ok) return `[web search error: ${res.status}]`
-      const data = await res.json() as any
-      return data.AbstractText || data.Results?.[0]?.Text || `[no results for "${query}"]`
-    } catch (err) {
-      return `[web search unavailable: ${err}]`
-    }
+const pipelineAgentTools: AgentTool[] = [
+  {
+    name: "webSearch",
+    description: "Search the web for information",
+    parameters: { query: { type: "string", description: "Search query" } },
+    async execute(args: Record<string, unknown>): Promise<string> {
+      const query = (args.query as string)?.trim() || "latest news"
+      try {
+        const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`, { signal: AbortSignal.timeout(5000) })
+        if (!res.ok) return `[web search error: ${res.status}]`
+        const data = await res.json() as any
+        return data.AbstractText || data.Results?.[0]?.Text || `[no results for "${query}"]`
+      } catch (err) {
+        return `[web search unavailable: ${err}]`
+      }
+    },
   },
-  async calculator(args) {
-    try {
-      const sanitized = args.replace(/[^0-9+\-*/.() ]/g, "")
-      const fn = new Function(`"use strict"; return (${sanitized})`)
-      const result = fn()
-      return String(result)
-    } catch {
-      return "[calculator error: invalid expression]"
-    }
+  {
+    name: "calculator",
+    description: "Evaluate a mathematical expression",
+    parameters: { expression: { type: "string", description: "Math expression to evaluate" } },
+    async execute(args: Record<string, unknown>): Promise<string> {
+      const expression = (args.expression as string) || (args.input as string) || ""
+      try {
+        const sanitized = expression.replace(/[^0-9+\-*/.() ]/g, "")
+        const fn = new Function(`"use strict"; return (${sanitized})`)
+        const result = fn()
+        return String(result)
+      } catch {
+        return "[calculator error: invalid expression]"
+      }
+    },
   },
-  async currentTime(_args) {
-    return new Date().toISOString()
+  {
+    name: "currentTime",
+    description: "Get the current date and time",
+    parameters: {},
+    async execute() {
+      return new Date().toISOString()
+    },
   },
-  async readFile(args) {
-    return `[readFile "${args}": simulated - tool not available in pipeline context]`
+  {
+    name: "readFile",
+    description: "Read a file (simulated in pipeline context)",
+    parameters: { path: { type: "string", description: "File path to read" } },
+    async execute(args: Record<string, unknown>): Promise<string> {
+      const filePath = (args.path as string) || (args.input as string) || ""
+      return `[readFile "${filePath}": simulated - tool not available in pipeline context]`
+    },
   },
+]
+
+function wrapLLMAsProvider(llm: { complete(req: { model: string; messages: Array<{ role: string; content: string }>; temperature?: number; maxTokens?: number }): Promise<{ content: string; model: string }> }): ProviderFacade {
+  return {
+    id: "pipeline-adapter",
+    baseUrl: "",
+    async complete(req: CompletionRequest): Promise<CompletionResult> {
+      const result = await llm.complete({
+        model: req.model || "tinyllama",
+        messages: req.messages.map((m: Message) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" })),
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
+      })
+      return {
+        message: { role: "assistant", content: result.content || "[empty response]" },
+        finish_reason: "stop",
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        model: result.model,
+        provider: "pipeline-adapter",
+      }
+    },
+    async stream(req: CompletionRequest, callbacks: StreamCallbacks): Promise<CompletionResult> {
+      const result = await this.complete(req)
+      const textContent = typeof result.message.content === "string" ? result.message.content : result.message.content.map((b) => (b.type === "text" ? b.text : "")).join("")
+      callbacks.onChunk?.({ delta: { content: textContent }, model: result.model, provider: result.provider })
+      callbacks.onDone?.(result)
+      return result
+    },
+  }
 }
 
-const reactAgentLoop = async (
+async function reactAgentLoop(
   node: PipelineNode,
   context: ExecutionContext,
   initialPrompt: string,
   systemPrompt: string,
   model: string,
   maxIterations: number,
-): Promise<unknown> => {
-  const messages: Array<{ role: string; content: string }> = []
-  if (systemPrompt) {
-    messages.push({
-      role: "system",
-      content: `${systemPrompt}\n\nYou are an AI agent that can use tools to accomplish tasks. ` +
-        `When you need to use a tool, respond with EXACTLY:\nCALL_TOOL: toolName(arguments)\n` +
-        `After calling a tool you will receive the result. Continue this loop until the task is complete.\n` +
-        `When you have the final answer, respond with:\nFINAL_ANSWER: your response here\n\n` +
-        `Available tools:\n` +
-        `- webSearch(query): Search the web for information\n` +
-        `- calculator(expression): Evaluate a mathematical expression\n` +
-        `- currentTime(): Get the current date and time\n` +
-        `- readFile(path): Read a file (simulated)`,
-    })
-  } else {
-    messages.push({
-      role: "system",
-      content: `You are an AI agent that can use tools. ` +
-        `Use CALL_TOOL: toolName(args) to call a tool.\n` +
-        `Use FINAL_ANSWER: your response when done.\n\n` +
-        `Available tools: webSearch(query), calculator(expression), currentTime(), readFile(path)`,
-    })
+): Promise<unknown> {
+  if (!context.llm) {
+    return { model, prompt: initialPrompt, system: systemPrompt, response: "[No LLM provider available]", iterations: 0, steps: [] }
   }
-  messages.push({ role: "user", content: initialPrompt })
-
-  const toolUsePattern = /^CALL_TOOL:\s*(\w+)\s*\(([\s\S]*)\)\s*$/m
-  const finalAnswerPattern = /^FINAL_ANSWER:\s*([\s\S]*)$/m
-  const toolNames = Object.keys(agentTools)
-  const allSteps: Array<{ type: "thought" | "tool_call" | "tool_result"; content: string }> = []
-
-  for (let iteration = 0; iteration < maxIterations; iteration++) {
-    const response = await llmGenerate(
-      messages[messages.length - 1]!.content,
-      messages.find((m) => m.role === "system")?.content ?? undefined,
-      model,
-      context,
-    )
-
-    const lastMsg = messages[messages.length - 1]!
-    if (lastMsg.role === "user") {
-      messages[messages.length - 1] = { role: "assistant", content: response }
-    } else {
-      messages.push({ role: "assistant", content: response })
-    }
-
-    allSteps.push({ type: "thought", content: response })
-
-    const finalMatch = response.match(finalAnswerPattern)
-    if (finalMatch) {
-      const answer = finalMatch[1]!.trim()
-      return {
-        model, prompt: initialPrompt, system: systemPrompt,
-        response: answer,
-        iterations: iteration + 1,
-        steps: allSteps,
-        json: { response: answer, iterations: iteration + 1, steps: allSteps },
-        usage: {
-          promptTokens: messages.reduce((s, m) => s + m.content.length / 4, 0),
-          completionTokens: response.length / 4,
-          totalTokens: messages.reduce((s, m) => s + m.content.length / 4, 0) + response.length / 4,
-        },
-      }
-    }
-
-    const toolMatch = response.match(toolUsePattern)
-    if (toolMatch) {
-      const toolName = toolMatch[1]!
-      const toolArgs = toolMatch[2]!
-      allSteps.push({ type: "tool_call", content: `${toolName}(${toolArgs})` })
-
-      if (toolNames.includes(toolName)) {
-        const toolResult = await agentTools[toolName]!(toolArgs)
-        allSteps.push({ type: "tool_result", content: toolResult.slice(0, 1000) })
-        messages.push({ role: "user", content: `[Tool ${toolName} result]: ${toolResult.slice(0, 1000)}` })
-      } else {
-        messages.push({ role: "user", content: `[Tool ${toolName} not available. Available: ${toolNames.join(", ")}]` })
-      }
-      continue
-    }
-
-    // No tool call and no final answer — treat whole response as result
-    return {
-      model, prompt: initialPrompt, system: systemPrompt,
-      response,
-      iterations: iteration + 1,
-      steps: allSteps,
-      json: { response, iterations: iteration + 1, steps: allSteps },
-      usage: {
-        promptTokens: messages.reduce((s, m) => s + m.content.length / 4, 0),
-        completionTokens: response.length / 4,
-        totalTokens: messages.reduce((s, m) => s + m.content.length / 4, 0) + response.length / 4,
-      },
-    }
-  }
-
+  const provider = wrapLLMAsProvider(context.llm)
+  const result = await runAgentLoop({
+    provider,
+    model: model || "tinyllama",
+    systemPrompt,
+    userMessage: initialPrompt,
+    tools: pipelineAgentTools,
+    maxIterations,
+    maxTokens: 2000,
+  })
   return {
-    model, prompt: initialPrompt, system: systemPrompt,
-    response: `[Max iterations (${maxIterations}) reached]`,
-    iterations: maxIterations,
-    steps: allSteps,
-    json: { response: `[Max iterations (${maxIterations}) reached]`, iterations: maxIterations, steps: allSteps },
-    truncated: true,
+    model,
+    prompt: initialPrompt,
+    system: systemPrompt,
+    response: result.response,
+    iterations: result.iterations,
+    steps: result.steps,
+    json: { response: result.response, iterations: result.iterations, steps: result.steps },
+    usage: result.usage,
   }
 }
 

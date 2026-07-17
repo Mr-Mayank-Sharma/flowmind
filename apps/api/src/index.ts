@@ -23,6 +23,8 @@ import {
   createApplyPatchTool,
   createTodoWriteTool,
 } from "@flowmind/tool-system";
+import type { AgentLoopStep } from "@flowmind/llm-router";
+import { getSessionEmitter } from "./services/session-emitters";
 
 const SENTRY_DSN = process.env.SENTRY_DSN;
 if (SENTRY_DSN) {
@@ -125,6 +127,76 @@ async function main() {
     reply.header("content-type", register.contentType);
     return register.metrics();
   });
+
+  server.get<{ Params: { sessionId: string } }>("/api/chat/stream/:sessionId", async (req, reply) => {
+    const { sessionId } = req.params
+    const token = (req.query as any)?.token || req.headers.authorization?.replace("Bearer ", "")
+
+    if (!token) {
+      return reply.status(401).send({ error: "Authentication required" })
+    }
+
+    let userId: string | null = null
+    try {
+      const jwt = await import("jsonwebtoken")
+      const payload = jwt.default.verify(token, process.env.JWT_SECRET || "dev-secret-change-in-production") as { userId: string }
+      userId = payload.userId
+    } catch {
+      return reply.status(401).send({ error: "Invalid token" })
+    }
+
+    const session = await prisma.session.findUnique({ where: { id: sessionId } })
+    if (!session || session.userId !== userId) {
+      return reply.status(404).send({ error: "Session not found" })
+    }
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    })
+
+    const emitter = getSessionEmitter(sessionId)
+    const heartbeat = setInterval(() => {
+      reply.raw.write(": heartbeat\n\n")
+    }, 15000)
+
+    const onStep = (step: AgentLoopStep) => {
+      const data = JSON.stringify(step)
+      reply.raw.write(`data: ${data}\n\n`)
+    }
+
+    const onDone = (result: { reply: string; steps: AgentLoopStep[]; iterations: number }) => {
+      const data = JSON.stringify({ type: "done", ...result })
+      reply.raw.write(`data: ${data}\n\n`)
+      reply.raw.write("data: [DONE]\n\n")
+      cleanup()
+    }
+
+    const onError = (error: Error) => {
+      const data = JSON.stringify({ type: "error", message: error.message })
+      reply.raw.write(`data: ${data}\n\n`)
+      reply.raw.write("data: [DONE]\n\n")
+      cleanup()
+    }
+
+    function cleanup() {
+      clearInterval(heartbeat)
+      emitter.off("step", onStep)
+      emitter.off("done", onDone)
+      emitter.off("error", onError)
+      emitter.off("close", cleanup)
+      reply.raw.end()
+    }
+
+    emitter.on("step", onStep)
+    emitter.on("done", onDone)
+    emitter.on("error", onError)
+    emitter.on("close", cleanup)
+
+    req.raw.on("close", cleanup)
+  })
 
   server.post<{ Body: { name: string; description: string; userId: string } }>("/api/internal/create-pipeline", async (req, reply) => {
     const { name, description, userId } = req.body;

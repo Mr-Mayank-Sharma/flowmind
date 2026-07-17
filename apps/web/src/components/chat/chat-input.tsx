@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Send, Terminal } from "lucide-react";
+import { Send, Terminal, Square } from "lucide-react";
 import { Button } from "@flowmind/ui";
 import { useChatStore } from "@/hooks/chat-store";
 import { ModelSelector } from "./model-selector";
@@ -13,7 +13,7 @@ export function ChatInput() {
   const [showTools, setShowTools] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { currentSessionId, sendMessage, isStreaming } = useChatStore();
+  const { currentSessionId, sendMessage, isStreaming, stopStreaming } = useChatStore();
 
   const adjustHeight = useCallback(() => {
     const ta = textareaRef.current;
@@ -97,15 +97,26 @@ export function ChatInput() {
               <Terminal className="h-4 w-4" />
             </button>
 
-            <Button
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              onClick={handleSend}
-              disabled={!input.trim() || !currentSessionId || isStreaming}
-              aria-label="Send message"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+            {isStreaming ? (
+              <Button
+                size="icon"
+                className="h-8 w-8 shrink-0 bg-destructive/10 text-destructive hover:bg-destructive/20"
+                onClick={stopStreaming}
+                aria-label="Stop streaming"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={handleSend}
+                disabled={!input.trim() || !currentSessionId || isStreaming}
+                aria-label="Send message"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
 
