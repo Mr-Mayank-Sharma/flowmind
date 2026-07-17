@@ -8,6 +8,7 @@ import { registerMCPCommands } from "./commands/mcp.js"
 import { registerContextCommands } from "./commands/context.js"
 import { registerGovernanceCommands } from "./commands/governance.js"
 import { registerChatCommands } from "./commands/chat.js"
+import { registerSkillCommands } from "./commands/skill.js"
 import { startInteractiveMode } from "./commands/interactive.js"
 import { helpText } from "./utils/display.js"
 
@@ -25,6 +26,7 @@ registerMCPCommands(program)
 registerContextCommands(program)
 registerGovernanceCommands(program)
 registerChatCommands(program)
+registerSkillCommands(program)
 
 program
   .command("interactive")
