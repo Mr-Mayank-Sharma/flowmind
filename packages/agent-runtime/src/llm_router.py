@@ -9,12 +9,17 @@ from src.providers import ModelInfo, registry
 
 class LLMRouter:
     LOCAL_THRESHOLD_TOKENS = 4096
+    _shared_models: list[ModelInfo] | None = None
 
     def __init__(self):
         self._models: list[ModelInfo] = []
 
     async def discover_models(self) -> list[ModelInfo]:
+        if LLMRouter._shared_models is not None:
+            self._models = LLMRouter._shared_models
+            return self._models
         self._models = await registry.discover_all()
+        LLMRouter._shared_models = self._models
         return self._models
 
     def get_available_models(self) -> list[ModelInfo]:
@@ -35,6 +40,9 @@ class LLMRouter:
 
         if prefer_local or tokens <= self.LOCAL_THRESHOLD_TOKENS:
             local = [m for m in self._models if m.local and m.available]
+            for m in local:
+                if "tinyllama" in m.id or "llama3.2" in m.id or "phi" in m.id or "gemma" in m.id:
+                    return m.provider, m.id
             if local:
                 return local[0].provider, local[0].id
             return "ollama", "tinyllama:latest"

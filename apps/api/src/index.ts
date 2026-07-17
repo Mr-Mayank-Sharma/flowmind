@@ -2,6 +2,7 @@ import "dotenv/config";
 import * as Sentry from "@sentry/node";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { collectDefaultMetrics, register } from "prom-client";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
@@ -23,12 +24,15 @@ import {
   createTodoWriteTool,
 } from "@flowmind/tool-system";
 
-Sentry.init({
-  dsn: process.env.SENTRY_DSN || "",
-  environment: process.env.NODE_ENV || "development",
-  integrations: [Sentry.fastifyIntegration()],
-  tracesSampleRate: 1.0,
-});
+const SENTRY_DSN = process.env.SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    integrations: [Sentry.fastifyIntegration()],
+    tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || "0.1"),
+  });
+}
 
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 const HOST = process.env.API_HOST || "0.0.0.0";
@@ -45,6 +49,22 @@ async function main() {
     },
   });
 
+  await server.register(helmet, {
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'", process.env.APP_URL || "http://localhost:4000"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    } : false,
+  });
+
   await server.register(cors, {
     origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
       const allowed = [process.env.APP_URL, "http://localhost:3000", "http://localhost:4000"].filter(Boolean) as string[]
@@ -55,6 +75,18 @@ async function main() {
       }
     },
     credentials: true,
+  });
+
+  server.setErrorHandler((err, _req, reply) => {
+    if (SENTRY_DSN) {
+      Sentry.captureException(err);
+    }
+    server.log.error({ err }, err.message || "Unhandled error");
+    const statusCode = err.statusCode ?? 500;
+    reply.status(statusCode).send({
+      error: statusCode >= 500 ? "Internal server error" : err.message,
+      ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    });
   });
 
   await server.register(rateLimit, {
@@ -74,9 +106,19 @@ async function main() {
 
   collectDefaultMetrics();
 
-  server.get("/health", async () => {
+  server.get("/health", async (_req, reply) => {
     const dbOk = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
-    return { status: dbOk ? "ok" : "degraded", version: "0.1.0", uptime: process.uptime(), db: dbOk };
+    const runtimeOk = await fetch(`${process.env.AGENT_RUNTIME_URL || "http://localhost:8001"}/health`)
+      .then(r => r.ok).catch(() => false);
+    const status = dbOk ? "ok" : "degraded";
+    reply.code(dbOk ? 200 : 503);
+    return {
+      status,
+      version: "0.1.0",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      checks: { database: dbOk, agentRuntime: runtimeOk },
+    };
   });
 
   server.get("/metrics", async (_req, reply) => {

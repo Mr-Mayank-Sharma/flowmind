@@ -2,7 +2,31 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
 import { PipelineEngine } from "@flowmind/pipeline-engine";
-import type { PipelineGraph, WorkflowSettings } from "@flowmind/pipeline-engine";
+import type { PipelineGraph, WorkflowSettings, PipelineNode } from "@flowmind/pipeline-engine";
+
+function normalizeGraph(graph: any): PipelineGraph {
+  if (!graph || !graph.nodes) return { nodes: [], edges: [] }
+  return {
+    nodes: (graph.nodes as any[]).map((n: any) => ({
+      id: n.id,
+      type: n.engineType ?? n.type,
+      label: n.label ?? "",
+      position: n.position ?? { x: 0, y: 0 },
+      config: n.config ?? {},
+      continueOnFail: n.continueOnFail,
+      retryOnFail: n.retryOnFail,
+      maxRetries: n.maxRetries,
+      disabled: n.disabled,
+    } as PipelineNode)),
+    edges: (graph.edges || []).map((e: any) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle ?? null,
+      targetHandle: e.targetHandle ?? null,
+    })),
+  }
+}
 
 const engine = new PipelineEngine();
 
@@ -136,22 +160,45 @@ export const pipelineRouter = router({
         },
       });
 
+      const logBuffer: Array<{ runId: string; nodeId: string; nodeType: string; input: any; output: any; error?: string; duration: number }> = [];
+
+      const engineWithStatus = new PipelineEngine({
+        onNodeStatus: async (event) => {
+          if (event.status === "running") {
+            logBuffer.push({
+              runId: run.id, nodeId: event.nodeId, nodeType: event.nodeType,
+              input: {}, output: {}, duration: 0,
+            });
+          } else if (event.status === "completed" || event.status === "failed") {
+            const idx = logBuffer.findIndex((l) => l.nodeId === event.nodeId);
+            if (idx >= 0) {
+              const existing = logBuffer[idx]!;
+              logBuffer[idx] = {
+                runId: existing.runId,
+                nodeId: existing.nodeId,
+                nodeType: existing.nodeType,
+                input: existing.input,
+                output: event.error ? { error: event.error } : {},
+                error: event.error,
+                duration: event.durationMs ?? 0,
+              };
+            }
+            const last = logBuffer[logBuffer.length - 1];
+            if (last) {
+              await ctx.prisma.runLog.createMany({ data: [last] });
+            }
+          }
+        },
+      });
+
       try {
-        const graph = pipeline.graph as unknown as PipelineGraph;
-        const result = await engine.execute(run.id, input.id, graph, input.input ?? {}, input.settings);
+        const rawGraph = pipeline.graph as any;
+        const graph = normalizeGraph(rawGraph);
+        const result = await engineWithStatus.execute(run.id, input.id, graph, input.input ?? {}, input.settings);
 
-        const logData = result.outputs.map((o) => ({
-          runId: run.id,
-          nodeId: o.nodeId,
-          nodeType: o.nodeType,
-          input: {},
-          output: o.output as any,
-          error: o.error,
-          duration: o.durationMs,
-        }));
-
-        if (logData.length > 0) {
-          await ctx.prisma.runLog.createMany({ data: logData });
+        // Flush any remaining buffered logs
+        if (logBuffer.length > 0) {
+          await ctx.prisma.runLog.createMany({ data: logBuffer });
         }
 
         const finalStatus = result.status === "success" ? "SUCCESS" as const : "FAILED" as const;
@@ -198,7 +245,7 @@ export const pipelineRouter = router({
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      const graph = pipeline.graph as unknown as PipelineGraph;
+      const graph = normalizeGraph(pipeline.graph);
       const nodeOutput = await engine.executeSingleNode(
         `test-${Date.now()}`,
         input.pipelineId,
@@ -213,13 +260,13 @@ export const pipelineRouter = router({
     .input(z.object({ graph: graphSchema }))
     .query(async ({ input }) => {
       const { validateGraph } = await import("@flowmind/pipeline-engine");
-      return { errors: validateGraph(input.graph as PipelineGraph) };
+      return { errors: validateGraph(normalizeGraph(input.graph)) };
     }),
 
   simulate: protectedProcedure
     .input(z.object({ graph: graphSchema }))
     .query(async ({ input }) => {
-      const result = engine.simulate(input.graph as PipelineGraph);
+      const result = engine.simulate(normalizeGraph(input.graph));
       return result;
     }),
 

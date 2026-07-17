@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import ReactFlow, {
   Background,
   Controls,
@@ -96,6 +97,7 @@ const defaultNode = (
       icon: iconMap[type] || "Zap",
       config: { summary: "" },
       status: "idle",
+      engineType: type,
     },
   }
 }
@@ -116,13 +118,48 @@ function CanvasInner({
   const [showRuns, setShowRuns] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     if (pipelineId === "new") return
     api.pipeline.getById(pipelineId).then((data) => {
       if (data?.graph) {
         const g = typeof data.graph === "string" ? JSON.parse(data.graph) : data.graph
-        if (g.nodes) setNodes(g.nodes)
+        if (g.nodes) {
+          setNodes(g.nodes.map((n: any) => {
+            const engineType = n.engineType ?? n.type
+            const typeMapRev: Record<string, string> = {
+              cronTrigger: "triggerNode", webhookTrigger: "triggerNode", channelTrigger: "triggerNode", manualTrigger: "triggerNode",
+              aiAgent: "aiNode", contentWriter: "aiNode", dataExtractor: "aiNode", classifier: "aiNode",
+              summarizer: "aiNode", webResearcher: "aiNode", imageGenerator: "aiNode",
+              httpRequest: "actionNode", databaseQuery: "actionNode", sendEmail: "actionNode",
+              sendMessage: "actionNode", codeExecute: "actionNode",
+              condition: "flowNode", switch: "flowNode", parallelFork: "flowNode",
+              merge: "flowNode", loop: "flowNode", wait: "flowNode",
+            }
+            const visualType = typeMapRev[engineType] || n.type || "actionNode"
+            const iconMapRev: Record<string, string> = {
+              cronTrigger: "Clock", webhookTrigger: "Webhook", channelTrigger: "MessageSquare", manualTrigger: "MousePointerClick",
+              aiAgent: "Zap", contentWriter: "FileText", dataExtractor: "Database", classifier: "GitBranch",
+              summarizer: "FileText", webResearcher: "Globe", imageGenerator: "Image",
+              httpRequest: "Globe", databaseQuery: "Database", sendEmail: "Mail", sendMessage: "MessageSquare",
+              codeExecute: "Code", condition: "GitBranch", switch: "SplitSquareHorizontal",
+              parallelFork: "ArrowRight", merge: "Merge", loop: "Repeat", wait: "Clock",
+            }
+            return {
+              id: n.id,
+              type: visualType,
+              position: n.position ?? { x: 0, y: 0 },
+              data: {
+                label: n.label ?? "Node",
+                icon: n.data?.icon ?? iconMapRev[engineType] ?? "Zap",
+                config: n.config ?? n.data?.config ?? {},
+                status: "idle",
+                engineType,
+              },
+            }
+          }))
+        }
         if (g.edges) setEdges(g.edges)
       }
       if (data?.name) setPipelineName(data.name)
@@ -196,35 +233,68 @@ function CanvasInner({
   const onSave = useCallback(async () => {
     setSaving(true)
     try {
-      await api.pipeline.update({
-        id: pipelineId,
-        name: pipelineName,
-        graph: { nodes: nodes.map((n) => ({ id: n.id, type: n.type!, label: n.data.label, position: n.position, config: (n.data as any).config ?? {} })), edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })) },
-      })
-      setVersion((v) => v + 1)
+      const nd = (n: Node) => {
+        const d = n.data as any
+        return { id: n.id, type: n.type!, label: d.label, position: n.position, config: d.config ?? {}, engineType: d.engineType ?? null }
+      }
+      const graph = { nodes: nodes.map(nd), edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })) }
+      if (pipelineId === "new") {
+        const created = await api.pipeline.create({ name: pipelineName, graph })
+        router.replace(`/pipelines/${created.id}`)
+      } else {
+        await api.pipeline.update({ id: pipelineId, name: pipelineName, graph })
+        setVersion((v) => v + 1)
+      }
     } catch (err) {
       console.error("Save failed:", err)
     } finally {
       setSaving(false)
     }
-  }, [pipelineId, pipelineName, nodes, edges])
+  }, [pipelineId, pipelineName, nodes, edges, router])
 
   const onRun = useCallback(async () => {
+    await onSave()
+    if (pipelineId === "new") return
     setRunning(true)
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle" } })))
+    let runId: string | undefined
     try {
+      const pollInterval = setInterval(async () => {
+        if (!runId) return
+        try {
+          const logs = await api.pipeline.getRunLogs(runId)
+          setNodes((nds) =>
+            nds.map((n) => {
+              const log = logs.find((l: any) => l.nodeId === n.id)
+              if (!log) return n
+              const s = log.error ? "error" : log.duration ? "success" : "running"
+              return { ...n, data: { ...n.data, status: s } }
+            })
+          )
+        } catch { /* ignore poll errors */ }
+      }, 400)
+      const startTime = Date.now()
+      setNodes((nds) =>
+        nds.map((n) => ({ ...n, data: { ...n.data, status: "running" } }))
+      )
       const result = await api.pipeline.trigger(pipelineId, {})
+      runId = result.runId
+      clearInterval(pollInterval)
+      const finalOutputs = await api.pipeline.getRunLogs(runId)
       setNodes((nds) =>
         nds.map((n) => {
-          const output = result.outputs?.find((o) => o.nodeId === n.id)
-          return { ...n, data: { ...n.data, status: output?.error ? "error" : "success" } }
+          const log = finalOutputs.find((l: any) => l.nodeId === n.id)
+          if (!log) return { ...n, data: { ...n.data, status: result.status === "success" ? "success" : "error" } }
+          return { ...n, data: { ...n.data, status: log.error ? "error" : "success", lastOutput: log.output } }
         })
       )
     } catch (err) {
       console.error("Run failed:", err)
+      setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
     } finally {
       setRunning(false)
     }
-  }, [pipelineId, setNodes])
+  }, [pipelineId, onSave, setNodes])
 
   const onRunNode = useCallback(async (nodeId: string) => {
     try {

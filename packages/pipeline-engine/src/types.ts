@@ -88,6 +88,15 @@ export interface SubPipelineRunner {
   run(pipelineId: string, input: unknown, parentContext: ExecutionContext): Promise<unknown>
 }
 
+export type NodeStatusCallback = (event: {
+  runId: string
+  nodeId: string
+  nodeType: string
+  status: "running" | "completed" | "failed"
+  error?: string
+  durationMs?: number
+}) => void
+
 export interface NodeRunner {
   type: NodeType
   execute(node: PipelineNode, context: ExecutionContext): Promise<unknown>

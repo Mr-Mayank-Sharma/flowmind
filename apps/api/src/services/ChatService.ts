@@ -5,6 +5,7 @@ import { ContextEngine, type ContextChunk } from "@flowmind/context-engine"
 const contextEngine = new ContextEngine()
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
+const AGENT_API_KEY = process.env.AGENT_API_KEY || ""
 
 const agentRuntimeCircuitBreaker = new CircuitBreaker(3, 30_000)
 
@@ -24,7 +25,10 @@ export interface SendMessageResult {
 async function callAgentRuntime(input: SendMessageInput): Promise<string> {
   const res = await fetch(`${AGENT_RUNTIME_URL}/chat/send`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(AGENT_API_KEY ? { Authorization: `Bearer ${AGENT_API_KEY}` } : {}),
+    },
     body: JSON.stringify({
       session_id: input.sessionId,
       message: input.content,
@@ -75,7 +79,9 @@ export class ChatService {
           const contextStr = chunks.map((c: ContextChunk) => c.content).join("\n\n")
           enhancedInput = { ...input, content: `Context:\n${contextStr}\n\nUser: ${input.content}` }
         }
-      } catch { }
+      } catch {
+        logger.debug({ userId: input.userId, sessionId: input.sessionId }, "Context engine search failed, proceeding without context");
+      }
       reply = await callAgentRuntimeWithRetry(enhancedInput)
     } catch (err) {
       logger.error({ err, sessionId: input.sessionId, durationMs: Date.now() - startTime }, "Agent runtime call failed after all retries")

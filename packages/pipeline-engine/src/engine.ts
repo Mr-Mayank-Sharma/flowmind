@@ -1,4 +1,4 @@
-import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry } from "./types"
+import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry, NodeStatusCallback } from "./types"
 import { buildExecutionPlan, getDirectPredecessors } from "./graph"
 import { executeNode, getRunner } from "./runners"
 import { validateGraph } from "./graph"
@@ -6,6 +6,7 @@ import { validateGraph } from "./graph"
 export interface EngineOptions {
   credentialResolver?: CredentialResolver
   subPipelineRunner?: SubPipelineRunner
+  onNodeStatus?: NodeStatusCallback
 }
 
 function sleep(ms: number): Promise<void> {
@@ -15,10 +16,12 @@ function sleep(ms: number): Promise<void> {
 export class PipelineEngine {
   private credentialResolver?: CredentialResolver
   private subPipelineRunner?: SubPipelineRunner
+  private onNodeStatus?: NodeStatusCallback
 
   constructor(options: EngineOptions = {}) {
     this.credentialResolver = options.credentialResolver
     this.subPipelineRunner = options.subPipelineRunner
+    this.onNodeStatus = options.onNodeStatus
   }
 
   async execute(
@@ -92,8 +95,15 @@ export class PipelineEngine {
         continue
       }
 
+      this.onNodeStatus?.({ runId, nodeId, nodeType: node.type, status: "running" })
       const nodeOutput = await this.executeNodeWithRetry(node, context)
       outputs.set(nodeId, nodeOutput)
+      this.onNodeStatus?.({
+        runId, nodeId, nodeType: node.type,
+        status: nodeOutput.error ? "failed" : "completed",
+        error: nodeOutput.error,
+        durationMs: nodeOutput.durationMs,
+      })
 
       if (nodeOutput.error && !node.continueOnFail) {
         runError = `Node "${node.label}" (${nodeId}) failed: ${nodeOutput.error}`
