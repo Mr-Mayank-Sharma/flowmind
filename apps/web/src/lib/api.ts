@@ -353,6 +353,17 @@ export const api = {
     deleteSession: (id: string) => tRPCMutation<{ success: boolean }>("context.deleteSession", { id }),
     enableSkill: (id: string, enabled: boolean) => tRPCMutation<{ success: boolean }>("context.enableSkill", { id, enabled }),
   },
+  skills: {
+    list: (input?: { tag?: string; search?: string }) =>
+      tRPCQuery<Array<{ id: string; name: string; description: string; author: string; version: string; tags: string[]; downloads: number; ratingAvg: number; ratingCount: number; createdAt: string }>>("skills.list", input),
+    search: (query: string) =>
+      tRPCQuery<Array<{ id: string; name: string; description: string; author: string; version: string }>>("skills.search", { query }),
+    getById: (id: string) => tRPCQuery<any>("skills.getById", { id }),
+    install: (skillId: string) => tRPCMutation<any>("skills.install", { skillId }),
+    publish: (input: { name: string; description: string; author: string; version: string; tags?: string[]; entryPoint?: string }) =>
+      tRPCMutation<any>("skills.publish", input),
+    delete: (id: string) => tRPCMutation<{ success: boolean }>("skills.delete", { id }),
+  },
   console: {
     listWorkspaces: () => tRPCQuery<any[]>("console.listWorkspaces"),
     getWorkspace: (id: string) => tRPCQuery<any>("console.getWorkspace", { id }),
