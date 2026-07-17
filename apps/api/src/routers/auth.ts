@@ -5,7 +5,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+const JWT_SECRET: string = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
+if (!process.env.JWT_SECRET) {
+  console.warn("WARNING: JWT_SECRET not set, using insecure fallback for development only");
+}
+
 const APP_URL = process.env.APP_URL || "http://localhost:4000";
 
 const SSO_CLIENTS: Record<string, { authorizeUrl: string; tokenUrl: string; clientId: string; clientSecret: string; scopes: string[]; userUrl: string }> = {
@@ -93,7 +97,7 @@ export const authRouter = router({
     .input(z.object({ refreshToken: z.string() }))
     .mutation(async ({ input, ctx }) => {
       try {
-        const payload = jwt.verify(input.refreshToken, JWT_SECRET) as { userId: string };
+        const payload = jwt.verify(input.refreshToken, JWT_SECRET) as unknown as { userId: string };
         const user = await ctx.prisma.user.findUnique({ where: { id: payload.userId } });
         if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
 

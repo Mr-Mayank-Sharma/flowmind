@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { ScrollArea, Button } from "@flowmind/ui"
-import { X, Clock, CheckCircle, XCircle, Loader2, ChevronRight } from "lucide-react"
+import { X, Clock, CheckCircle, XCircle, Loader2, ChevronRight, RefreshCw } from "lucide-react"
 import { api } from "../../lib/api"
 
 interface RunsPanelProps {
@@ -29,21 +29,35 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
   const [selectedRun, setSelectedRun] = useState<any | null>(null)
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const loadRuns = useCallback(async () => {
+    try {
+      const data = await api.pipeline.getRuns(pipelineId)
+      setRuns(data)
+    } catch (err) {
+      console.error("Failed to load runs:", err)
+    }
+  }, [pipelineId])
 
   useEffect(() => {
-    const loadRuns = async () => {
-      setLoading(true)
+    setLoading(true)
+    loadRuns().finally(() => setLoading(false))
+    const interval = setInterval(loadRuns, 5000)
+    return () => clearInterval(interval)
+  }, [loadRuns])
+
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await loadRuns()
+    if (selectedRun) {
       try {
-        const data = await api.pipeline.getRuns(pipelineId)
-        setRuns(data)
-      } catch (err) {
-        console.error("Failed to load runs:", err)
-      } finally {
-        setLoading(false)
-      }
+        const data = await api.pipeline.getRunLogs(selectedRun.id)
+        setLogs(data)
+      } catch { /* ignore */ }
     }
-    loadRuns()
-  }, [pipelineId])
+    setRefreshing(false)
+  }
 
   const selectRun = async (run: any) => {
     setSelectedRun(run)
@@ -55,6 +69,13 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
     }
   }
 
+  function fmtDuration(durationMs: number): string {
+    if (!durationMs || durationMs <= 0) return ""
+    if (durationMs < 1000) return `${durationMs}ms`
+    if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)}s`
+    return `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`
+  }
+
   return (
     <div className="w-80 h-full bg-surface border-l border flex flex-col shrink-0">
       <div className="flex items-center justify-between px-3 h-10 border-b shrink-0">
@@ -62,12 +83,21 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
           <Clock className="h-3.5 w-3.5" />
           Run History
         </span>
-        <button
-          onClick={onClose}
-          className="p-1 hover:bg-accent rounded-md transition-colors"
-        >
-          <X className="h-4 w-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onRefresh}
+            className="p-1 hover:bg-accent rounded-md transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-accent rounded-md transition-colors"
+          >
+            <X className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
       <ScrollArea className="flex-1">
         {loading ? (
@@ -94,6 +124,9 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
                       <p className="text-[10px] text-muted-foreground">
                         {run.createdAt ? new Date(run.createdAt).toLocaleString() : "—"}
                       </p>
+                      {run.output?.durationMs ? (
+                        <p className="text-[10px] text-muted-foreground">{fmtDuration(run.output.durationMs)}</p>
+                      ) : null}
                     </div>
                     <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
                   </button>
@@ -116,9 +149,9 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
                 <div className="flex items-center gap-1">
                   <span className={`w-1.5 h-1.5 rounded-full ${log.error ? "bg-red-500" : "bg-green-500"}`} />
                   <span className="font-medium text-foreground truncate">{log.nodeType}</span>
-                  {log.duration && (
-                    <span className="text-muted-foreground ml-auto">{log.duration}ms</span>
-                  )}
+                  {log.duration ? (
+                    <span className="text-muted-foreground ml-auto">{fmtDuration(log.duration)}</span>
+                  ) : null}
                 </div>
                 {log.error && (
                   <p className="text-red-500 truncate">{log.error}</p>

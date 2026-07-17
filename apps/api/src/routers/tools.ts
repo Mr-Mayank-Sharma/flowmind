@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../middleware/trpc";
 import { SkillEngine } from "@flowmind/skill-engine";
 
@@ -56,7 +57,7 @@ export const toolsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const tool = builtinTools.find((t) => t.id === input.id);
-      if (!tool) throw new Error("Tool not found");
+      if (!tool) throw new TRPCError({ code: "NOT_FOUND", message: "Tool not found" });
 
       const existing = await ctx.prisma.skill.findFirst({
         where: { userId: ctx.userId, name: tool.name },

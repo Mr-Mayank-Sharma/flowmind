@@ -1,11 +1,14 @@
-import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry } from "./types"
+import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry, NodeStatusCallback, LLMProvider } from "./types"
 import { buildExecutionPlan, getDirectPredecessors } from "./graph"
 import { executeNode, getRunner } from "./runners"
 import { validateGraph } from "./graph"
+import { providerRegistry } from "@flowmind/provider-registry"
 
 export interface EngineOptions {
   credentialResolver?: CredentialResolver
   subPipelineRunner?: SubPipelineRunner
+  onNodeStatus?: NodeStatusCallback
+  llm?: LLMProvider
 }
 
 function sleep(ms: number): Promise<void> {
@@ -15,10 +18,14 @@ function sleep(ms: number): Promise<void> {
 export class PipelineEngine {
   private credentialResolver?: CredentialResolver
   private subPipelineRunner?: SubPipelineRunner
+  private onNodeStatus?: NodeStatusCallback
+  private llm?: LLMProvider
 
   constructor(options: EngineOptions = {}) {
     this.credentialResolver = options.credentialResolver
     this.subPipelineRunner = options.subPipelineRunner
+    this.onNodeStatus = options.onNodeStatus
+    this.llm = options.llm
   }
 
   async execute(
@@ -63,6 +70,7 @@ export class PipelineEngine {
       abortSignal,
       credentialResolver: this.credentialResolver,
       subPipelineRunner: this.subPipelineRunner,
+      llm: this.llm,
     }
 
     for (const nodeId of plan.executionOrder) {
@@ -92,8 +100,15 @@ export class PipelineEngine {
         continue
       }
 
+      this.onNodeStatus?.({ runId, nodeId, nodeType: node.type, status: "running" })
       const nodeOutput = await this.executeNodeWithRetry(node, context)
       outputs.set(nodeId, nodeOutput)
+      this.onNodeStatus?.({
+        runId, nodeId, nodeType: node.type,
+        status: nodeOutput.error ? "failed" : "completed",
+        error: nodeOutput.error,
+        durationMs: nodeOutput.durationMs,
+      })
 
       if (nodeOutput.error && !node.continueOnFail) {
         runError = `Node "${node.label}" (${nodeId}) failed: ${nodeOutput.error}`
@@ -223,6 +238,7 @@ export class PipelineEngine {
       abortSignal,
       credentialResolver: this.credentialResolver,
       subPipelineRunner: this.subPipelineRunner,
+      llm: this.llm,
     }
 
     return this.executeNodeWithRetry(node, context)
@@ -282,13 +298,11 @@ export class PipelineEngine {
       ]
     }
     if (nodeType.startsWith("ai")) {
-      return [
-        { label: "GPT-4", value: "gpt-4" },
-        { label: "GPT-3.5", value: "gpt-3.5" },
-        { label: "Claude 3", value: "claude-3" },
-        { label: "Mistral", value: "mistral" },
-        { label: "TinyLlama", value: "tinyllama" },
-      ]
+      return providerRegistry.getModels().map((m) => ({
+        label: `${m.name} (${m.providerId})`,
+        value: m.id,
+        description: `Context: ${m.context} | Max output: ${m.maxOutput}`,
+      }))
     }
     return []
   }

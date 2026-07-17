@@ -3,11 +3,15 @@ import { TRPCError } from "@trpc/server"
 import { router, protectedProcedure } from "../middleware/trpc"
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
+const AGENT_API_KEY = process.env.AGENT_API_KEY || ""
 
 async function callAgentRuntime(path: string, body: Record<string, unknown>): Promise<any> {
   const res = await fetch(`${AGENT_RUNTIME_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(AGENT_API_KEY ? { Authorization: `Bearer ${AGENT_API_KEY}` } : {}),
+    },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15_000),
   })
@@ -154,7 +158,9 @@ export const knowledgeRouter = router({
         user_id: ctx.userId,
         doc_id: input.id,
         content: "",
-      }).catch(() => {})
+      }).catch((err) => {
+        ctx.req.log.warn({ err, docId: input.id }, "Failed to delete knowledge from agent runtime");
+      })
 
       const remaining = await ctx.prisma.knowledgeDocument.count({
         where: { kbId: doc.kbId },

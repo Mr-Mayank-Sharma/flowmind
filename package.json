@@ -20,9 +20,11 @@
     "desktop:build": "pnpm --filter @flowmind/desktop build",
     "setup": "pnpm install && pnpm db:migrate && pnpm db:seed",
     "postinstall": "pnpm db:generate",
-    "clean": "turbo clean && rm -rf node_modules"
+    "clean": "turbo clean && rm -rf node_modules",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.20.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",

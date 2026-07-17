@@ -1,5 +1,7 @@
 export * from "./types"
 export * from "./engine"
+export * from "./agent-loop"
 export { createOpenAIProvider } from "./providers/openai"
 export { createAnthropicProvider } from "./providers/anthropic"
 export { createGoogleProvider } from "./providers/google"
+export { createOllamaProvider } from "./providers/ollama"

@@ -5,6 +5,7 @@ import { Button } from "@flowmind/ui"
 import {
   Save,
   Play,
+  Square,
   Undo2,
   Redo2,
   ChevronLeft,
@@ -20,6 +21,7 @@ interface PipelineToolbarProps {
   onNameChange: (name: string) => void
   onSave: () => void
   onRun: () => void
+  onCancel?: () => void
   saving?: boolean
   running?: boolean
   onToggleRuns?: () => void
@@ -33,6 +35,7 @@ export function PipelineToolbar({
   onNameChange,
   onSave,
   onRun,
+  onCancel,
   saving,
   running,
   onToggleRuns,
@@ -136,16 +139,27 @@ export function PipelineToolbar({
             Ctrl+S
           </span>
         </Button>
-        <Button
-          variant="default"
-          size="sm"
-          onClick={onRun}
-          disabled={running}
-          className="gap-1.5 text-xs h-8"
-        >
-          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-          {running ? "Running..." : "Run"}
-        </Button>
+        {running ? (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onCancel}
+            className="gap-1.5 text-xs h-8"
+          >
+            <Square className="h-3.5 w-3.5" />
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            variant="default"
+            size="sm"
+            onClick={onRun}
+            className="gap-1.5 text-xs h-8"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Run
+          </Button>
+        )}
         {onToggleRuns && (
           <Button
             variant={showRuns ? "secondary" : "ghost"}

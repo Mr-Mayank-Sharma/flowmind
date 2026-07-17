@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server"
 import { router, protectedProcedure } from "../middleware/trpc"
 import { chatService } from "../services"
 import { MessageRole } from "@flowmind/shared"
+import { getSessionEmitter } from "../services/session-emitters"
 
 export const chatRouter = router({
   sendMessage: protectedProcedure
@@ -26,9 +27,16 @@ export const chatRouter = router({
           data: { sessionId: input.sessionId, role, content },
         })
 
-      const result = await chatService.sendMessage(
+      const emitter = getSessionEmitter(input.sessionId)
+
+      const result = await chatService.sendMessageWithAgentLoop(
         { ...input, userId: ctx.userId },
         saveMessage,
+        {
+          onStep: (step) => emitter.emit("step", step),
+          onDone: (result) => emitter.emit("done", result),
+          onError: (error) => emitter.emit("error", error),
+        },
       )
 
       await ctx.prisma.session.update({
@@ -36,7 +44,12 @@ export const chatRouter = router({
         data: { updatedAt: new Date() },
       })
 
-      return { message: result.message, streamUrl: `/api/chat/stream/${input.sessionId}` }
+      return {
+        message: result.message,
+        streamUrl: `/api/chat/stream/${input.sessionId}`,
+        iterations: result.iterations,
+        toolCallCount: result.steps.filter((s) => s.type === "tool_call").length,
+      }
     }),
 
   getSessions: protectedProcedure
