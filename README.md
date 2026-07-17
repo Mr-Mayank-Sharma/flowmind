@@ -44,6 +44,19 @@ Web UI (Next.js) ──tRPC──> API (Fastify) ──> Pipeline Engine
 
 See [docs/architecture.md](docs/architecture.md) for the full system overview.
 
+## Features
+
+- **Visual Pipeline Canvas** — Drag-and-drop node editor with keyboard shortcuts (Ctrl+S save, Ctrl+Enter run, Delete remove, Ctrl+D duplicate)
+- **Node Palette with Search** — Filter 24+ node types across Triggers, AI, Actions, and Flow Control
+- **Pipeline Templates** — Start from 6 pre-built workflow templates (Email Automation, Web Research, Content Factory, etc.)
+- **Skill Marketplace** — Discover, clone, and install community-built skills
+- **SSE Streaming** — Real-time pipeline execution with live node status updates
+- **Integration Protocol** — Register external runtimes (OpenHuman, custom adapters)
+- **Responsive Layout** — Works on desktop and mobile
+- **Toast Notifications** — Success/error feedback on all mutations
+- **Loading States** — Skeleton placeholders during data fetches
+- **Error Recovery** — Typed error classes with friendly messages and retry actions
+
 ## Project Structure
 
 ```
