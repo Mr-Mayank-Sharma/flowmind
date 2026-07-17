@@ -29,6 +29,7 @@ import { cn } from "@flowmind/ui"
 import { Skeleton, SkeletonNode } from "../ui/skeleton"
 import { api } from "../../lib/api"
 import { useToast } from "../../hooks/use-toast"
+import { useCanvasShortcuts, SHORTCUTS } from "../../hooks/use-keyboard-shortcuts"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
@@ -135,6 +136,43 @@ function CanvasInner({
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const router = useRouter()
   const { toast } = useToast()
+  const [showShortcuts, setShowShortcuts] = useState(false)
+
+  const getSelectedNodeIds = useCallback(() => {
+    return nodes.filter((n) => n.selected).map((n) => n.id)
+  }, [nodes])
+
+  const onDeleteNodes = useCallback(
+    (nodeIds: string[]) => {
+      setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)))
+      setEdges((eds) => eds.filter((e) => !nodeIds.includes(e.source) && !nodeIds.includes(e.target)))
+      setSelectedNode(null)
+    },
+    [setNodes, setEdges]
+  )
+
+  const onDuplicateNodes = useCallback(
+    (nodeIds: string[]) => {
+      const selected = nodes.filter((n) => nodeIds.includes(n.id))
+      const newNodes = selected.map((n) => ({
+        ...n,
+        id: `${n.type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        position: { x: n.position.x + 50, y: n.position.y + 50 },
+        selected: false,
+      }))
+      setNodes((nds) => nds.concat(newNodes))
+    },
+    [nodes, setNodes]
+  )
+
+  const onSelectAll = useCallback(() => {
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: true })))
+  }, [setNodes])
+
+  const onDeselect = useCallback(() => {
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: false })))
+    setSelectedNode(null)
+  }, [setNodes])
 
   useEffect(() => {
     if (pipelineId === "new") return
@@ -357,6 +395,16 @@ function CanvasInner({
     )
   }, [currentRunId, setNodes])
 
+  useCanvasShortcuts({
+    onSave,
+    onRun,
+    onDelete: onDeleteNodes,
+    onDuplicate: onDuplicateNodes,
+    onSelectAll,
+    onDeselect,
+    getSelectedNodeIds,
+  })
+
   const onRunNode = useCallback(async (nodeId: string) => {
     try {
       const result = await api.pipeline.executeNode(pipelineId, nodeId, {})
@@ -391,6 +439,7 @@ function CanvasInner({
         onToggleRuns={() => setShowRuns(!showRuns)}
         showRuns={showRuns}
         version={version}
+        onToggleShortcuts={() => setShowShortcuts(!showShortcuts)}
       />
       <div className="flex flex-1 overflow-hidden">
         <NodePalette />
@@ -475,6 +524,27 @@ function CanvasInner({
           />
         )}
       </div>
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-card rounded-lg border p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold mb-4">Keyboard Shortcuts</h3>
+            <div className="space-y-2">
+              {SHORTCUTS.map((s) => (
+                <div key={s.keys} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{s.label}</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono border">{s.keys}</kbd>
+                </div>
+              ))}
+            </div>
+            <button
+              className="mt-4 w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowShortcuts(false)}
+            >
+              Press Esc to close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

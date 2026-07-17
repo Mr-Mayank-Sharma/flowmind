@@ -12,6 +12,7 @@ import {
   Workflow,
   History,
   Loader2,
+  Keyboard,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -27,6 +28,7 @@ interface PipelineToolbarProps {
   onToggleRuns?: () => void
   showRuns?: boolean
   version: number
+  onToggleShortcuts?: () => void
 }
 
 export function PipelineToolbar({
@@ -41,6 +43,7 @@ export function PipelineToolbar({
   onToggleRuns,
   showRuns,
   version,
+  onToggleShortcuts,
 }: PipelineToolbarProps) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(pipelineName)
@@ -79,17 +82,6 @@ export function PipelineToolbar({
     },
     [pipelineName]
   )
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault()
-        onSave()
-      }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [onSave])
 
   return (
     <div className="flex items-center justify-between h-11 px-3 border-b bg-surface shrink-0">
@@ -172,6 +164,17 @@ export function PipelineToolbar({
           </Button>
         )}
         <div className="w-px h-5 bg-border mx-1" />
+        {onToggleShortcuts && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleShortcuts}
+            className="h-8 w-8"
+            title="Keyboard shortcuts"
+          >
+            <Keyboard className="h-4 w-4" />
+          </Button>
+        )}
         <Button variant="ghost" size="icon" disabled className="h-8 w-8">
           <Undo2 className="h-4 w-4" />
         </Button>
