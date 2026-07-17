@@ -1,112 +1,88 @@
-# FlowMind Architecture
+# Architecture
 
-## Overview
+## System Overview
 
-FlowMind is an AI workflow orchestration platform. It uses a monorepo (pnpm workspaces + Turborepo) with two application entry points and 21 shared packages.
+FlowMind is an AI Agent OS — a platform for building, running, and sharing AI-powered workflows and chat agents.
 
 ```
-┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
-│   apps/web   │────▶│     apps/api     │────▶│  Postgres     │
-│  (Next.js)   │     │  (Fastify+tRPC)  │     │  Redis        │
-│              │     │                  │     │  Qdrant       │
-│  Port 3000   │     │   Port 3001      │     │  S3/MinIO     │
-└──────────────┘     └──────────────────┘     └──────────────┘
-                             │
-                    ┌────────┴────────┐
-                    │                 │
-              apps/cli          apps/desktop
-              (CLI tool)        (Electron)
+┌─────────────────────────────────────────────────────┐
+│                    Web UI (Next.js)                  │
+│  Pipeline Canvas · Chat · Marketplace · Settings     │
+└──────────────────────┬──────────────────────────────┘
+                       │ tRPC
+┌──────────────────────┴──────────────────────────────┐
+│                   API (Fastify)                      │
+│  tRPC Routers · Auth · SSE Streaming                │
+└───┬──────────┬──────────┬──────────┬────────────────┘
+    │          │          │          │
+┌───┴───┐ ┌───┴───┐ ┌───┴───┐ ┌───┴────────────┐
+│ LLM   │ │Pipe-  │ │Skill  │ │Tool            │
+│Router │ │line   │ │Engine │ │System          │
+│       │ │Engine │ │       │ │(MCP/Registry)  │
+└───┬───┘ └───┬───┘ └───┬───┘ └────────────────┘
+    │         │         │
+┌───┴─────────┴─────────┴──────────────────────┐
+│              Shared Infrastructure            │
+│  Provider Registry · Context Engine · DB     │
+│  Channel Gateway · Session Engine            │
+└──────────────────────────────────────────────┘
 ```
 
-## Applications
+## Package Map
 
-| App | Framework | Purpose |
-|---|---|---|
-| `apps/web` | Next.js 14 + React 18 | Main web UI (pipelines, chat, settings) |
-| `apps/api` | Fastify 4 + tRPC 11 | REST + tRPC API server |
-| `apps/cli` | Commander | CLI for pipeline management |
-| `apps/desktop` | Electron | Desktop wrapper |
-| `apps/docs` | — | Documentation |
-
-## Key Packages
-
-### Core Infrastructure
-| Package | Role |
+| Package | Purpose |
 |---|---|
-| `@flowmind/db` | Prisma schema and client (PostgreSQL) |
-| `@flowmind/shared` | Shared TypeScript types and enums |
-| `@flowmind/billing` | Stripe billing integration |
-| `@flowmind/session-engine` | Session management |
-
-### Pipeline & Execution
-| Package | Role |
-|---|---|
-| `@flowmind/pipeline-engine` | DAG pipeline execution |
-| `@flowmind/skill-engine` | Isolated skill sandboxing (isolated-vm) |
-| `@flowmind/tool-system` | Tool registry and execution |
-| `@flowmind/plugin-engine` | Plugin management |
-| `@flowmind/context-engine` | Context retrieval and RAG |
-
-### AI & Providers
-| Package | Role |
-|---|---|
-| `@flowmind/llm-router` | Multi-provider LLM routing |
-| `@flowmind/provider-registry` | Provider configuration |
-| `@flowmind/mcp-executor` | MCP tool execution |
-| `@flowmind/permission` | Permission management |
-
-### Communication
-| Package | Role |
-|---|---|
-| `@flowmind/channel-gateway` | Multi-channel (Telegram, Slack, Discord, WhatsApp) |
-| `@flowmind/agent-runtime` | AI agent execution runtime |
-
-## API Layer
-
-- **Transport**: Fastify with tRPC adapter (all business logic via tRPC procedures)
-- **Non-tRPC routes**: `/health`, `/metrics`, `/api/stripe/webhook`, `/api/internal/create-pipeline`
-- **Auth**: JWT with bcrypt password hashing, optional Google/GitHub SSO
-- **Rate limiting**: `@fastify/rate-limit` (configurable via `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW`)
-- **Logging**: Pino (structured JSON, request IDs via Fastify logger)
-- **Error tracking**: Sentry (no-op when `SENTRY_DSN` not set)
-- **CORS**: Restricted to configured APP_URL and localhost origins
-
-## Frontend
-
-- **Framework**: Next.js 14 with App Router
-- **State**: Zustand stores + React Query
-- **UI**: Tailwind CSS + Radix UI primitives
-- **API client**: Hand-rolled fetch wrapper (`lib/api.ts`) + typed tRPC client (`lib/trpc.ts`)
-- **Error boundary**: React ErrorBoundary with Sentry integration
-
-## Infrastructure
-
-- **Containers**: Docker Compose (local + production) and Kubernetes manifests
-- **Database**: PostgreSQL 16 (primary), Redis 7 (cache), Qdrant (vector store)
-- **File storage**: S3-compatible (MinIO for dev)
-- **Reverse proxy**: Traefik (production Compose stack)
-- **CI**: GitHub Actions (lint, typecheck, test, pnpm audit)
-
-## Security
-
-- **Skill sandboxing**: isolated-vm (128 MB memory limit, 5s CPU timeout)
-- **No global/process/require access in sandboxed code**
-- **Dependency scanning**: pnpm audit in CI, Dependabot weekly
-- **Auth**: JWT (15min access + 7d refresh), bcrypt(12) passwords
-
-## Observability
-
-- **Metrics**: Prometheus format at `/metrics` (via prom-client)
-- **Health**: `/health` with DB connectivity check
-- **Logs**: Structured JSON via pino
-- **Errors**: Sentry (client + server, when configured)
+| `@flowmind/api` | Fastify server, tRPC routers, auth, SSE |
+| `@flowmind/web` | Next.js 14 App Router, ReactFlow canvas, chat UI |
+| `@flowmind/cli` | Commander.js CLI for pipeline/skill management |
+| `@flowmind/llm-router` | LLM provider abstraction, agent loop, model routing |
+| `@flowmind/pipeline-engine` | DAG execution, node runners, expression engine |
+| `@flowmind/skill-engine` | Sandboxed JS skill execution, marketplace integration |
+| `@flowmind/tool-system` | Tool registry, built-in tools (read, write, bash, etc.) |
+| `@flowmind/mcp-executor` | MCP protocol executor, OAuth, built-in tool dispatch |
+| `@flowmind/channel-gateway` | Multi-channel messaging (Telegram, Slack, Discord, etc.) |
+| `@flowmind/context-engine` | Session/memory management, context assembly |
+| `@flowmind/provider-registry` | LLM provider configuration and key management |
+| `@flowmind/runtime-registry` | External runtime registration and task dispatch |
+| `@flowmind/errors` | Typed error classes with codes and retry policies |
+| `@flowmind/db` | Prisma schema, database client, seed data |
+| `@flowmind/ui` | Shared React components (shadcn/ui) |
+| `@flowmind/shared` | Common types and utilities |
 
 ## Data Flow
 
-```
-User → Next.js (apps/web) → fetch → Fastify (apps/api) → tRPC procedure
-  → Service (ChatService, etc.) → Prisma → PostgreSQL
-  → ContextEngine → Qdrant
-  → LLMRouter → OpenAI/Anthropic/Ollama
-  → ChannelGateway → Telegram/Slack/Discord
-```
+### Pipeline Execution
+
+1. User triggers a pipeline (manual, cron, webhook, or chat)
+2. `pipeline-engine` validates the graph and builds an execution plan
+3. Nodes execute in topological order via `getRunner()` dispatch
+4. Each node runner produces output; results flow to downstream nodes
+5. SSE events stream progress to the web UI
+
+### Chat Agent Loop
+
+1. User sends a message via the chat UI
+2. `ChatService` builds context (history, tools, memories)
+3. `llm-router` sends to the configured provider
+4. LLM may request tool calls → dispatched via `tool-system`
+5. Tool results are fed back to the LLM until a final response is produced
+6. Response streams back via SSE
+
+### Skill Execution
+
+1. User installs a skill from the marketplace (or creates locally)
+2. Skill manifest (`skill.json`) defines inputs, outputs, permissions
+3. `skill-engine` loads and executes the skill in a sandboxed `isolated-vm`
+4. Skills can be used as pipeline nodes (`skill.*` type prefix)
+
+## Database Models
+
+Key models in `packages/db/prisma/schema.prisma`:
+
+- **User** — Auth, roles, org membership
+- **Pipeline** — Workflow definitions with graph JSON
+- **PipelineRun** — Execution records with status and timing
+- **MarketplaceFlow** — Published workflows with ratings
+- **MarketplaceSkill** — Published skills with versions
+- **ChatSession/ChatMessage** — Chat history
+- **ApiKey/Credential** — Encrypted secrets

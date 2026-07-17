@@ -1,35 +1,67 @@
 # FlowMind
 
-AI workflow orchestration platform — Next.js frontend + Fastify/tRPC API + PostgreSQL/Redis/Qdrant.
+**Build, run, and share AI-powered workflows and agents — all in one place.**
+
+FlowMind is an AI Agent OS: a platform for creating multi-step AI pipelines, chat agents, and reusable skills. Connect any LLM provider, orchestrate complex workflows visually, and publish to a community marketplace.
+
+![FlowMind Pipeline Canvas](docs/assets/canvas-screenshot.png)
 
 ## Quick Start
 
 ```bash
-pnpm install          # install + generate Prisma client
-cp .env.example .env  # configure DB, LLM keys, etc.
-pnpm db:migrate       # run DB migrations
-pnpm db:seed          # seed sample data
-pnpm dev              # starts api:3001 + web:3000
+git clone https://github.com/your-org/flowmind.git
+cd flowmind
+pnpm install
+cp .env.example .env
+pnpm db:generate
+pnpm db:seed
+pnpm dev
 ```
+
+Open http://localhost:3000 — login with `admin@flowmind.ai` / `admin123`
+
+## Demo Workflows
+
+The seed data includes 5 production-ready multi-node pipelines:
+
+1. **SEO Optimization Pipeline** — Fetch page → Extract meta tags → AI analysis → Generate optimizations → Format report
+2. **Email Triage Pipeline** — Cron trigger → Fetch emails → AI classify → Branch by urgency → Compose digest → Send to Slack
+3. **AI Code Review Pipeline** — GitHub webhook → Fetch diff → Parallel AI review (quality + security) → Merge → Post PR comment
+4. **Content Generation Pipeline** — Topic input → Web research → Generate outline → Write article → SEO optimize → Format
+5. **Data Extraction Pipeline** — URL input → Fetch content → Clean HTML → AI extract → Validate → Format output
+
+## Architecture
+
+```
+Web UI (Next.js) ──tRPC──> API (Fastify) ──> Pipeline Engine
+                     │              │              │
+                     │         LLM Router    Skill Engine
+                     │              │              │
+                     │        Tool System   Channel Gateway
+                     │              │              │
+                     └──── DB (PostgreSQL) + Redis ─┘
+```
+
+See [docs/architecture.md](docs/architecture.md) for the full system overview.
 
 ## Project Structure
 
 ```
-apps/              # Application entry points
-  api/             #   Fastify + tRPC server (port 3001)
-  web/             #   Next.js 14 App Router (port 3000)
-  cli/             #   Command-line tool
-  desktop/         #   Electron desktop app
-packages/          # Shared libraries (21 packages)
-  db/              #   Prisma schema + client
-  shared/          #   TypeScript types + enums
-  skill-engine/    #   isolated-vm sandboxing
-  pipeline-engine/ #   DAG execution
-  llm-router/      #   Multi-provider LLM routing
-  ...              #   billing, session, context, tools, etc.
-infra/             # Docker Compose, K8s manifests
-docs/              # Architecture, DR docs
-scripts/           # Backup, utility scripts
+apps/
+  api/             Fastify + tRPC server (port 3001)
+  web/             Next.js 14 App Router (port 3000)
+  cli/             Command-line tool
+  desktop/         Electron desktop app
+packages/          23 shared packages
+  pipeline-engine/   DAG execution + node runners
+  skill-engine/      Sandboxed skill execution
+  llm-router/        Multi-provider LLM routing
+  tool-system/       Built-in tools (read, write, bash, etc.)
+  channel-gateway/   Telegram, Slack, Discord, WhatsApp, Email
+  runtime-registry/  External runtime dispatch
+  errors/            Typed error classes
+  db/                Prisma schema + client
+  ...                billing, session, context, auth, UI, etc.
 ```
 
 ## Key Commands
@@ -38,26 +70,25 @@ scripts/           # Backup, utility scripts
 |---|---|
 | `pnpm dev` | Start api + web in dev mode |
 | `pnpm typecheck` | TypeScript check across all packages |
-| `pnpm lint` | ESLint check |
 | `pnpm test` | Run unit tests |
-| `pnpm test:e2e` | Run Playwright e2e tests |
 | `pnpm build` | Build all packages |
 
-## Configuration
+## Documentation
 
-Set environment variables in `.env` (see `.env.example`). Required:
-- `DATABASE_URL` — PostgreSQL connection
-- `JWT_SECRET` — min 32-char string
-- At least one LLM provider key (OpenAI, Anthropic, etc.)
+- [Getting Started](docs/getting-started.md)
+- [Architecture](docs/architecture.md)
+- [Pipeline Authoring](docs/pipeline-authoring.md)
+- [Skill Development](docs/skill-development.md)
+- [Integration Protocol](docs/integration-protocol.md)
+- [Self-Hosting](docs/self-hosting.md)
 
-For production, also configure: `SENTRY_DSN`, `STRIPE_*`, `S3_*`, `RATE_LIMIT_*`.
+## Contributing
 
-## Deployment
+1. Fork the repo
+2. Create a feature branch
+3. Run `pnpm typecheck` and `pnpm test` before committing
+4. Open a PR
 
-```bash
-docker compose -f infra/compose/production.yml up -d
-```
+## License
 
-## Architecture
-
-See [docs/architecture.md](docs/architecture.md) for a full overview.
+MIT
