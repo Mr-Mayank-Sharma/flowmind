@@ -4,6 +4,7 @@ import { router, protectedProcedure, publicProcedure } from "../middleware/trpc"
 import { PipelineEngine } from "@flowmind/pipeline-engine";
 import type { PipelineGraph, WorkflowSettings, PipelineNode, LLMProvider } from "@flowmind/pipeline-engine";
 import { LLMEngine } from "@flowmind/llm-router";
+import { getRunEmitter } from "../services/run-emitters";
 
 function buildLLMProvider(): LLMProvider | undefined {
   const openaiKey = process.env.OPENAI_KEY;
@@ -205,6 +206,15 @@ export const pipelineRouter = router({
       const engineWithStatus = new PipelineEngine({
         llm,
         onNodeStatus: async (event) => {
+          const emitter = getRunEmitter(run.id);
+          emitter.emit("node", {
+            nodeId: event.nodeId,
+            nodeType: event.nodeType,
+            status: event.status,
+            error: event.error,
+            durationMs: event.durationMs,
+          });
+
           if (event.status === "running") {
             logBuffer.push({
               runId: run.id, nodeId: event.nodeId, nodeType: event.nodeType,
@@ -259,6 +269,10 @@ export const pipelineRouter = router({
           },
         });
 
+        const runEmitter = getRunEmitter(run.id);
+        runEmitter.emit("done", { status: finalStatus, outputs: result.outputs, durationMs: result.durationMs });
+        setTimeout(() => runEmitter.removeAllListeners(), 5000);
+
         await ctx.prisma.pipeline.update({
           where: { id: input.id },
           data: {
@@ -274,6 +288,9 @@ export const pipelineRouter = router({
           where: { id: run.id },
           data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
         });
+        const runEmitter = getRunEmitter(run.id);
+        runEmitter.emit("error", { message: err.message });
+        setTimeout(() => runEmitter.removeAllListeners(), 5000);
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err.message ?? "Pipeline execution failed" });
       }
     }),

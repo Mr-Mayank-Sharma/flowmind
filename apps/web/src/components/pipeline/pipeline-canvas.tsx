@@ -28,6 +28,14 @@ import { RunsPanel } from "./runs-panel"
 import { cn } from "@flowmind/ui"
 import { api } from "../../lib/api"
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+
+function getToken(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(/(?:^|;\s*)flowmind_token=([^;]*)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : null
+}
+
 interface PipelineCanvasProps {
   pipelineId: string
   initialName?: string
@@ -259,63 +267,67 @@ function CanvasInner({
     setRunning(true)
     setCurrentRunId(null)
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle", lastOutput: undefined } })))
-    let cancelled = false
-    let runId: string | undefined
-    const pollInterval = setInterval(async () => {
-      if (!runId) return
-      try {
-        const logs = await api.pipeline.getRunLogs(runId)
-        setNodes((nds) =>
-          nds.map((n) => {
-            const log = logs.find((l: any) => l.nodeId === n.id)
-            if (!log) return n
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                status: log.error ? "error" : log.duration ? "success" : "running",
-                lastOutput: log.output ?? n.data.lastOutput,
-              },
-            }
-          })
-        )
-      } catch { /* ignore poll errors */ }
-    }, 400)
+    let eventSource: EventSource | null = null
     try {
       setNodes((nds) =>
         nds.map((n) => ({ ...n, data: { ...n.data, status: "running" } }))
       )
       const result = await api.pipeline.trigger(pipelineId, {})
-      runId = result.runId
+      const runId = result.runId
       setCurrentRunId(runId)
+
       if (result.status === "CANCELLED") {
-        cancelled = true
-        clearInterval(pollInterval)
         setNodes((nds) =>
           nds.map((n) => ({ ...n, data: { ...n.data, status: "cancelled" as string } }))
         )
         return
       }
-      clearInterval(pollInterval)
-      const finalOutputs = await api.pipeline.getRunLogs(runId)
-      setNodes((nds) =>
-        nds.map((n) => {
-          const log = finalOutputs.find((l: any) => l.nodeId === n.id)
-          if (!log) return { ...n, data: { ...n.data, status: result.status === "SUCCESS" ? "success" : "error" } }
-          return { ...n, data: { ...n.data, status: log.error ? "error" : "success", lastOutput: log.output } }
-        })
-      )
+
+      const token = getToken()
+      const url = `${API_URL}/api/pipeline/stream/${runId}${token ? `?token=${encodeURIComponent(token)}` : ""}`
+      eventSource = new EventSource(url)
+
+      eventSource.onmessage = (ev) => {
+        if (ev.data === "[DONE]") {
+          eventSource?.close()
+          return
+        }
+        try {
+          const msg = JSON.parse(ev.data)
+          if (msg.type === "node") {
+            setNodes((nds) =>
+              nds.map((n) => {
+                if (n.id !== msg.nodeId) return n
+                return {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    status: msg.error ? "error" : msg.durationMs ? "success" : "running",
+                    lastOutput: msg.output && Object.keys(msg.output).length > 0 ? msg.output : n.data.lastOutput,
+                  },
+                }
+              })
+            )
+          } else if (msg.type === "done") {
+            setNodes((nds) =>
+              nds.map((n) => ({ ...n, data: { ...n.data, status: msg.status === "SUCCESS" ? "success" : "error" } }))
+            )
+          } else if (msg.type === "error") {
+            setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      eventSource.onerror = () => {
+        eventSource?.close()
+      }
     } catch (err) {
-      clearInterval(pollInterval)
-      if (!cancelled) {
-        console.error("Run failed:", err)
-        setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
-      }
+      eventSource?.close()
+      console.error("Run failed:", err)
+      setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
     } finally {
-      if (!cancelled) {
-        setRunning(false)
-        setCurrentRunId(null)
-      }
+      setRunning(false)
+      setCurrentRunId(null)
     }
   }, [pipelineId, onSave, setNodes])
 

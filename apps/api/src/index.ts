@@ -25,6 +25,7 @@ import {
 } from "@flowmind/tool-system";
 import type { AgentLoopStep } from "@flowmind/llm-router";
 import { getSessionEmitter } from "./services/session-emitters";
+import { getRunEmitter } from "./services/run-emitters";
 
 const SENTRY_DSN = process.env.SENTRY_DSN;
 if (SENTRY_DSN) {
@@ -194,6 +195,72 @@ async function main() {
     emitter.on("done", onDone)
     emitter.on("error", onError)
     emitter.on("close", cleanup)
+
+    req.raw.on("close", cleanup)
+  })
+
+  server.get<{ Params: { runId: string } }>("/api/pipeline/stream/:runId", async (req, reply) => {
+    const { runId } = req.params
+    const token = (req.query as any)?.token || req.headers.authorization?.replace("Bearer ", "")
+
+    if (!token) {
+      return reply.status(401).send({ error: "Authentication required" })
+    }
+
+    let userId: string | null = null
+    try {
+      const jwt = await import("jsonwebtoken")
+      const payload = jwt.default.verify(token, process.env.JWT_SECRET || "dev-secret-change-in-production") as { userId: string }
+      userId = payload.userId
+    } catch {
+      return reply.status(401).send({ error: "Invalid token" })
+    }
+
+    const run = await prisma.pipelineRun.findUnique({ where: { id: runId }, include: { pipeline: true } })
+    if (!run || run.pipeline.userId !== userId) {
+      return reply.status(404).send({ error: "Run not found" })
+    }
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    })
+
+    const emitter = getRunEmitter(runId)
+    const heartbeat = setInterval(() => {
+      reply.raw.write(": heartbeat\n\n")
+    }, 15000)
+
+    const onNode = (data: Record<string, unknown>) => {
+      reply.raw.write(`data: ${JSON.stringify({ type: "node", ...data })}\n\n`)
+    }
+
+    const onDone = (data: Record<string, unknown>) => {
+      reply.raw.write(`data: ${JSON.stringify({ type: "done", ...data })}\n\n`)
+      reply.raw.write("data: [DONE]\n\n")
+      cleanup()
+    }
+
+    const onError = (data: unknown) => {
+      const msg = data && typeof data === "object" && "message" in data ? (data as { message: string }).message : "Unknown error"
+      reply.raw.write(`data: ${JSON.stringify({ type: "error", message: msg })}\n\n`)
+      reply.raw.write("data: [DONE]\n\n")
+      cleanup()
+    }
+
+    function cleanup() {
+      clearInterval(heartbeat)
+      emitter.off("node", onNode)
+      emitter.off("done", onDone)
+      emitter.off("error", onError)
+      reply.raw.end()
+    }
+
+    emitter.on("node", onNode)
+    emitter.on("done", onDone)
+    emitter.on("error", onError)
 
     req.raw.on("close", cleanup)
   })
