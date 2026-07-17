@@ -115,6 +115,7 @@ function CanvasInner({
   const [version, setVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [running, setRunning] = useState(false)
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const [showRuns, setShowRuns] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
@@ -256,45 +257,81 @@ function CanvasInner({
     await onSave()
     if (pipelineId === "new") return
     setRunning(true)
-    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle" } })))
+    setCurrentRunId(null)
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle", lastOutput: undefined } })))
+    let cancelled = false
     let runId: string | undefined
+    const pollInterval = setInterval(async () => {
+      if (!runId) return
+      try {
+        const logs = await api.pipeline.getRunLogs(runId)
+        setNodes((nds) =>
+          nds.map((n) => {
+            const log = logs.find((l: any) => l.nodeId === n.id)
+            if (!log) return n
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                status: log.error ? "error" : log.duration ? "success" : "running",
+                lastOutput: log.output ?? n.data.lastOutput,
+              },
+            }
+          })
+        )
+      } catch { /* ignore poll errors */ }
+    }, 400)
     try {
-      const pollInterval = setInterval(async () => {
-        if (!runId) return
-        try {
-          const logs = await api.pipeline.getRunLogs(runId)
-          setNodes((nds) =>
-            nds.map((n) => {
-              const log = logs.find((l: any) => l.nodeId === n.id)
-              if (!log) return n
-              const s = log.error ? "error" : log.duration ? "success" : "running"
-              return { ...n, data: { ...n.data, status: s } }
-            })
-          )
-        } catch { /* ignore poll errors */ }
-      }, 400)
-      const startTime = Date.now()
       setNodes((nds) =>
         nds.map((n) => ({ ...n, data: { ...n.data, status: "running" } }))
       )
       const result = await api.pipeline.trigger(pipelineId, {})
       runId = result.runId
+      setCurrentRunId(runId)
+      if (result.status === "CANCELLED") {
+        cancelled = true
+        clearInterval(pollInterval)
+        setNodes((nds) =>
+          nds.map((n) => ({ ...n, data: { ...n.data, status: "cancelled" as string } }))
+        )
+        return
+      }
       clearInterval(pollInterval)
       const finalOutputs = await api.pipeline.getRunLogs(runId)
       setNodes((nds) =>
         nds.map((n) => {
           const log = finalOutputs.find((l: any) => l.nodeId === n.id)
-          if (!log) return { ...n, data: { ...n.data, status: result.status === "success" ? "success" : "error" } }
+          if (!log) return { ...n, data: { ...n.data, status: result.status === "SUCCESS" ? "success" : "error" } }
           return { ...n, data: { ...n.data, status: log.error ? "error" : "success", lastOutput: log.output } }
         })
       )
     } catch (err) {
-      console.error("Run failed:", err)
-      setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
+      clearInterval(pollInterval)
+      if (!cancelled) {
+        console.error("Run failed:", err)
+        setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
+      }
     } finally {
-      setRunning(false)
+      if (!cancelled) {
+        setRunning(false)
+        setCurrentRunId(null)
+      }
     }
   }, [pipelineId, onSave, setNodes])
+
+  const onCancel = useCallback(async () => {
+    if (!currentRunId) return
+    try {
+      await api.pipeline.cancelRun(currentRunId)
+    } catch (err) {
+      console.error("Cancel failed:", err)
+    }
+    setRunning(false)
+    setCurrentRunId(null)
+    setNodes((nds) =>
+      nds.map((n) => ({ ...n, data: { ...n.data, status: "cancelled" as string } }))
+    )
+  }, [currentRunId, setNodes])
 
   const onRunNode = useCallback(async (nodeId: string) => {
     try {
@@ -324,6 +361,7 @@ function CanvasInner({
         onNameChange={setPipelineName}
         onSave={onSave}
         onRun={onRun}
+        onCancel={onCancel}
         saving={saving}
         running={running}
         onToggleRuns={() => setShowRuns(!showRuns)}

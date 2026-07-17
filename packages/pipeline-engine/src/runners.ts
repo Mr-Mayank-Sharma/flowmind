@@ -77,19 +77,15 @@ function modelFromNode(node: PipelineNode): string {
 const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {
   async aiAgent(node, context) {
     const model = modelFromNode(node)
+    const maxIterations = (node.config.maxIterations as number) ?? 5
     const systemPrompt = (node.config.systemPrompt as string) ?? ""
     const prompt = (node.config.prompt as string) ?? "Execute your task based on the input data."
     const exprCtx = buildExpressionContext(context)
     const resolvedPrompt = resolveValue(prompt, exprCtx) as string
     const resolvedSystem = resolveValue(systemPrompt, exprCtx) as string
     const predecessorData = predecessorsInput(node, context)
-    const response = await llmGenerate(resolvedPrompt, resolvedSystem, model, context)
-    return {
-      model, prompt: resolvedPrompt, system: resolvedSystem, input: predecessorData,
-      response,
-      json: { response, input: predecessorData },
-      usage: { promptTokens: (resolvedPrompt.length + resolvedSystem.length) / 4, completionTokens: response.length / 4, totalTokens: (resolvedPrompt.length + resolvedSystem.length + response.length) / 4 },
-    }
+    const enrichedPrompt = `Task: ${resolvedPrompt}\n\nInput data: ${JSON.stringify(predecessorData)}`
+    return reactAgentLoop(node, context, enrichedPrompt, resolvedSystem, model, maxIterations)
   },
   async contentWriter(node, context) {
     const model = modelFromNode(node)
@@ -193,6 +189,149 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
 
     return { prompt, size, url, json: { prompt, size, url: url.startsWith("data:") ? "base64_image" : url } }
   },
+}
+
+const agentTools: Record<string, (args: string) => Promise<string>> = {
+  async webSearch(args) {
+    const query = args.trim() || "latest news"
+    try {
+      const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`, { signal: AbortSignal.timeout(5000) })
+      if (!res.ok) return `[web search error: ${res.status}]`
+      const data = await res.json() as any
+      return data.AbstractText || data.Results?.[0]?.Text || `[no results for "${query}"]`
+    } catch (err) {
+      return `[web search unavailable: ${err}]`
+    }
+  },
+  async calculator(args) {
+    try {
+      const sanitized = args.replace(/[^0-9+\-*/.() ]/g, "")
+      const fn = new Function(`"use strict"; return (${sanitized})`)
+      const result = fn()
+      return String(result)
+    } catch {
+      return "[calculator error: invalid expression]"
+    }
+  },
+  async currentTime(_args) {
+    return new Date().toISOString()
+  },
+  async readFile(args) {
+    return `[readFile "${args}": simulated - tool not available in pipeline context]`
+  },
+}
+
+const reactAgentLoop = async (
+  node: PipelineNode,
+  context: ExecutionContext,
+  initialPrompt: string,
+  systemPrompt: string,
+  model: string,
+  maxIterations: number,
+): Promise<unknown> => {
+  const messages: Array<{ role: string; content: string }> = []
+  if (systemPrompt) {
+    messages.push({
+      role: "system",
+      content: `${systemPrompt}\n\nYou are an AI agent that can use tools to accomplish tasks. ` +
+        `When you need to use a tool, respond with EXACTLY:\nCALL_TOOL: toolName(arguments)\n` +
+        `After calling a tool you will receive the result. Continue this loop until the task is complete.\n` +
+        `When you have the final answer, respond with:\nFINAL_ANSWER: your response here\n\n` +
+        `Available tools:\n` +
+        `- webSearch(query): Search the web for information\n` +
+        `- calculator(expression): Evaluate a mathematical expression\n` +
+        `- currentTime(): Get the current date and time\n` +
+        `- readFile(path): Read a file (simulated)`,
+    })
+  } else {
+    messages.push({
+      role: "system",
+      content: `You are an AI agent that can use tools. ` +
+        `Use CALL_TOOL: toolName(args) to call a tool.\n` +
+        `Use FINAL_ANSWER: your response when done.\n\n` +
+        `Available tools: webSearch(query), calculator(expression), currentTime(), readFile(path)`,
+    })
+  }
+  messages.push({ role: "user", content: initialPrompt })
+
+  const toolUsePattern = /^CALL_TOOL:\s*(\w+)\s*\(([\s\S]*)\)\s*$/m
+  const finalAnswerPattern = /^FINAL_ANSWER:\s*([\s\S]*)$/m
+  const toolNames = Object.keys(agentTools)
+  const allSteps: Array<{ type: "thought" | "tool_call" | "tool_result"; content: string }> = []
+
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    const response = await llmGenerate(
+      messages[messages.length - 1]!.content,
+      messages.find((m) => m.role === "system")?.content ?? undefined,
+      model,
+      context,
+    )
+
+    const lastMsg = messages[messages.length - 1]!
+    if (lastMsg.role === "user") {
+      messages[messages.length - 1] = { role: "assistant", content: response }
+    } else {
+      messages.push({ role: "assistant", content: response })
+    }
+
+    allSteps.push({ type: "thought", content: response })
+
+    const finalMatch = response.match(finalAnswerPattern)
+    if (finalMatch) {
+      const answer = finalMatch[1]!.trim()
+      return {
+        model, prompt: initialPrompt, system: systemPrompt,
+        response: answer,
+        iterations: iteration + 1,
+        steps: allSteps,
+        json: { response: answer, iterations: iteration + 1, steps: allSteps },
+        usage: {
+          promptTokens: messages.reduce((s, m) => s + m.content.length / 4, 0),
+          completionTokens: response.length / 4,
+          totalTokens: messages.reduce((s, m) => s + m.content.length / 4, 0) + response.length / 4,
+        },
+      }
+    }
+
+    const toolMatch = response.match(toolUsePattern)
+    if (toolMatch) {
+      const toolName = toolMatch[1]!
+      const toolArgs = toolMatch[2]!
+      allSteps.push({ type: "tool_call", content: `${toolName}(${toolArgs})` })
+
+      if (toolNames.includes(toolName)) {
+        const toolResult = await agentTools[toolName]!(toolArgs)
+        allSteps.push({ type: "tool_result", content: toolResult.slice(0, 1000) })
+        messages.push({ role: "user", content: `[Tool ${toolName} result]: ${toolResult.slice(0, 1000)}` })
+      } else {
+        messages.push({ role: "user", content: `[Tool ${toolName} not available. Available: ${toolNames.join(", ")}]` })
+      }
+      continue
+    }
+
+    // No tool call and no final answer — treat whole response as result
+    return {
+      model, prompt: initialPrompt, system: systemPrompt,
+      response,
+      iterations: iteration + 1,
+      steps: allSteps,
+      json: { response, iterations: iteration + 1, steps: allSteps },
+      usage: {
+        promptTokens: messages.reduce((s, m) => s + m.content.length / 4, 0),
+        completionTokens: response.length / 4,
+        totalTokens: messages.reduce((s, m) => s + m.content.length / 4, 0) + response.length / 4,
+      },
+    }
+  }
+
+  return {
+    model, prompt: initialPrompt, system: systemPrompt,
+    response: `[Max iterations (${maxIterations}) reached]`,
+    iterations: maxIterations,
+    steps: allSteps,
+    json: { response: `[Max iterations (${maxIterations}) reached]`, iterations: maxIterations, steps: allSteps },
+    truncated: true,
+  }
 }
 
 const actionRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {

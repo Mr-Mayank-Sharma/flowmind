@@ -242,6 +242,12 @@ export const pipelineRouter = router({
           await ctx.prisma.runLog.createMany({ data: logBuffer });
         }
 
+        // Check if run was cancelled mid-execution
+        const afterRun = await ctx.prisma.pipelineRun.findUnique({ where: { id: run.id }, select: { status: true } });
+        if (afterRun?.status === "CANCELLED") {
+          return { runId: run.id, status: "CANCELLED" as const, outputs: result.outputs, durationMs: result.durationMs };
+        }
+
         const finalStatus = result.status === "success" ? "SUCCESS" as const : "FAILED" as const;
 
         await ctx.prisma.pipelineRun.update({
@@ -332,6 +338,23 @@ export const pipelineRouter = router({
         cursor: input.cursor ? { id: input.cursor } : undefined,
         include: { logs: true },
       });
+    }),
+
+  cancelRun: protectedProcedure
+    .input(z.object({ runId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const run = await ctx.prisma.pipelineRun.findUnique({
+        where: { id: input.runId },
+      });
+      if (!run) throw new TRPCError({ code: "NOT_FOUND" });
+      if (run.status !== "RUNNING" && run.status !== "PENDING") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Run is not active" });
+      }
+      await ctx.prisma.pipelineRun.update({
+        where: { id: input.runId },
+        data: { status: "CANCELLED", completedAt: new Date() },
+      });
+      return { success: true };
     }),
 
   getRunLogs: protectedProcedure
