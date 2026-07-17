@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { cn } from "@flowmind/ui"
 import { ScrollArea } from "@flowmind/ui"
 import {
@@ -22,6 +22,7 @@ import {
   ArrowRight,
   GripVertical,
   Puzzle,
+  Search,
 } from "lucide-react"
 
 interface PaletteItem {
@@ -87,6 +88,7 @@ const categoryIcons: Record<string, React.ElementType> = {
 
 export function NodePalette() {
   const [collapsed, setCollapsed] = useState(false)
+  const [search, setSearch] = useState("")
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(categories)
   )
@@ -114,6 +116,14 @@ export function NodePalette() {
   }, [])
 
   const allItems = [...paletteItems, ...skillItems]
+
+  const filteredItems = useMemo(() => {
+    if (!search.trim()) return allItems
+    const q = search.toLowerCase()
+    return allItems.filter(
+      (i) => i.label.toLowerCase().includes(q) || i.category.toLowerCase().includes(q)
+    )
+  }, [allItems, search])
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories((prev) => {
@@ -151,10 +161,23 @@ export function NodePalette() {
         </button>
       </div>
       {!collapsed && (
+        <div className="px-2 py-1.5 border-b shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search nodes..."
+              className="w-full h-7 pl-7 pr-2 text-xs rounded border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+        </div>
+      )}
+      {!collapsed && (
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
             {categories.map((category) => {
-              const items = allItems.filter((i) => i.category === category)
+              const items = filteredItems.filter((i) => i.category === category)
               const CatIcon = categoryIcons[category]
               const isExpanded = expandedCategories.has(category)
               return (
