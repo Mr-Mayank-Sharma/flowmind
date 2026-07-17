@@ -114,8 +114,10 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
             ))}
           </div>
         ) : runs.length === 0 ? (
-          <div className="flex items-center justify-center p-8">
-            <p className="text-xs text-muted-foreground text-center">No runs yet. Click Run to execute the pipeline.</p>
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <Clock className="h-8 w-8 text-muted-foreground mb-3 opacity-50" />
+            <p className="text-xs font-medium text-foreground mb-1">No runs yet</p>
+            <p className="text-[10px] text-muted-foreground">Trigger a pipeline to see execution history.</p>
           </div>
         ) : (
           <div className="p-2 space-y-1">

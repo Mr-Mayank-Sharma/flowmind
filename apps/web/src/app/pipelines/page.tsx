@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
 import { Plus, Workflow, Clock, Play, Trash2, Store } from "lucide-react"
+import { EmptyState } from "@/components/ui/empty-state"
 import { api } from "@/lib/api"
 
 const statusColors: Record<string, "default" | "secondary" | "outline"> = {
@@ -104,11 +105,12 @@ export default function PipelinesPage() {
             <p className="text-sm">Loading pipelines...</p>
           </div>
         ) : pipelines.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Workflow className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium mb-1">No pipelines yet</p>
-            <p className="text-sm">Create your first pipeline to get started</p>
-          </div>
+          <EmptyState
+            icon={Workflow}
+            title="No pipelines yet"
+            description="Create your first workflow to get started"
+            action={{ label: "New Pipeline", onClick: handleNew }}
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {pipelines.map((pipeline) => (

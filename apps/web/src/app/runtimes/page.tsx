@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
 import { ArrowLeft, Plus, Trash2, RefreshCw, Server, Wifi, WifiOff, AlertTriangle } from "lucide-react"
+import { EmptyState } from "@/components/ui/empty-state"
 import { api } from "@/lib/api"
 
 interface Runtime {
@@ -183,15 +184,12 @@ export default function RuntimesPage() {
             <p className="text-sm">Loading runtimes...</p>
           </div>
         ) : runtimes.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Server className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium mb-1">No runtimes registered</p>
-            <p className="text-sm mb-4">Register an external agent runtime to enable task dispatch</p>
-            <Button size="sm" onClick={() => setShowRegister(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Register Your First Runtime
-            </Button>
-          </div>
+          <EmptyState
+            icon={Server}
+            title="No runtimes registered"
+            description="Register an external agent runtime to enable task dispatch"
+            action={{ label: "Register Your First Runtime", onClick: () => setShowRegister(true) }}
+          />
         ) : (
           <div className="space-y-4">
             {runtimes.map((rt) => (

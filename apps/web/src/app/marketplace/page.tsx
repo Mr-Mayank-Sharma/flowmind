@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
 import { Store, Download, Star, Tag, Search, ArrowLeft, Puzzle } from "lucide-react"
 import { CardSkeleton } from "@/components/ui/skeleton"
+import { EmptyState } from "@/components/ui/empty-state"
 import { api } from "@/lib/api"
 
 type Tab = "workflows" | "skills"
@@ -161,11 +162,11 @@ export default function MarketplacePage() {
           </div>
         ) : tab === "workflows" ? (
           filteredFlows.length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <Store className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium mb-1">No templates found</p>
-              <p className="text-sm">Try a different category or search term</p>
-            </div>
+            <EmptyState
+              icon={Store}
+              title="No templates found"
+              description="Try a different category or search term"
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredFlows.map((flow) => (
@@ -227,11 +228,11 @@ export default function MarketplacePage() {
           )
         ) : (
           filteredSkills.length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <Puzzle className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium mb-1">No skills found</p>
-              <p className="text-sm">Try a different search term</p>
-            </div>
+            <EmptyState
+              icon={Puzzle}
+              title="No skills found"
+              description="Try a different search term"
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredSkills.map((skill) => (
