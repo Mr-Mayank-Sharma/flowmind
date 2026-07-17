@@ -27,7 +27,7 @@ interface BaseNodeData {
   label: string
   icon?: string
   config?: Record<string, unknown>
-  status?: "idle" | "running" | "success" | "error"
+  status?: "idle" | "running" | "success" | "error" | "cancelled"
   selected?: boolean
 }
 
@@ -58,6 +58,7 @@ function StatusDot({ status }: { status?: string }) {
     running: "bg-blue-500 animate-pulse",
     success: "bg-green-500",
     error: "bg-red-500",
+    cancelled: "bg-yellow-500",
   }
   return (
     <span

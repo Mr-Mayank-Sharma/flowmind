@@ -5,15 +5,19 @@ import { Card } from "@/components/ui/card"
 
 interface FlowNode {
   id: string
-  type: string
-  label: string
-  x: number
-  y: number
+  type?: string
+  label?: string
+  position?: { x: number; y: number }
+  x?: number
+  y?: number
 }
 
 interface FlowEdge {
-  from: string
-  to: string
+  id?: string
+  from?: string
+  to?: string
+  source?: string
+  target?: string
 }
 
 interface FlowPreviewProps {
@@ -32,13 +36,23 @@ const nodeColors: Record<string, string> = {
 }
 
 export function FlowPreview({ nodes, edges }: FlowPreviewProps) {
-  const minX = useMemo(() => Math.min(...nodes.map(n => n.x)), [nodes])
-  const minY = useMemo(() => Math.min(...nodes.map(n => n.y)), [nodes])
-  const maxX = useMemo(() => Math.max(...nodes.map(n => n.x + 160)), [nodes])
-  const maxY = useMemo(() => Math.max(...nodes.map(n => n.y + 48)), [nodes])
+  const norm = (n: FlowNode) => ({
+    id: n.id,
+    x: n.x ?? n.position?.x ?? 0,
+    y: n.y ?? n.position?.y ?? 0,
+    type: n.type ?? "default",
+    label: n.label ?? "",
+  })
 
-  const width = maxX - minX + 40
-  const height = maxY - minY + 40
+  const normalized = useMemo(() => nodes.map(norm), [nodes])
+
+  const minX = useMemo(() => Math.min(...normalized.map(n => n.x)), [normalized])
+  const minY = useMemo(() => Math.min(...normalized.map(n => n.y)), [normalized])
+  const maxX = useMemo(() => Math.max(...normalized.map(n => n.x + 160)), [normalized])
+  const maxY = useMemo(() => Math.max(...normalized.map(n => n.y + 48)), [normalized])
+
+  const width = Math.max(maxX - minX + 40, 200)
+  const height = Math.max(maxY - minY + 40, 200)
   const offsetX = 20 - minX
   const offsetY = 20 - minY
 
@@ -57,12 +71,15 @@ export function FlowPreview({ nodes, edges }: FlowPreviewProps) {
           </defs>
 
           {edges.map((edge) => {
-            const from = nodes.find(n => n.id === edge.from)
-            const to = nodes.find(n => n.id === edge.to)
+            const fromId = edge.source ?? edge.from
+            const toId = edge.target ?? edge.to
+            if (!fromId || !toId) return null
+            const from = normalized.find(n => n.id === fromId)
+            const to = normalized.find(n => n.id === toId)
             if (!from || !to) return null
             return (
               <line
-                key={`${edge.from}-${edge.to}`}
+                key={edge.id ?? `${fromId}-${toId}`}
                 x1={from.x + 160 + offsetX}
                 y1={from.y + 24 + offsetY}
                 x2={to.x + offsetX}
@@ -75,7 +92,7 @@ export function FlowPreview({ nodes, edges }: FlowPreviewProps) {
             )
           })}
 
-          {nodes.map((node) => (
+          {normalized.map((node) => (
             <g key={node.id}>
               <rect
                 x={node.x + offsetX}

@@ -68,6 +68,14 @@ function apiMessageToLocal(apiMsg: any, sessionId: string): Message {
   }
 }
 
+function getToken(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(/(?:^|;\s*)flowmind_token=([^;]*)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : null
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+
 interface ChatState {
   sessions: Session[];
   currentSessionId: string | null;
@@ -75,12 +83,14 @@ interface ChatState {
   isStreaming: boolean;
   initialized: boolean;
   loading: boolean;
+  streamingSteps: Array<{ type: string; content: string; toolName?: string }>;
   init: () => Promise<void>;
   loadMessages: (sessionId: string) => Promise<void>;
   createSession: () => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   selectSession: (id: string) => void;
   sendMessage: (content: string, model?: string, files?: { name: string; type: string; size: number }[]) => Promise<void>;
+  stopStreaming: () => void;
   appendToMessage: (sessionId: string, content: string) => void;
   setStreaming: (streaming: boolean) => void;
 }
@@ -94,6 +104,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   initialized: false,
   loading: true,
+  streamingSteps: [],
+  _eventSource: null as EventSource | null,
 
   init: async () => {
     if (get().initialized) return
@@ -211,13 +223,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
       timestamp: Date.now(),
     }
 
+    const assistantId = String(Date.now() + 1)
+
     set((s) => {
       const msgs = s.messages[currentSessionId] || []
       const next = {
         isStreaming: true,
+        streamingSteps: [] as Array<{ type: string; content: string; toolName?: string }>,
         messages: {
           ...s.messages,
-          [currentSessionId]: [...msgs, userMessage],
+          [currentSessionId]: [...msgs, userMessage, {
+            id: assistantId,
+            sessionId: currentSessionId,
+            role: "assistant" as Role,
+            content: "",
+            timestamp: Date.now(),
+          }],
         },
         sessions: s.sessions.map((sess) =>
           sess.id === currentSessionId
@@ -230,34 +251,168 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
 
     try {
-      const result: any = await api.chat.sendMessage({
+      const token = getToken()
+      const eventSourceUrl = `${API_URL}/api/chat/stream/${currentSessionId}${token ? `?token=${encodeURIComponent(token)}` : ""}`
+
+      const eventSource = new EventSource(eventSourceUrl)
+      ;(get() as any)._eventSource = eventSource
+
+      let accumulatedContent = ""
+      const toolCalls: ToolCall[] = []
+      let toolCallId = 0
+
+      eventSource.onmessage = (event) => {
+        if (event.data === "[DONE]") {
+          eventSource.close()
+          ;(get() as any)._eventSource = null
+
+          set((s) => {
+            const msgs = s.messages[currentSessionId!] || []
+            const updatedMsgs = msgs.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: accumulatedContent || "I processed your request.", toolCalls: toolCalls.length > 0 ? toolCalls : undefined }
+                : m
+            )
+            const next = {
+              isStreaming: false,
+              streamingSteps: [],
+              messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+            }
+            saveToStorage(state.sessions, next.messages)
+            return next
+          })
+          return
+        }
+
+        try {
+          const data = JSON.parse(event.data)
+
+          if (data.type === "error") {
+            set((s) => {
+              const msgs = s.messages[currentSessionId!] || []
+              const updatedMsgs = msgs.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: data.message || "An error occurred." }
+                  : m
+              )
+              return {
+                isStreaming: false,
+                streamingSteps: [],
+                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+              }
+            })
+            eventSource.close()
+            return
+          }
+
+          if (data.type === "done") {
+            eventSource.close()
+            ;(get() as any)._eventSource = null
+
+            const finalContent = data.reply || accumulatedContent
+            set((s) => {
+              const msgs = s.messages[currentSessionId!] || []
+              const updatedMsgs = msgs.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: finalContent || "I processed your request.", toolCalls: toolCalls.length > 0 ? toolCalls : undefined }
+                  : m
+              )
+              const next = {
+                isStreaming: false,
+                streamingSteps: [],
+                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+              }
+              saveToStorage(state.sessions, next.messages)
+              return next
+            })
+            return
+          }
+
+          if (data.type === "thought") {
+            accumulatedContent = data.content
+            set((s) => {
+              const msgs = s.messages[currentSessionId!] || []
+              const updatedMsgs = msgs.map((m) =>
+                m.id === assistantId ? { ...m, content: accumulatedContent } : m
+              )
+              return { messages: { ...s.messages, [currentSessionId!]: updatedMsgs } }
+            })
+          }
+
+          if (data.type === "tool_call") {
+            toolCallId++
+            toolCalls.push({
+              id: `tc_${toolCallId}`,
+              name: data.toolName || "unknown",
+              arguments: data.content || "",
+            })
+            set((s) => {
+              const msgs = s.messages[currentSessionId!] || []
+              const updatedMsgs = msgs.map((m) =>
+                m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
+              )
+              return {
+                streamingSteps: [...s.streamingSteps, { type: "tool_call", content: data.content, toolName: data.toolName }],
+                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+              }
+            })
+          }
+
+          if (data.type === "tool_result") {
+            const lastTc = toolCalls[toolCalls.length - 1]
+            if (lastTc) lastTc.result = data.content
+            set((s) => {
+              const msgs = s.messages[currentSessionId!] || []
+              const updatedMsgs = msgs.map((m) =>
+                m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
+              )
+              return {
+                streamingSteps: [...s.streamingSteps, { type: "tool_result", content: data.content }],
+                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+              }
+            })
+          }
+        } catch {}
+      }
+
+      eventSource.onerror = () => {
+        eventSource.close()
+        ;(get() as any)._eventSource = null
+
+        if (!accumulatedContent) {
+          set((s) => {
+            const msgs = s.messages[currentSessionId!] || []
+            const updatedMsgs = msgs.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: "Connection lost. Please try again." }
+                : m
+            )
+            return {
+              isStreaming: false,
+              streamingSteps: [],
+              messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+            }
+          })
+        } else {
+          set((s) => {
+            const msgs = s.messages[currentSessionId!] || []
+            const updatedMsgs = msgs.map((m) =>
+              m.id === assistantId ? { ...m, content: accumulatedContent } : m
+            )
+            return {
+              isStreaming: false,
+              streamingSteps: [],
+              messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+            }
+          })
+        }
+      }
+
+      await api.chat.sendMessage({
         sessionId: currentSessionId,
         content,
         model: model || undefined,
         files: files?.map(f => ({ url: f.name, type: f.type })) || undefined,
-      })
-
-      const replyText = result?.message?.content || "I processed your request."
-
-      const assistantMessage: Message = {
-        id: String(Date.now() + 1),
-        sessionId: currentSessionId,
-        role: "assistant",
-        content: replyText,
-        timestamp: Date.now(),
-      }
-
-      set((s) => {
-        const msgs = s.messages[currentSessionId] || []
-        const next = {
-          isStreaming: false,
-          messages: {
-            ...s.messages,
-            [currentSessionId]: [...msgs, assistantMessage],
-          },
-        }
-        saveToStorage(state.sessions, next.messages)
-        return next
       })
     } catch (err) {
       const errorMsg: Message = {
@@ -271,6 +426,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const msgs = s.messages[currentSessionId] || []
         const next = {
           isStreaming: false,
+          streamingSteps: [],
           messages: {
             ...s.messages,
             [currentSessionId]: [...msgs, errorMsg],
@@ -280,6 +436,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return next
       })
     }
+  },
+
+  stopStreaming: () => {
+    const es = (get() as any)._eventSource as EventSource | null
+    if (es) {
+      es.close()
+      ;(get() as any)._eventSource = null
+    }
+    set({ isStreaming: false, streamingSteps: [] })
   },
 
   appendToMessage: (sessionId, content) => {

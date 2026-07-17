@@ -2,6 +2,7 @@ import type { ProviderFacade, CompletionRequest, CompletionResult, CompletionChu
 import { createOpenAIProvider } from "./providers/openai"
 import { createAnthropicProvider } from "./providers/anthropic"
 import { createGoogleProvider } from "./providers/google"
+import { createOllamaProvider } from "./providers/ollama"
 
 export type {
   Message, ContentBlock, TextContent, ImageContent,
@@ -30,6 +31,7 @@ export interface LLMConfig {
   cloudflareKey?: string
   veniceAIKey?: string
   alibabaKey?: string
+  ollamaBaseUrl?: string
 }
 
 const defaultFactories: Record<string, ProviderFactory> = {
@@ -98,6 +100,9 @@ export class LLMEngine {
     }
     if (this.config.alibabaKey) {
       this.register("alibaba", createOpenAIProvider({ apiKey: this.config.alibabaKey, baseUrl: "https://dashscope.aliyuncs.com/api/v1" }))
+    }
+    if (this.config.ollamaBaseUrl) {
+      this.register("ollama", createOllamaProvider(this.config.ollamaBaseUrl))
     }
   }
 

@@ -135,7 +135,7 @@ export const api = {
     delete: (id: string) => tRPCMutation<{ success: boolean }>("pipeline.delete", { id }),
     getById: (id: string) => tRPCQuery<any>("pipeline.getById", { id }),
     trigger: (id: string, input?: Record<string, unknown>) =>
-      tRPCMutation<{ runId: string; status: string; outputs: any[]; durationMs: number }>("pipeline.trigger", { id, input }),
+      tRPCMutation<{ runId: string; status: "SUCCESS" | "FAILED" | "CANCELLED"; outputs: any[]; durationMs: number }>("pipeline.trigger", { id, input }),
     executeNode: (pipelineId: string, nodeId: string, input?: Record<string, unknown>) =>
       tRPCMutation<any>("pipeline.executeNode", { pipelineId, nodeId, input }),
     validate: (graph: { nodes: any[]; edges: any[] }) =>
@@ -146,6 +146,8 @@ export const api = {
       tRPCQuery<Array<{ label: string; value: string; description?: string }>>("pipeline.loadOptions", { nodeType, field, config, filter }),
     getRuns: (pipelineId: string) =>
       tRPCQuery<any[]>("pipeline.getRuns", { pipelineId }),
+    cancelRun: (runId: string) =>
+      tRPCMutation<{ success: boolean }>("pipeline.cancelRun", { runId }),
     getRunLogs: (runId: string) =>
       tRPCQuery<any[]>("pipeline.getRunLogs", { runId }),
     listMarketplace: (category?: string) =>

@@ -33,6 +33,7 @@ const aiConfigFields = [
   { key: "systemPrompt", label: "System Prompt", type: "textarea", placeholder: "You are a helpful assistant... {{ $json.field }}", description: "System instructions (supports expressions)" },
   { key: "temperature", label: "Temperature", type: "number", placeholder: "0.7", description: "Response creativity (0-2)" },
   { key: "maxTokens", label: "Max Tokens", type: "number", placeholder: "2048", description: "Maximum response length" },
+  { key: "maxIterations", label: "Max Iterations", type: "number", placeholder: "5", description: "Agent loop iterations (0 = single call)" },
 ]
 
 const actionConfigFields: Record<string, any[]> = {

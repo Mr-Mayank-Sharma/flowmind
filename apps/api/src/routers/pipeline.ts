@@ -2,9 +2,74 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
 import { PipelineEngine } from "@flowmind/pipeline-engine";
-import type { PipelineGraph, WorkflowSettings } from "@flowmind/pipeline-engine";
+import type { PipelineGraph, WorkflowSettings, PipelineNode, LLMProvider } from "@flowmind/pipeline-engine";
+import { LLMEngine } from "@flowmind/llm-router";
+import { getRunEmitter } from "../services/run-emitters";
 
-const engine = new PipelineEngine();
+function buildLLMProvider(): LLMProvider | undefined {
+  const openaiKey = process.env.OPENAI_KEY;
+  const anthropicKey = process.env.ANTHROPIC_KEY;
+  const groqKey = process.env.GROQ_KEY;
+  const ollamaUrl = process.env.OLLAMA_BASE_URL;
+  if (!openaiKey && !anthropicKey && !groqKey && !ollamaUrl) return undefined;
+  const llmEngine = new LLMEngine({
+    openaiKey: openaiKey ?? undefined,
+    anthropicKey: anthropicKey ?? undefined,
+    groqKey: groqKey ?? undefined,
+    deepseekKey: process.env.DEEPSEEK_KEY,
+    openrouterKey: process.env.OPENROUTER_KEY,
+    togetherKey: process.env.TOGETHER_KEY,
+    mistralKey: process.env.MISTRAL_KEY,
+    perplexityKey: process.env.PERPLEXITY_KEY,
+    deepinfraKey: process.env.DEEPINFRA_KEY,
+    cerebrasKey: process.env.CEREBRAS_KEY,
+    xaiKey: process.env.XAI_KEY,
+    cohereKey: process.env.COHERE_KEY,
+    cloudflareKey: process.env.CLOUDFLARE_KEY,
+    veniceAIKey: process.env.VENICE_AI_KEY,
+    alibabaKey: process.env.ALIBABA_KEY,
+    googleKey: process.env.GOOGLE_KEY,
+    ollamaBaseUrl: ollamaUrl ?? undefined,
+  });
+  return {
+    complete: async (req) => {
+      const result = await llmEngine.complete({
+        messages: req.messages as any,
+        model: req.model ?? "tinyllama",
+        maxTokens: req.maxTokens ?? 500,
+        temperature: req.temperature,
+      });
+      return { content: result.message.content as string, model: result.model };
+    },
+  };
+}
+
+function normalizeGraph(graph: any): PipelineGraph {
+  if (!graph || !graph.nodes) return { nodes: [], edges: [] }
+  return {
+    nodes: (graph.nodes as any[]).map((n: any) => ({
+      id: n.id,
+      type: n.engineType ?? n.type,
+      label: n.label ?? "",
+      position: n.position ?? { x: 0, y: 0 },
+      config: n.config ?? {},
+      continueOnFail: n.continueOnFail,
+      retryOnFail: n.retryOnFail,
+      maxRetries: n.maxRetries,
+      disabled: n.disabled,
+    } as PipelineNode)),
+    edges: (graph.edges || []).map((e: any) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle ?? null,
+      targetHandle: e.targetHandle ?? null,
+    })),
+  }
+}
+
+const llm = buildLLMProvider();
+const engine = new PipelineEngine({ llm });
 
 const graphSchema = z.object({
   nodes: z.array(z.any()),
@@ -136,22 +201,61 @@ export const pipelineRouter = router({
         },
       });
 
+      const logBuffer: Array<{ runId: string; nodeId: string; nodeType: string; input: any; output: any; error?: string; duration: number }> = [];
+
+      const engineWithStatus = new PipelineEngine({
+        llm,
+        onNodeStatus: async (event) => {
+          const emitter = getRunEmitter(run.id);
+          emitter.emit("node", {
+            nodeId: event.nodeId,
+            nodeType: event.nodeType,
+            status: event.status,
+            error: event.error,
+            durationMs: event.durationMs,
+          });
+
+          if (event.status === "running") {
+            logBuffer.push({
+              runId: run.id, nodeId: event.nodeId, nodeType: event.nodeType,
+              input: {}, output: {}, duration: 0,
+            });
+          } else if (event.status === "completed" || event.status === "failed") {
+            const idx = logBuffer.findIndex((l) => l.nodeId === event.nodeId);
+            if (idx >= 0) {
+              const existing = logBuffer[idx]!;
+              logBuffer[idx] = {
+                runId: existing.runId,
+                nodeId: existing.nodeId,
+                nodeType: existing.nodeType,
+                input: existing.input,
+                output: event.error ? { error: event.error } : {},
+                error: event.error,
+                duration: event.durationMs ?? 0,
+              };
+            }
+            const last = logBuffer[logBuffer.length - 1];
+            if (last) {
+              await ctx.prisma.runLog.createMany({ data: [last] });
+            }
+          }
+        },
+      });
+
       try {
-        const graph = pipeline.graph as unknown as PipelineGraph;
-        const result = await engine.execute(run.id, input.id, graph, input.input ?? {}, input.settings);
+        const rawGraph = pipeline.graph as any;
+        const graph = normalizeGraph(rawGraph);
+        const result = await engineWithStatus.execute(run.id, input.id, graph, input.input ?? {}, input.settings);
 
-        const logData = result.outputs.map((o) => ({
-          runId: run.id,
-          nodeId: o.nodeId,
-          nodeType: o.nodeType,
-          input: {},
-          output: o.output as any,
-          error: o.error,
-          duration: o.durationMs,
-        }));
+        // Flush any remaining buffered logs
+        if (logBuffer.length > 0) {
+          await ctx.prisma.runLog.createMany({ data: logBuffer });
+        }
 
-        if (logData.length > 0) {
-          await ctx.prisma.runLog.createMany({ data: logData });
+        // Check if run was cancelled mid-execution
+        const afterRun = await ctx.prisma.pipelineRun.findUnique({ where: { id: run.id }, select: { status: true } });
+        if (afterRun?.status === "CANCELLED") {
+          return { runId: run.id, status: "CANCELLED" as const, outputs: result.outputs, durationMs: result.durationMs };
         }
 
         const finalStatus = result.status === "success" ? "SUCCESS" as const : "FAILED" as const;
@@ -164,6 +268,10 @@ export const pipelineRouter = router({
             completedAt: new Date(),
           },
         });
+
+        const runEmitter = getRunEmitter(run.id);
+        runEmitter.emit("done", { status: finalStatus, outputs: result.outputs, durationMs: result.durationMs });
+        setTimeout(() => runEmitter.removeAllListeners(), 5000);
 
         await ctx.prisma.pipeline.update({
           where: { id: input.id },
@@ -180,6 +288,9 @@ export const pipelineRouter = router({
           where: { id: run.id },
           data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
         });
+        const runEmitter = getRunEmitter(run.id);
+        runEmitter.emit("error", { message: err.message });
+        setTimeout(() => runEmitter.removeAllListeners(), 5000);
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err.message ?? "Pipeline execution failed" });
       }
     }),
@@ -198,7 +309,7 @@ export const pipelineRouter = router({
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      const graph = pipeline.graph as unknown as PipelineGraph;
+      const graph = normalizeGraph(pipeline.graph);
       const nodeOutput = await engine.executeSingleNode(
         `test-${Date.now()}`,
         input.pipelineId,
@@ -213,13 +324,13 @@ export const pipelineRouter = router({
     .input(z.object({ graph: graphSchema }))
     .query(async ({ input }) => {
       const { validateGraph } = await import("@flowmind/pipeline-engine");
-      return { errors: validateGraph(input.graph as PipelineGraph) };
+      return { errors: validateGraph(normalizeGraph(input.graph)) };
     }),
 
   simulate: protectedProcedure
     .input(z.object({ graph: graphSchema }))
     .query(async ({ input }) => {
-      const result = engine.simulate(input.graph as PipelineGraph);
+      const result = engine.simulate(normalizeGraph(input.graph));
       return result;
     }),
 
@@ -244,6 +355,23 @@ export const pipelineRouter = router({
         cursor: input.cursor ? { id: input.cursor } : undefined,
         include: { logs: true },
       });
+    }),
+
+  cancelRun: protectedProcedure
+    .input(z.object({ runId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const run = await ctx.prisma.pipelineRun.findUnique({
+        where: { id: input.runId },
+      });
+      if (!run) throw new TRPCError({ code: "NOT_FOUND" });
+      if (run.status !== "RUNNING" && run.status !== "PENDING") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Run is not active" });
+      }
+      await ctx.prisma.pipelineRun.update({
+        where: { id: input.runId },
+        data: { status: "CANCELLED", completedAt: new Date() },
+      });
+      return { success: true };
     }),
 
   getRunLogs: protectedProcedure

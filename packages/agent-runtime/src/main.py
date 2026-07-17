@@ -1,23 +1,48 @@
 from __future__ import annotations
 
+import os
 from typing import Any, AsyncGenerator
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from src.models import StreamChunk
 from src.orchestrator import AgentOrchestrator
 from src.providers import registry, OllamaProvider
 
+AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
+
 app = FastAPI(title="FlowMind Agent Runtime")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if not AGENT_API_KEY:
+        return await call_next(request)
+    if request.url.path == "/health":
+        return await call_next(request)
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or auth[7:] != AGENT_API_KEY:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 class ChatRequest(BaseModel):
-    session_id: str
-    message: str
-    user_id: str
+    session_id: str = Field(max_length=128)
+    message: str = Field(max_length=10000)
+    user_id: str = Field(max_length=128)
 
 
 class ChatResponse(BaseModel):
@@ -81,7 +106,7 @@ async def list_providers() -> list[dict]:
 
 
 class PullRequest(BaseModel):
-    name: str
+    name: str = Field(max_length=256)
 
 
 @app.post("/models/pull")
@@ -169,15 +194,15 @@ async def _get_embedding(text: str) -> list[float]:
         return []
 
 class IndexRequest(BaseModel):
-    user_id: str
-    doc_id: str
-    content: str
+    user_id: str = Field(max_length=128)
+    doc_id: str = Field(max_length=256)
+    content: str = Field(max_length=50000)
     metadata: dict = {}
 
 class SearchRequest(BaseModel):
-    user_id: str
-    query: str
-    top_k: int = 5
+    user_id: str = Field(max_length=128)
+    query: str = Field(max_length=5000)
+    top_k: int = Field(default=5, ge=1, le=50)
 
 @app.post("/knowledge/index")
 async def index_document(body: IndexRequest) -> dict:
@@ -228,11 +253,11 @@ async def delete_knowledge(body: IndexRequest) -> dict:
 # ── LLM Generation (for pipeline node runners) ──────────────────────
 
 class GenerateRequest(BaseModel):
-    system_prompt: str = ""
-    prompt: str = ""
-    model: str = "tinyllama"
-    temperature: float = 0.7
-    max_tokens: int = 500
+    system_prompt: str = Field(default="", max_length=10000)
+    prompt: str = Field(default="", max_length=10000)
+    model: str = Field(default="tinyllama", max_length=256)
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=500, ge=1, le=16384)
 
 @app.post("/llm/generate")
 async def llm_generate(body: GenerateRequest) -> dict:

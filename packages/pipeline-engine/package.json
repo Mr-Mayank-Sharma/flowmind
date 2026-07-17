@@ -8,6 +8,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@flowmind/llm-router": "workspace:*",
+    "@flowmind/provider-registry": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",

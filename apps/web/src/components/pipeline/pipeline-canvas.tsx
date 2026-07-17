@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import ReactFlow, {
   Background,
   Controls,
@@ -26,6 +27,14 @@ import { PipelineToolbar } from "./pipeline-toolbar"
 import { RunsPanel } from "./runs-panel"
 import { cn } from "@flowmind/ui"
 import { api } from "../../lib/api"
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+
+function getToken(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(/(?:^|;\s*)flowmind_token=([^;]*)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : null
+}
 
 interface PipelineCanvasProps {
   pipelineId: string
@@ -96,6 +105,7 @@ const defaultNode = (
       icon: iconMap[type] || "Zap",
       config: { summary: "" },
       status: "idle",
+      engineType: type,
     },
   }
 }
@@ -113,9 +123,59 @@ function CanvasInner({
   const [version, setVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [running, setRunning] = useState(false)
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const [showRuns, setShowRuns] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
+  const router = useRouter()
+
+  useEffect(() => {
+    if (pipelineId === "new") return
+    api.pipeline.getById(pipelineId).then((data) => {
+      if (data?.graph) {
+        const g = typeof data.graph === "string" ? JSON.parse(data.graph) : data.graph
+        if (g.nodes) {
+          setNodes(g.nodes.map((n: any) => {
+            const engineType = n.engineType ?? n.type
+            const typeMapRev: Record<string, string> = {
+              cronTrigger: "triggerNode", webhookTrigger: "triggerNode", channelTrigger: "triggerNode", manualTrigger: "triggerNode",
+              aiAgent: "aiNode", contentWriter: "aiNode", dataExtractor: "aiNode", classifier: "aiNode",
+              summarizer: "aiNode", webResearcher: "aiNode", imageGenerator: "aiNode",
+              httpRequest: "actionNode", databaseQuery: "actionNode", sendEmail: "actionNode",
+              sendMessage: "actionNode", codeExecute: "actionNode",
+              condition: "flowNode", switch: "flowNode", parallelFork: "flowNode",
+              merge: "flowNode", loop: "flowNode", wait: "flowNode",
+            }
+            const visualType = typeMapRev[engineType] || n.type || "actionNode"
+            const iconMapRev: Record<string, string> = {
+              cronTrigger: "Clock", webhookTrigger: "Webhook", channelTrigger: "MessageSquare", manualTrigger: "MousePointerClick",
+              aiAgent: "Zap", contentWriter: "FileText", dataExtractor: "Database", classifier: "GitBranch",
+              summarizer: "FileText", webResearcher: "Globe", imageGenerator: "Image",
+              httpRequest: "Globe", databaseQuery: "Database", sendEmail: "Mail", sendMessage: "MessageSquare",
+              codeExecute: "Code", condition: "GitBranch", switch: "SplitSquareHorizontal",
+              parallelFork: "ArrowRight", merge: "Merge", loop: "Repeat", wait: "Clock",
+            }
+            return {
+              id: n.id,
+              type: visualType,
+              position: n.position ?? { x: 0, y: 0 },
+              data: {
+                label: n.label ?? "Node",
+                icon: n.data?.icon ?? iconMapRev[engineType] ?? "Zap",
+                config: n.config ?? n.data?.config ?? {},
+                status: "idle",
+                engineType,
+              },
+            }
+          }))
+        }
+        if (g.edges) setEdges(g.edges)
+      }
+      if (data?.name) setPipelineName(data.name)
+      if (data?.version) setVersion(data.version)
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineId])
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -182,35 +242,108 @@ function CanvasInner({
   const onSave = useCallback(async () => {
     setSaving(true)
     try {
-      await api.pipeline.update({
-        id: pipelineId,
-        name: pipelineName,
-        graph: { nodes: nodes.map((n) => ({ id: n.id, type: n.type!, label: n.data.label, position: n.position, config: (n.data as any).config ?? {} })), edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })) },
-      })
-      setVersion((v) => v + 1)
+      const nd = (n: Node) => {
+        const d = n.data as any
+        return { id: n.id, type: n.type!, label: d.label, position: n.position, config: d.config ?? {}, engineType: d.engineType ?? null }
+      }
+      const graph = { nodes: nodes.map(nd), edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })) }
+      if (pipelineId === "new") {
+        const created = await api.pipeline.create({ name: pipelineName, graph })
+        router.replace(`/pipelines/${created.id}`)
+      } else {
+        await api.pipeline.update({ id: pipelineId, name: pipelineName, graph })
+        setVersion((v) => v + 1)
+      }
     } catch (err) {
       console.error("Save failed:", err)
     } finally {
       setSaving(false)
     }
-  }, [pipelineId, pipelineName, nodes, edges])
+  }, [pipelineId, pipelineName, nodes, edges, router])
 
   const onRun = useCallback(async () => {
+    await onSave()
+    if (pipelineId === "new") return
     setRunning(true)
+    setCurrentRunId(null)
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle", lastOutput: undefined } })))
+    let eventSource: EventSource | null = null
     try {
-      const result = await api.pipeline.trigger(pipelineId, {})
       setNodes((nds) =>
-        nds.map((n) => {
-          const output = result.outputs?.find((o) => o.nodeId === n.id)
-          return { ...n, data: { ...n.data, status: output?.error ? "error" : "success" } }
-        })
+        nds.map((n) => ({ ...n, data: { ...n.data, status: "running" } }))
       )
+      const result = await api.pipeline.trigger(pipelineId, {})
+      const runId = result.runId
+      setCurrentRunId(runId)
+
+      if (result.status === "CANCELLED") {
+        setNodes((nds) =>
+          nds.map((n) => ({ ...n, data: { ...n.data, status: "cancelled" as string } }))
+        )
+        return
+      }
+
+      const token = getToken()
+      const url = `${API_URL}/api/pipeline/stream/${runId}${token ? `?token=${encodeURIComponent(token)}` : ""}`
+      eventSource = new EventSource(url)
+
+      eventSource.onmessage = (ev) => {
+        if (ev.data === "[DONE]") {
+          eventSource?.close()
+          return
+        }
+        try {
+          const msg = JSON.parse(ev.data)
+          if (msg.type === "node") {
+            setNodes((nds) =>
+              nds.map((n) => {
+                if (n.id !== msg.nodeId) return n
+                return {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    status: msg.error ? "error" : msg.durationMs ? "success" : "running",
+                    lastOutput: msg.output && Object.keys(msg.output).length > 0 ? msg.output : n.data.lastOutput,
+                  },
+                }
+              })
+            )
+          } else if (msg.type === "done") {
+            setNodes((nds) =>
+              nds.map((n) => ({ ...n, data: { ...n.data, status: msg.status === "SUCCESS" ? "success" : "error" } }))
+            )
+          } else if (msg.type === "error") {
+            setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      eventSource.onerror = () => {
+        eventSource?.close()
+      }
     } catch (err) {
+      eventSource?.close()
       console.error("Run failed:", err)
+      setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
     } finally {
       setRunning(false)
+      setCurrentRunId(null)
     }
-  }, [pipelineId, setNodes])
+  }, [pipelineId, onSave, setNodes])
+
+  const onCancel = useCallback(async () => {
+    if (!currentRunId) return
+    try {
+      await api.pipeline.cancelRun(currentRunId)
+    } catch (err) {
+      console.error("Cancel failed:", err)
+    }
+    setRunning(false)
+    setCurrentRunId(null)
+    setNodes((nds) =>
+      nds.map((n) => ({ ...n, data: { ...n.data, status: "cancelled" as string } }))
+    )
+  }, [currentRunId, setNodes])
 
   const onRunNode = useCallback(async (nodeId: string) => {
     try {
@@ -240,6 +373,7 @@ function CanvasInner({
         onNameChange={setPipelineName}
         onSave={onSave}
         onRun={onRun}
+        onCancel={onCancel}
         saving={saving}
         running={running}
         onToggleRuns={() => setShowRuns(!showRuns)}

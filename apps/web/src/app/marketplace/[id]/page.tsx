@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ const flowIconMap: Record<string, React.ReactNode> = {
 
 export default function FlowDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const [flow, setFlow] = useState<any>(null)
   const [related, setRelated] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -126,7 +127,8 @@ export default function FlowDetailPage() {
 
             <Button className="w-full gap-2" onClick={async () => {
               try {
-                await api.marketplace.clone(flow.id)
+                const result = await api.marketplace.clone(flow.id)
+                router.push(`/pipelines/${result.id}`)
               } catch {}
             }}>
               <Copy className="h-4 w-4" /> Clone This Flow
@@ -139,7 +141,8 @@ export default function FlowDetailPage() {
               <div className="space-y-3">
                 <Button className="w-full gap-2" onClick={async () => {
                   try {
-                    await api.marketplace.clone(flow.id)
+                    const result = await api.marketplace.clone(flow.id)
+                    router.push(`/pipelines/${result.id}`)
                   } catch {}
                 }}>
                   <Copy className="h-4 w-4" /> Clone to My Flows

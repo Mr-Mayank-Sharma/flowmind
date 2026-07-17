@@ -5,11 +5,14 @@ import * as Sentry from "@sentry/react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || "",
-  environment: process.env.NODE_ENV || "development",
-  tracesSampleRate: 1.0,
-})
+const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN
+if (typeof window !== "undefined" && SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    tracesSampleRate: parseFloat(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE || "0.1"),
+  })
+}
 
 interface Props {
   children: ReactNode

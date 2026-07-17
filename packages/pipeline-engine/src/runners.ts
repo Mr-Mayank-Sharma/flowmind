@@ -2,12 +2,24 @@ import type { PipelineNode, ExecutionContext, NodeRunner, NodeOutput } from "./t
 import { resolveValue, buildExpressionContext } from "./expressions"
 import { kindForNodeType } from "./types"
 import { getDirectPredecessors } from "./graph"
+import { runAgentLoop, type AgentTool, type ProviderFacade, type CompletionRequest, type CompletionResult, type StreamCallbacks, type Message } from "@flowmind/llm-router"
 
 import nodemailer from "nodemailer"
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
 
-async function llmGenerate(prompt: string, system?: string, model = "tinyllama"): Promise<string> {
+async function llmGenerate(prompt: string, system: string | undefined, model: string, context: ExecutionContext): Promise<string> {
+  if (context.llm) {
+    try {
+      const messages: Array<{ role: string; content: string }> = []
+      if (system) messages.push({ role: "system", content: system })
+      messages.push({ role: "user", content: prompt })
+      const result = await context.llm.complete({ model: model || "tinyllama", messages, maxTokens: 500 })
+      return result.content || "[empty response]"
+    } catch (err) {
+      return `[LLM error: ${err}]`
+    }
+  }
   try {
     const res = await fetch(`${AGENT_RUNTIME_URL}/llm/generate`, {
       method: "POST",
@@ -59,24 +71,25 @@ const triggerRunners: Record<string, (node: PipelineNode, context: ExecutionCont
   },
 }
 
+function modelFromNode(node: PipelineNode): string {
+  return (node.config.model as string) ?? "tinyllama"
+}
+
 const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {
   async aiAgent(node, context) {
-    const model = (node.config.model as string) ?? "tinyllama"
+    const model = modelFromNode(node)
+    const maxIterations = (node.config.maxIterations as number) ?? 5
     const systemPrompt = (node.config.systemPrompt as string) ?? ""
     const prompt = (node.config.prompt as string) ?? "Execute your task based on the input data."
     const exprCtx = buildExpressionContext(context)
     const resolvedPrompt = resolveValue(prompt, exprCtx) as string
     const resolvedSystem = resolveValue(systemPrompt, exprCtx) as string
     const predecessorData = predecessorsInput(node, context)
-    const response = await llmGenerate(resolvedPrompt, resolvedSystem, model)
-    return {
-      model, prompt: resolvedPrompt, system: resolvedSystem, input: predecessorData,
-      response,
-      json: { response, input: predecessorData },
-      usage: { promptTokens: (resolvedPrompt.length + resolvedSystem.length) / 4, completionTokens: response.length / 4, totalTokens: (resolvedPrompt.length + resolvedSystem.length + response.length) / 4 },
-    }
+    const enrichedPrompt = `Task: ${resolvedPrompt}\n\nInput data: ${JSON.stringify(predecessorData)}`
+    return reactAgentLoop(node, context, enrichedPrompt, resolvedSystem, model, maxIterations)
   },
   async contentWriter(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const exprCtx = buildExpressionContext(context)
     const topic = resolveValue(node.config.topic ?? "general", exprCtx) as string
@@ -84,52 +97,55 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     const response = await llmGenerate(
       `Write a ${tone} article about "${topic}". Format as plain text with paragraphs.`,
       "You are a professional content writer. Write engaging, well-structured content.",
-      "tinyllama"
+      model, context,
     )
     return { topic, tone, input: predecessorData, content: response, json: { content: response, input: predecessorData }, wordCount: response.split(/\s+/).length }
   },
   async dataExtractor(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const fields = ((node.config.fields as string) ?? "name,email").split(",").map((f) => f.trim())
     const text = JSON.stringify(predecessorData)
     const response = await llmGenerate(
       `Extract these fields from the text: ${fields.join(", ")}\n\nText: ${text.slice(0, 2000)}\n\nReturn as valid JSON with only those fields.`,
       "You are a data extraction assistant. Return only valid JSON.",
-      "tinyllama"
+      model, context,
     )
     let extracted: Record<string, unknown> = {}
     try { extracted = JSON.parse(response) } catch { extracted = { raw: response } }
     return { fields, input: predecessorData, extracted, json: { extracted, fields } }
   },
   async classifier(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const categories = ((node.config.categories as string) ?? "positive,negative,neutral").split(",").map((c: string) => c.trim())
     const text = JSON.stringify(predecessorData)
     const response = await llmGenerate(
       `Classify the following into one of these categories: ${categories.join(", ")}\n\n${text.slice(0, 1500)}\n\nRespond with ONLY the category name.`,
       "You are a text classifier. Respond with a single category name only.",
-      "tinyllama"
+      model, context,
     )
     const category = categories.find((c) => response.toLowerCase().includes(c.toLowerCase())) ?? categories[0]!
     const confidence = response.toLowerCase().includes(category.toLowerCase()) ? 0.85 : 0.6
     return { categories, input: predecessorData, category, confidence, json: { category, confidence } }
   },
   async summarizer(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const exprCtx = buildExpressionContext(context)
     const text = resolveValue(node.config.text ?? JSON.stringify(predecessorData), exprCtx) as string
     const response = await llmGenerate(
       `Summarize the following text concisely:\n\n${text.slice(0, 3000)}`,
       "You are a text summarizer. Provide a concise summary capturing the key points.",
-      "tinyllama"
+      model, context,
     )
     return { inputLength: text.length, summary: response, json: { summary: response, originalLength: text.length } }
   },
   async webResearcher(node, context) {
+    const model = modelFromNode(node)
     const exprCtx = buildExpressionContext(context)
     const query = resolveValue(node.config.query ?? "", exprCtx) as string
     const predecessorData = predecessorsInput(node, context)
-    // Try real web search, fall back to LLM knowledge
     let webResults = ""
     try {
       const webRes = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`, { signal: AbortSignal.timeout(5000) })
@@ -141,7 +157,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     const response = webResults || await llmGenerate(
       `Based on your knowledge, provide information about: ${query}`,
       "You are a research assistant. Provide factual information.",
-      "tinyllama"
+      model, context,
     )
     return { query, input: predecessorData, results: [response], json: { query, resultCount: 1, results: [response] } }
   },
@@ -174,6 +190,120 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
 
     return { prompt, size, url, json: { prompt, size, url: url.startsWith("data:") ? "base64_image" : url } }
   },
+}
+
+const pipelineAgentTools: AgentTool[] = [
+  {
+    name: "webSearch",
+    description: "Search the web for information",
+    parameters: { query: { type: "string", description: "Search query" } },
+    async execute(args: Record<string, unknown>): Promise<string> {
+      const query = (args.query as string)?.trim() || "latest news"
+      try {
+        const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`, { signal: AbortSignal.timeout(5000) })
+        if (!res.ok) return `[web search error: ${res.status}]`
+        const data = await res.json() as any
+        return data.AbstractText || data.Results?.[0]?.Text || `[no results for "${query}"]`
+      } catch (err) {
+        return `[web search unavailable: ${err}]`
+      }
+    },
+  },
+  {
+    name: "calculator",
+    description: "Evaluate a mathematical expression",
+    parameters: { expression: { type: "string", description: "Math expression to evaluate" } },
+    async execute(args: Record<string, unknown>): Promise<string> {
+      const expression = (args.expression as string) || (args.input as string) || ""
+      try {
+        const sanitized = expression.replace(/[^0-9+\-*/.() ]/g, "")
+        const fn = new Function(`"use strict"; return (${sanitized})`)
+        const result = fn()
+        return String(result)
+      } catch {
+        return "[calculator error: invalid expression]"
+      }
+    },
+  },
+  {
+    name: "currentTime",
+    description: "Get the current date and time",
+    parameters: {},
+    async execute() {
+      return new Date().toISOString()
+    },
+  },
+  {
+    name: "readFile",
+    description: "Read a file (simulated in pipeline context)",
+    parameters: { path: { type: "string", description: "File path to read" } },
+    async execute(args: Record<string, unknown>): Promise<string> {
+      const filePath = (args.path as string) || (args.input as string) || ""
+      return `[readFile "${filePath}": simulated - tool not available in pipeline context]`
+    },
+  },
+]
+
+function wrapLLMAsProvider(llm: { complete(req: { model: string; messages: Array<{ role: string; content: string }>; temperature?: number; maxTokens?: number }): Promise<{ content: string; model: string }> }): ProviderFacade {
+  return {
+    id: "pipeline-adapter",
+    baseUrl: "",
+    async complete(req: CompletionRequest): Promise<CompletionResult> {
+      const result = await llm.complete({
+        model: req.model || "tinyllama",
+        messages: req.messages.map((m: Message) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" })),
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
+      })
+      return {
+        message: { role: "assistant", content: result.content || "[empty response]" },
+        finish_reason: "stop",
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        model: result.model,
+        provider: "pipeline-adapter",
+      }
+    },
+    async stream(req: CompletionRequest, callbacks: StreamCallbacks): Promise<CompletionResult> {
+      const result = await this.complete(req)
+      const textContent = typeof result.message.content === "string" ? result.message.content : result.message.content.map((b) => (b.type === "text" ? b.text : "")).join("")
+      callbacks.onChunk?.({ delta: { content: textContent }, model: result.model, provider: result.provider })
+      callbacks.onDone?.(result)
+      return result
+    },
+  }
+}
+
+async function reactAgentLoop(
+  node: PipelineNode,
+  context: ExecutionContext,
+  initialPrompt: string,
+  systemPrompt: string,
+  model: string,
+  maxIterations: number,
+): Promise<unknown> {
+  if (!context.llm) {
+    return { model, prompt: initialPrompt, system: systemPrompt, response: "[No LLM provider available]", iterations: 0, steps: [] }
+  }
+  const provider = wrapLLMAsProvider(context.llm)
+  const result = await runAgentLoop({
+    provider,
+    model: model || "tinyllama",
+    systemPrompt,
+    userMessage: initialPrompt,
+    tools: pipelineAgentTools,
+    maxIterations,
+    maxTokens: 2000,
+  })
+  return {
+    model,
+    prompt: initialPrompt,
+    system: systemPrompt,
+    response: result.response,
+    iterations: result.iterations,
+    steps: result.steps,
+    json: { response: result.response, iterations: result.iterations, steps: result.steps },
+    usage: result.usage,
+  }
 }
 
 const actionRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {
