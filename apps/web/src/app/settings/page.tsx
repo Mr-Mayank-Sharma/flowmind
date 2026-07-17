@@ -19,6 +19,7 @@ import {
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
 import { Skeleton, TableSkeleton } from "@/components/ui/skeleton"
+import { ErrorState } from "@/components/ui/error-state"
 
 type TabId =
   | "profile" | "appearance" | "ai-models" | "local-models" | "memory"
@@ -161,7 +162,7 @@ function ProfileTab() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const { data: user, loading, refetch } = useQuery(
+  const { data: user, loading, error, refetch } = useQuery(
     "settings:profile",
     () => api.settings.getProfile(),
   )
@@ -190,6 +191,10 @@ function ProfileTab() {
 
   if (loading) {
     return <div className="space-y-6 py-4"><Skeleton className="h-6 w-48" /><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div></div>
+  }
+
+  if (error) {
+    return <ErrorState message={error.message} onRetry={refetch} />
   }
 
   return (
@@ -535,7 +540,7 @@ function AiModelsTab() {
 function LocalModelsTab() {
   const [pulling, setPulling] = useState(false)
 
-  const { data: modelsList = [], loading: modelsLoading, refetch: refetchModels } = useQuery(
+  const { data: modelsList = [], loading: modelsLoading, error: modelsError, refetch: refetchModels } = useQuery(
     "settings:models",
     () => api.models.list(),
   )
@@ -605,6 +610,8 @@ function LocalModelsTab() {
         <CardContent className="space-y-3">
           {modelsLoading ? (
             <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
+          ) : modelsError ? (
+            <ErrorState message={modelsError.message} onRetry={refetchModels} />
           ) : modelsList.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No models installed. Pull a model to get started.</p>
           ) : modelsList.map((model: any) => (
@@ -790,7 +797,7 @@ function ApiKeysTab({ showKey, setShowKey }: { showKey: string | null; setShowKe
   const [newKeyProvider, setNewKeyProvider] = useState("OpenAI")
   const [newKeyValue, setNewKeyValue] = useState("")
 
-  const { data: apiKeys = [], loading, refetch } = useQuery(
+  const { data: apiKeys = [], loading, error: keysError, refetch } = useQuery(
     "settings:apiKeys",
     () => api.settings.getApiKeys(),
   )
@@ -833,6 +840,8 @@ function ApiKeysTab({ showKey, setShowKey }: { showKey: string | null; setShowKe
           )}
           {loading ? (
             <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
+          ) : keysError ? (
+            <ErrorState message={keysError.message} onRetry={refetch} />
           ) : apiKeys.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No API keys yet</p>
           ) : apiKeys.map((ak: any) => (
@@ -1054,7 +1063,7 @@ function NotificationsTab() {
 }
 
 function OrganizationTab() {
-  const { data: org, loading: orgLoading, refetch: refetchOrg } = useQuery(
+  const { data: org, loading: orgLoading, error: orgError, refetch: refetchOrg } = useQuery(
     "settings:org",
     () => api.settings.getOrg(),
   )
@@ -1078,6 +1087,10 @@ function OrganizationTab() {
 
   if (orgLoading) {
     return <div className="space-y-6 py-4"><Skeleton className="h-6 w-48" /><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div></div>
+  }
+
+  if (orgError) {
+    return <ErrorState message={orgError.message} onRetry={refetchOrg} />
   }
 
   return (
