@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
-import { Plus, Workflow, Clock, Play, Trash2, Store } from "lucide-react"
+import { Plus, Workflow, Clock, Play, Trash2, Store, LayoutTemplate } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
@@ -93,6 +93,12 @@ export default function PipelinesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/templates">
+              <Button variant="outline" className="gap-2">
+                <LayoutTemplate className="h-4 w-4" />
+                Templates
+              </Button>
+            </Link>
             <Link href="/marketplace">
               <Button variant="outline" className="gap-2">
                 <Store className="h-4 w-4" />
