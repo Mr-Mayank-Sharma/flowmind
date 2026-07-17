@@ -7,7 +7,18 @@ import nodemailer from "nodemailer"
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
 
-async function llmGenerate(prompt: string, system?: string, model = "tinyllama"): Promise<string> {
+async function llmGenerate(prompt: string, system: string | undefined, model: string, context: ExecutionContext): Promise<string> {
+  if (context.llm) {
+    try {
+      const messages: Array<{ role: string; content: string }> = []
+      if (system) messages.push({ role: "system", content: system })
+      messages.push({ role: "user", content: prompt })
+      const result = await context.llm.complete({ model: model || "tinyllama", messages, maxTokens: 500 })
+      return result.content || "[empty response]"
+    } catch (err) {
+      return `[LLM error: ${err}]`
+    }
+  }
   try {
     const res = await fetch(`${AGENT_RUNTIME_URL}/llm/generate`, {
       method: "POST",
@@ -59,16 +70,20 @@ const triggerRunners: Record<string, (node: PipelineNode, context: ExecutionCont
   },
 }
 
+function modelFromNode(node: PipelineNode): string {
+  return (node.config.model as string) ?? "tinyllama"
+}
+
 const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {
   async aiAgent(node, context) {
-    const model = (node.config.model as string) ?? "tinyllama"
+    const model = modelFromNode(node)
     const systemPrompt = (node.config.systemPrompt as string) ?? ""
     const prompt = (node.config.prompt as string) ?? "Execute your task based on the input data."
     const exprCtx = buildExpressionContext(context)
     const resolvedPrompt = resolveValue(prompt, exprCtx) as string
     const resolvedSystem = resolveValue(systemPrompt, exprCtx) as string
     const predecessorData = predecessorsInput(node, context)
-    const response = await llmGenerate(resolvedPrompt, resolvedSystem, model)
+    const response = await llmGenerate(resolvedPrompt, resolvedSystem, model, context)
     return {
       model, prompt: resolvedPrompt, system: resolvedSystem, input: predecessorData,
       response,
@@ -77,6 +92,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     }
   },
   async contentWriter(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const exprCtx = buildExpressionContext(context)
     const topic = resolveValue(node.config.topic ?? "general", exprCtx) as string
@@ -84,52 +100,55 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     const response = await llmGenerate(
       `Write a ${tone} article about "${topic}". Format as plain text with paragraphs.`,
       "You are a professional content writer. Write engaging, well-structured content.",
-      "tinyllama"
+      model, context,
     )
     return { topic, tone, input: predecessorData, content: response, json: { content: response, input: predecessorData }, wordCount: response.split(/\s+/).length }
   },
   async dataExtractor(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const fields = ((node.config.fields as string) ?? "name,email").split(",").map((f) => f.trim())
     const text = JSON.stringify(predecessorData)
     const response = await llmGenerate(
       `Extract these fields from the text: ${fields.join(", ")}\n\nText: ${text.slice(0, 2000)}\n\nReturn as valid JSON with only those fields.`,
       "You are a data extraction assistant. Return only valid JSON.",
-      "tinyllama"
+      model, context,
     )
     let extracted: Record<string, unknown> = {}
     try { extracted = JSON.parse(response) } catch { extracted = { raw: response } }
     return { fields, input: predecessorData, extracted, json: { extracted, fields } }
   },
   async classifier(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const categories = ((node.config.categories as string) ?? "positive,negative,neutral").split(",").map((c: string) => c.trim())
     const text = JSON.stringify(predecessorData)
     const response = await llmGenerate(
       `Classify the following into one of these categories: ${categories.join(", ")}\n\n${text.slice(0, 1500)}\n\nRespond with ONLY the category name.`,
       "You are a text classifier. Respond with a single category name only.",
-      "tinyllama"
+      model, context,
     )
     const category = categories.find((c) => response.toLowerCase().includes(c.toLowerCase())) ?? categories[0]!
     const confidence = response.toLowerCase().includes(category.toLowerCase()) ? 0.85 : 0.6
     return { categories, input: predecessorData, category, confidence, json: { category, confidence } }
   },
   async summarizer(node, context) {
+    const model = modelFromNode(node)
     const predecessorData = predecessorsInput(node, context)
     const exprCtx = buildExpressionContext(context)
     const text = resolveValue(node.config.text ?? JSON.stringify(predecessorData), exprCtx) as string
     const response = await llmGenerate(
       `Summarize the following text concisely:\n\n${text.slice(0, 3000)}`,
       "You are a text summarizer. Provide a concise summary capturing the key points.",
-      "tinyllama"
+      model, context,
     )
     return { inputLength: text.length, summary: response, json: { summary: response, originalLength: text.length } }
   },
   async webResearcher(node, context) {
+    const model = modelFromNode(node)
     const exprCtx = buildExpressionContext(context)
     const query = resolveValue(node.config.query ?? "", exprCtx) as string
     const predecessorData = predecessorsInput(node, context)
-    // Try real web search, fall back to LLM knowledge
     let webResults = ""
     try {
       const webRes = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`, { signal: AbortSignal.timeout(5000) })
@@ -141,7 +160,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     const response = webResults || await llmGenerate(
       `Based on your knowledge, provide information about: ${query}`,
       "You are a research assistant. Provide factual information.",
-      "tinyllama"
+      model, context,
     )
     return { query, input: predecessorData, results: [response], json: { query, resultCount: 1, results: [response] } }
   },

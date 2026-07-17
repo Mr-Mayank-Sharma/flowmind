@@ -2,7 +2,44 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
 import { PipelineEngine } from "@flowmind/pipeline-engine";
-import type { PipelineGraph, WorkflowSettings, PipelineNode } from "@flowmind/pipeline-engine";
+import type { PipelineGraph, WorkflowSettings, PipelineNode, LLMProvider } from "@flowmind/pipeline-engine";
+import { LLMEngine } from "@flowmind/llm-router";
+
+function buildLLMProvider(): LLMProvider | undefined {
+  const openaiKey = process.env.OPENAI_KEY;
+  const anthropicKey = process.env.ANTHROPIC_KEY;
+  const groqKey = process.env.GROQ_KEY;
+  if (!openaiKey && !anthropicKey && !groqKey) return undefined;
+  const llmEngine = new LLMEngine({
+    openaiKey: openaiKey ?? undefined,
+    anthropicKey: anthropicKey ?? undefined,
+    groqKey: groqKey ?? undefined,
+    deepseekKey: process.env.DEEPSEEK_KEY,
+    openrouterKey: process.env.OPENROUTER_KEY,
+    togetherKey: process.env.TOGETHER_KEY,
+    mistralKey: process.env.MISTRAL_KEY,
+    perplexityKey: process.env.PERPLEXITY_KEY,
+    deepinfraKey: process.env.DEEPINFRA_KEY,
+    cerebrasKey: process.env.CEREBRAS_KEY,
+    xaiKey: process.env.XAI_KEY,
+    cohereKey: process.env.COHERE_KEY,
+    cloudflareKey: process.env.CLOUDFLARE_KEY,
+    veniceAIKey: process.env.VENICE_AI_KEY,
+    alibabaKey: process.env.ALIBABA_KEY,
+    googleKey: process.env.GOOGLE_KEY,
+  });
+  return {
+    complete: async (req) => {
+      const result = await llmEngine.complete({
+        messages: req.messages as any,
+        model: req.model ?? "tinyllama",
+        maxTokens: req.maxTokens ?? 500,
+        temperature: req.temperature,
+      });
+      return { content: result.message.content as string, model: result.model };
+    },
+  };
+}
 
 function normalizeGraph(graph: any): PipelineGraph {
   if (!graph || !graph.nodes) return { nodes: [], edges: [] }
@@ -28,7 +65,8 @@ function normalizeGraph(graph: any): PipelineGraph {
   }
 }
 
-const engine = new PipelineEngine();
+const llm = buildLLMProvider();
+const engine = new PipelineEngine({ llm });
 
 const graphSchema = z.object({
   nodes: z.array(z.any()),
@@ -163,6 +201,7 @@ export const pipelineRouter = router({
       const logBuffer: Array<{ runId: string; nodeId: string; nodeType: string; input: any; output: any; error?: string; duration: number }> = [];
 
       const engineWithStatus = new PipelineEngine({
+        llm,
         onNodeStatus: async (event) => {
           if (event.status === "running") {
             logBuffer.push({

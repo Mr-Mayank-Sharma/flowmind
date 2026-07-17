@@ -1,4 +1,4 @@
-import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry, NodeStatusCallback } from "./types"
+import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry, NodeStatusCallback, LLMProvider } from "./types"
 import { buildExecutionPlan, getDirectPredecessors } from "./graph"
 import { executeNode, getRunner } from "./runners"
 import { validateGraph } from "./graph"
@@ -7,6 +7,7 @@ export interface EngineOptions {
   credentialResolver?: CredentialResolver
   subPipelineRunner?: SubPipelineRunner
   onNodeStatus?: NodeStatusCallback
+  llm?: LLMProvider
 }
 
 function sleep(ms: number): Promise<void> {
@@ -17,11 +18,13 @@ export class PipelineEngine {
   private credentialResolver?: CredentialResolver
   private subPipelineRunner?: SubPipelineRunner
   private onNodeStatus?: NodeStatusCallback
+  private llm?: LLMProvider
 
   constructor(options: EngineOptions = {}) {
     this.credentialResolver = options.credentialResolver
     this.subPipelineRunner = options.subPipelineRunner
     this.onNodeStatus = options.onNodeStatus
+    this.llm = options.llm
   }
 
   async execute(
@@ -66,6 +69,7 @@ export class PipelineEngine {
       abortSignal,
       credentialResolver: this.credentialResolver,
       subPipelineRunner: this.subPipelineRunner,
+      llm: this.llm,
     }
 
     for (const nodeId of plan.executionOrder) {
@@ -233,6 +237,7 @@ export class PipelineEngine {
       abortSignal,
       credentialResolver: this.credentialResolver,
       subPipelineRunner: this.subPipelineRunner,
+      llm: this.llm,
     }
 
     return this.executeNodeWithRetry(node, context)

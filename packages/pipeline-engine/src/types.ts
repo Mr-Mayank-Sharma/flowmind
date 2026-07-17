@@ -63,6 +63,10 @@ export interface BinaryDataEntry {
   id: string
 }
 
+export interface LLMProvider {
+  complete(req: { model: string; messages: Array<{ role: string; content: string }>; temperature?: number; maxTokens?: number }): Promise<{ content: string; model: string }>
+}
+
 export interface ExecutionContext {
   runId: string
   pipelineId: string
@@ -77,6 +81,7 @@ export interface ExecutionContext {
   abortSignal: AbortSignal
   credentialResolver?: CredentialResolver
   subPipelineRunner?: SubPipelineRunner
+  llm?: LLMProvider
 }
 
 export interface CredentialResolver {
