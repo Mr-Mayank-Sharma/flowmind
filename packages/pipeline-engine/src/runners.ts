@@ -481,6 +481,23 @@ const allRunners: Record<string, (node: PipelineNode, context: ExecutionContext)
 }
 
 export function getRunner(nodeType: string): ((node: PipelineNode, context: ExecutionContext) => Promise<unknown>) | undefined {
+  if (nodeType.startsWith("skill.")) {
+    const skillName = nodeType.slice(6)
+    return async (node, context) => {
+      const skillId = node.config.skillId as string
+      if (!skillId) return { error: "No skillId configured for skill node" }
+      try {
+        const { SkillEngine } = await import("@flowmind/skill-engine")
+        const engine = new SkillEngine()
+        const predecessorData = predecessorsInput(node, context)
+        const inputStr = JSON.stringify(predecessorData)
+        const result = await engine.execute(skillId, { userId: "system", input: inputStr })
+        return JSON.parse(result.output)
+      } catch (err) {
+        return { error: `Skill "${skillName}" failed: ${err instanceof Error ? err.message : String(err)}` }
+      }
+    }
+  }
   return allRunners[nodeType]
 }
 

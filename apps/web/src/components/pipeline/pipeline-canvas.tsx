@@ -96,13 +96,14 @@ const defaultNode = (
     loop: "Repeat",
     wait: "Clock",
   }
+  const isSkill = type.startsWith("skill.")
   return {
     id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    type: typeMap[type] || "actionNode",
+    type: isSkill ? "skillNode" : typeMap[type] || "actionNode",
     position,
     data: {
       label,
-      icon: iconMap[type] || "Zap",
+      icon: isSkill ? "Puzzle" : iconMap[type] || "Zap",
       config: { summary: "" },
       status: "idle",
       engineType: type,

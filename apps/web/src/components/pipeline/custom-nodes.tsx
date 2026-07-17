@@ -21,6 +21,7 @@ import {
   Repeat,
   ArrowRight,
   AlertTriangle,
+  Puzzle,
 } from "lucide-react"
 
 interface BaseNodeData {
@@ -50,6 +51,7 @@ const iconMap: Record<string, React.ElementType> = {
   ArrowRight,
   AlertTriangle,
   Workflow: Zap,
+  Puzzle,
 }
 
 function StatusDot({ status }: { status?: string }) {
@@ -235,10 +237,38 @@ export const IntegrationNode = memo(({ data, selected }: NodeProps<BaseNodeData>
 
 IntegrationNode.displayName = "IntegrationNode"
 
+export const SkillNode = memo(({ data, selected }: NodeProps<BaseNodeData>) => (
+  <div
+    className={cn(
+      "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
+      selected && "ring-2 ring-ring shadow-md"
+    )}
+  >
+    <NodeHeader label={data.label} iconName="Puzzle" color="bg-pink-600" />
+    <div className="px-3 py-2 text-[11px] text-muted-foreground">
+      {data.config?.summary ? String(data.config.summary) : "Skill node"}
+    </div>
+    <StatusDot status={data.status} />
+    <Handle
+      type="target"
+      position={Position.Top}
+      className="!bg-pink-500 !border-2 !border-background !w-3 !h-3"
+    />
+    <Handle
+      type="source"
+      position={Position.Bottom}
+      className="!bg-pink-500 !border-2 !border-background !w-3 !h-3"
+    />
+  </div>
+))
+
+SkillNode.displayName = "SkillNode"
+
 export const nodeTypes = {
   triggerNode: TriggerNode,
   aiNode: AINode,
   actionNode: ActionNode,
   flowNode: FlowNode,
   integrationNode: IntegrationNode,
+  skillNode: SkillNode,
 }

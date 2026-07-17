@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@flowmind/llm-router": "workspace:*",
-    "@flowmind/provider-registry": "workspace:*"
+    "@flowmind/provider-registry": "workspace:*",
+    "@flowmind/skill-engine": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

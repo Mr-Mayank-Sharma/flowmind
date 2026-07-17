@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { cn } from "@flowmind/ui"
 import { ScrollArea } from "@flowmind/ui"
 import {
@@ -21,6 +21,7 @@ import {
   GitBranch,
   ArrowRight,
   GripVertical,
+  Puzzle,
 } from "lucide-react"
 
 interface PaletteItem {
@@ -28,6 +29,14 @@ interface PaletteItem {
   label: string
   icon: React.ElementType
   category: string
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+
+function getToken(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(/(?:^|;\s*)flowmind_token=([^;]*)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : null
 }
 
 const paletteItems: PaletteItem[] = [
@@ -55,7 +64,7 @@ const paletteItems: PaletteItem[] = [
   { type: "wait", label: "Wait", icon: Clock, category: "Flow Control" },
 ]
 
-const categories = ["Triggers", "AI Nodes", "Actions", "Flow Control", "Integrations"]
+const categories = ["Triggers", "AI Nodes", "Actions", "Flow Control", "Integrations", "Skills"]
 
 const nodeColors: Record<string, string> = {
   Triggers: "border-l-emerald-500",
@@ -63,6 +72,7 @@ const nodeColors: Record<string, string> = {
   Actions: "border-l-blue-500",
   "Flow Control": "border-l-orange-500",
   Integrations: "border-l-gray-500",
+  Skills: "border-l-pink-500",
 }
 
 const categoryIcons: Record<string, React.ElementType> = {
@@ -71,6 +81,7 @@ const categoryIcons: Record<string, React.ElementType> = {
   Actions: Code,
   "Flow Control": GitBranch,
   Integrations: Globe,
+  Skills: Puzzle,
 }
 
 export function NodePalette() {
@@ -78,6 +89,30 @@ export function NodePalette() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(categories)
   )
+  const [skillItems, setSkillItems] = useState<PaletteItem[]>([])
+
+  useEffect(() => {
+    const token = getToken()
+    fetch(`${API_URL}/trpc/skills.list?input=${JSON.stringify({})}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: AbortSignal.timeout(5000),
+    })
+      .then((res) => res.json())
+      .then((json: { result?: { data?: Array<{ name: string; description: string }> } }) => {
+        const skills = json.result?.data ?? []
+        setSkillItems(
+          skills.map((s) => ({
+            type: `skill.${s.name}`,
+            label: s.name,
+            icon: Puzzle,
+            category: "Skills",
+          }))
+        )
+      })
+      .catch(() => {})
+  }, [])
+
+  const allItems = [...paletteItems, ...skillItems]
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories((prev) => {
@@ -118,7 +153,7 @@ export function NodePalette() {
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
             {categories.map((category) => {
-              const items = paletteItems.filter((i) => i.category === category)
+              const items = allItems.filter((i) => i.category === category)
               const CatIcon = categoryIcons[category]
               const isExpanded = expandedCategories.has(category)
               return (

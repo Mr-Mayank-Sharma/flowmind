@@ -66,6 +66,52 @@ function runSandboxed(code: string, input: string, userId: string): Promise<stri
   }
 }
 
+export function getSkillNodeDefinitions(): Array<{
+  type: string
+  label: string
+  inputs: Array<{ name: string; type: string; required: boolean }>
+  outputs: Array<{ name: string; type: string }>
+}> {
+  try {
+    const { readdirSync, readFileSync, existsSync } = require("fs") as typeof import("fs")
+    const { homedir } = require("os") as typeof import("os")
+    const { join } = require("path") as typeof import("path")
+    const skillsDir = join(homedir(), ".flowmind", "skills")
+    if (!existsSync(skillsDir)) return []
+    const entries = readdirSync(skillsDir, { withFileTypes: true })
+    const nodes: Array<{
+      type: string
+      label: string
+      inputs: Array<{ name: string; type: string; required: boolean }>
+      outputs: Array<{ name: string; type: string }>
+    }> = []
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const manifestPath = join(skillsDir, entry.name, "skill.json")
+      if (!existsSync(manifestPath)) continue
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"))
+        nodes.push({
+          type: `skill.${manifest.name}`,
+          label: manifest.name,
+          inputs: (manifest.inputs || []).map((i: { name: string; type: string; required: boolean }) => ({
+            name: i.name,
+            type: i.type,
+            required: i.required,
+          })),
+          outputs: (manifest.outputs || []).map((o: { name: string; type: string }) => ({
+            name: o.name,
+            type: o.type,
+          })),
+        })
+      } catch { /* skip invalid manifests */ }
+    }
+    return nodes
+  } catch {
+    return []
+  }
+}
+
 export class SkillEngine {
   async register(skill: SkillDefinition): Promise<void> {
     const existing = await prisma.skill.findFirst({
