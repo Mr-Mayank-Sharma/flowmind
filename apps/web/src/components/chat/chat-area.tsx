@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { MessageSquare, Sparkles, Loader2, Terminal } from "lucide-react";
+import { MessageSquare, Sparkles, Terminal } from "lucide-react";
 import { Button, ScrollArea } from "@flowmind/ui";
 import { useChatStore } from "@/hooks/chat-store";
 import { MessageBubble } from "./message-bubble";
+import { SkeletonMessage } from "@/components/ui/skeleton";
 
 const LoadingIndicator = () => (
-  <div className="flex-1 flex items-center justify-center bg-background">
-    <div className="flex items-center gap-3 text-muted-foreground">
-      <Loader2 className="h-5 w-5 animate-spin" />
-      <span className="text-sm">Loading conversations...</span>
-    </div>
+  <div className="flex-1 flex flex-col justify-center gap-4 py-8 bg-background">
+    <SkeletonMessage />
+    <SkeletonMessage />
+    <SkeletonMessage />
   </div>
 )
 

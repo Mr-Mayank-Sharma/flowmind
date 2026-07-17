@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Check, ChevronDown, Cloud, HardDrive, Key, ExternalLink, Eye, EyeOff, Loader2, WifiOff, Brain, Bot, Sparkles, Microscope, Wind, Zap } from "lucide-react"
+import { Check, ChevronDown, Cloud, HardDrive, Key, ExternalLink, Eye, EyeOff, WifiOff, Brain, Bot, Sparkles, Microscope, Wind, Zap } from "lucide-react"
 import { Button, Input } from "@flowmind/ui"
+import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
@@ -139,8 +140,13 @@ export function ModelSelector({ selectedModel, onModelChange, disabled }: ModelS
             </div>
             <div className="overflow-y-auto max-h-64">
               {loading ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <div className="py-3 px-2 space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+                      <Skeleton className="h-3 w-3 rounded shrink-0" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <>

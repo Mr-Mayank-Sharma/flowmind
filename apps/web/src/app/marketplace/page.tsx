@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
 import { Store, Download, Star, Tag, Search, ArrowLeft, Puzzle } from "lucide-react"
+import { CardSkeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
 
 type Tab = "workflows" | "skills"
@@ -153,9 +154,10 @@ export default function MarketplacePage() {
         </div>
 
         {!loaded ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Store className="h-12 w-12 mx-auto mb-4 opacity-30 animate-pulse" />
-            <p className="text-sm">Loading marketplace...</p>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <CardSkeleton key={i} />
+            ))}
           </div>
         ) : tab === "workflows" ? (
           filteredFlows.length === 0 ? (

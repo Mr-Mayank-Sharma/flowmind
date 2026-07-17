@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
+import { Skeleton, TableSkeleton } from "@/components/ui/skeleton"
 
 type TabId =
   | "profile" | "appearance" | "ai-models" | "local-models" | "memory"
@@ -188,7 +189,7 @@ function ProfileTab() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+    return <div className="space-y-6 py-4"><Skeleton className="h-6 w-48" /><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div></div>
   }
 
   return (
@@ -603,7 +604,7 @@ function LocalModelsTab() {
         </CardHeader>
         <CardContent className="space-y-3">
           {modelsLoading ? (
-            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : modelsList.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No models installed. Pull a model to get started.</p>
           ) : modelsList.map((model: any) => (
@@ -758,7 +759,7 @@ function MemoryTab({
           </div>
           <div className="divide-y divide-border">
             {memoriesLoading ? (
-              <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
             ) : filteredMemory.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">No memories found</p>
             ) : filteredMemory.map((entry: any) => (
@@ -831,7 +832,7 @@ function ApiKeysTab({ showKey, setShowKey }: { showKey: string | null; setShowKe
             </div>
           )}
           {loading ? (
-            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : apiKeys.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No API keys yet</p>
           ) : apiKeys.map((ak: any) => (
@@ -893,7 +894,7 @@ function ConnectionsTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
-            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : connections.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No connected accounts yet</p>
           ) : connections.map((conn: any) => {
@@ -951,7 +952,7 @@ function CronJobsTab() {
         </CardHeader>
         <CardContent className="space-y-3">
           {loading ? (
-            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : cronList.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No scheduled jobs yet</p>
           ) : cronList.map((job: any) => (
@@ -1033,7 +1034,7 @@ function NotificationsTab() {
           <div className="space-y-4">
             <SectionTitle>Recent Notifications</SectionTitle>
             {loading ? (
-              <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
             ) : notifications.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">No notifications yet</p>
             ) : notifications.map((n: any) => (
@@ -1076,7 +1077,7 @@ function OrganizationTab() {
   }, [org])
 
   if (orgLoading) {
-    return <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+    return <div className="space-y-6 py-4"><Skeleton className="h-6 w-48" /><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div><div className="rounded-xl border bg-surface p-6 space-y-4"><Skeleton className="h-4 w-32" /><Skeleton className="h-10 w-full" /></div></div>
   }
 
   return (
@@ -1129,7 +1130,7 @@ function OrganizationTab() {
         </CardHeader>
         <CardContent className="space-y-3">
           {membersLoading ? (
-            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : members.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No members yet</p>
           ) : members.map((m: any) => (
@@ -1169,7 +1170,7 @@ function AuditLogSection() {
     () => api.settings.getAuditLog(),
   )
 
-  if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+  if (loading) return <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
   if (auditLog.length === 0) return <p className="text-sm text-muted-foreground text-center py-4">No audit log entries yet</p>
 
   return (
@@ -1216,7 +1217,7 @@ function BillingTab() {
         </CardHeader>
         <CardContent className="space-y-6">
           {subLoading ? (
-            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : (
             <>
               <div className="rounded-lg border bg-surface p-6">
@@ -1416,7 +1417,7 @@ function SecurityTab() {
             </div>
           )}
           {tokensLoading ? (
-            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : apiTokens.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No API tokens yet</p>
           ) : apiTokens.map((t: any) => (

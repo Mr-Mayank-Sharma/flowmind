@@ -40,3 +40,30 @@ export function PageSkeleton() {
     </div>
   )
 }
+
+export function SkeletonNode() {
+  return (
+    <div className="rounded-xl border border-border/50 bg-surface p-4 w-56">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-2 w-16" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function SkeletonMessage() {
+  return (
+    <div className="flex items-start gap-3 px-4">
+      <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+      <div className="flex-1 space-y-2 py-1">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+    </div>
+  )
+}

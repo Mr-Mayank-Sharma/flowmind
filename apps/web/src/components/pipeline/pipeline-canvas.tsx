@@ -26,6 +26,7 @@ import { InspectorPanel } from "./inspector-panel"
 import { PipelineToolbar } from "./pipeline-toolbar"
 import { RunsPanel } from "./runs-panel"
 import { cn } from "@flowmind/ui"
+import { Skeleton, SkeletonNode } from "../ui/skeleton"
 import { api } from "../../lib/api"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
@@ -126,6 +127,7 @@ function CanvasInner({
   const [version, setVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [running, setRunning] = useState(false)
+  const [canvasLoading, setCanvasLoading] = useState(pipelineId !== "new")
   const [currentRunId, setCurrentRunId] = useState<string | null>(null)
   const [showRuns, setShowRuns] = useState(false)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
@@ -176,7 +178,7 @@ function CanvasInner({
       }
       if (data?.name) setPipelineName(data.name)
       if (data?.version) setVersion(data.version)
-    }).catch(() => {})
+    }).catch(() => {}).finally(() => setCanvasLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelineId])
 
@@ -389,6 +391,18 @@ function CanvasInner({
           ref={reactFlowWrapper}
           className="flex-1 relative"
         >
+          {canvasLoading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+              <div className="flex flex-wrap gap-4 justify-center max-w-md">
+                <SkeletonNode />
+                <SkeletonNode />
+                <SkeletonNode />
+                <SkeletonNode />
+                <SkeletonNode />
+                <SkeletonNode />
+              </div>
+            </div>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}

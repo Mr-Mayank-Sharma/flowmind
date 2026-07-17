@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { ScrollArea, Button } from "@flowmind/ui"
 import { X, Clock, CheckCircle, XCircle, Loader2, ChevronRight, RefreshCw } from "lucide-react"
+import { Skeleton } from "../ui/skeleton"
 import { api } from "../../lib/api"
 
 interface RunsPanelProps {
@@ -101,8 +102,16 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
       </div>
       <ScrollArea className="flex-1">
         {loading ? (
-          <div className="flex items-center justify-center p-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="p-2 space-y-1">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-2 rounded-md">
+                <Skeleton className="h-3.5 w-3.5 rounded-full shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-2 w-24" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : runs.length === 0 ? (
           <div className="flex items-center justify-center p-8">
