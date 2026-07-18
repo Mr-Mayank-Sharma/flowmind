@@ -4,7 +4,11 @@ import { ContextEngine, type ContextChunk } from "@flowmind/context-engine"
 import { LLMEngine, runAgentLoop, type AgentTool, type AgentLoopStep } from "@flowmind/llm-router"
 import { toolRegistry } from "@flowmind/tool-system"
 
-const contextEngine = new ContextEngine()
+let _contextEngine: ContextEngine | null = null
+function getContextEngine(): ContextEngine {
+  if (!_contextEngine) _contextEngine = new ContextEngine()
+  return _contextEngine
+}
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
 
@@ -131,7 +135,7 @@ export class ChatService {
     try {
       let enhancedInput = input
       try {
-        const chunks = await contextEngine.search({ text: input.content, userId: input.userId, topK: 3 })
+        const chunks = await getContextEngine().search({ text: input.content, userId: input.userId, topK: 3 })
         if (chunks.length > 0) {
           const contextStr = chunks.map((c: ContextChunk) => c.content).join("\n\n")
           enhancedInput = { ...input, content: `Context:\n${contextStr}\n\nUser: ${input.content}` }
@@ -164,7 +168,7 @@ export class ChatService {
 
     let enrichedContent = input.content
     try {
-      const chunks = await contextEngine.search({ text: input.content, userId: input.userId, topK: 3 })
+      const chunks = await getContextEngine().search({ text: input.content, userId: input.userId, topK: 3 })
       if (chunks.length > 0) {
         const contextStr = chunks.map((c: ContextChunk) => c.content).join("\n\n")
         enrichedContent = `Context:\n${contextStr}\n\nUser: ${input.content}`
@@ -223,7 +227,7 @@ export class ChatService {
       try {
         let enhancedInput = input
         try {
-          const chunks = await contextEngine.search({ text: input.content, userId: input.userId, topK: 3 })
+          const chunks = await getContextEngine().search({ text: input.content, userId: input.userId, topK: 3 })
           if (chunks.length > 0) {
             const contextStr = chunks.map((c: ContextChunk) => c.content).join("\n\n")
             enhancedInput = { ...input, content: `Context:\n${contextStr}\n\nUser: ${input.content}` }
