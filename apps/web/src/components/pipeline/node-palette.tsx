@@ -1,8 +1,10 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { cn } from "@flowmind/ui"
 import { ScrollArea } from "@flowmind/ui"
+import { Input } from "@/components/ui/input"
+import { EmptyState } from "@/components/ui/empty-state"
 import {
   Clock,
   Webhook,
@@ -23,6 +25,7 @@ import {
   GripVertical,
   Puzzle,
   Search,
+  X,
 } from "lucide-react"
 
 interface PaletteItem {
@@ -89,7 +92,12 @@ const categoryIcons: Record<string, React.ElementType> = {
 export function NodePalette() {
   const [collapsed, setCollapsed] = useState(false)
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set(categories)
+  )
+  const [previousExpanded, setPreviousExpanded] = useState<Set<string>>(
     new Set(categories)
   )
   const [skillItems, setSkillItems] = useState<PaletteItem[]>([])
@@ -115,15 +123,58 @@ export function NodePalette() {
       .catch(() => {})
   }, [])
 
-  const allItems = [...paletteItems, ...skillItems]
+  // Debounce search input by 150ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const allItems = useMemo(() => [...paletteItems, ...skillItems], [skillItems])
 
   const filteredItems = useMemo(() => {
-    if (!search.trim()) return allItems
-    const q = search.toLowerCase()
+    if (!debouncedSearch.trim()) return allItems
+    const q = debouncedSearch.toLowerCase()
     return allItems.filter(
-      (i) => i.label.toLowerCase().includes(q) || i.category.toLowerCase().includes(q)
+      (i) =>
+        i.label.toLowerCase().includes(q) ||
+        i.type.toLowerCase().includes(q) ||
+        i.category.toLowerCase().includes(q)
     )
-  }, [allItems, search])
+  }, [allItems, debouncedSearch])
+
+  const isSearching = debouncedSearch.trim().length > 0
+
+  // Categories that have matching items when searching
+  const visibleCategories = useMemo(() => {
+    if (!isSearching) return categories
+    const matching = new Set(filteredItems.map((i) => i.category))
+    return categories.filter((c) => matching.has(c))
+  }, [isSearching, filteredItems])
+
+  // Auto-expand matching categories when search is active
+  useEffect(() => {
+    if (isSearching) {
+      const matching = new Set(filteredItems.map((i) => i.category))
+      setExpandedCategories(matching)
+    }
+  }, [isSearching, filteredItems])
+
+  // Save/restore expanded state when toggling search
+  useEffect(() => {
+    if (isSearching && previousExpanded.size === expandedCategories.size) {
+      setPreviousExpanded(expandedCategories)
+    }
+  }, [isSearching, expandedCategories, previousExpanded])
+
+  const handleClearSearch = () => {
+    setSearch("")
+    setDebouncedSearch("")
+    // Restore previous expanded state
+    setExpandedCategories(previousExpanded)
+    searchInputRef.current?.focus()
+  }
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories((prev) => {
@@ -163,64 +214,88 @@ export function NodePalette() {
       {!collapsed && (
         <div className="px-2 py-1.5 border-b shrink-0">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-            <input
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+            <Input
+              ref={searchInputRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search nodes..."
-              className="w-full h-7 pl-7 pr-2 text-xs rounded border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="h-7 pl-7 pr-7 text-xs"
             />
+            {search && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-accent rounded-sm transition-colors"
+              >
+                <X className="h-3 w-3 text-muted-foreground" />
+              </button>
+            )}
           </div>
         </div>
       )}
       {!collapsed && (
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
-            {categories.map((category) => {
-              const items = filteredItems.filter((i) => i.category === category)
-              const CatIcon = categoryIcons[category]
-              const isExpanded = expandedCategories.has(category)
-              return (
-                <div key={category}>
-                  <button
-                    onClick={() => toggleCategory(category)}
-                    className={cn(
-                      "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-accent transition-colors",
-                      nodeColors[category]
-                    )}
-                  >
-                    {CatIcon && <CatIcon className="h-3.5 w-3.5" />}
-                    <span className="flex-1 text-left">{category}</span>
-                    <span
+            {isSearching && filteredItems.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                title="No matching nodes"
+                description="Try a different search term"
+                className="py-8"
+              />
+            ) : (
+              visibleCategories.map((category) => {
+                const items = filteredItems.filter((i) => i.category === category)
+                if (isSearching && items.length === 0) return null
+                const CatIcon = categoryIcons[category]
+                const isExpanded = expandedCategories.has(category)
+                return (
+                  <div key={category}>
+                    <button
+                      onClick={() => toggleCategory(category)}
                       className={cn(
-                        "text-[10px] transition-transform",
-                        isExpanded && "rotate-90"
+                        "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-accent transition-colors",
+                        nodeColors[category]
                       )}
                     >
-                      ›
-                    </span>
-                  </button>
-                  {isExpanded && (
-                    <div className="ml-1 space-y-0.5 mt-0.5">
-                      {items.map((item) => {
-                        const Icon = item.icon
-                        return (
-                          <div
-                            key={item.type}
-                            draggable
-                            onDragStart={(e) => onDragStart(e, item.type, item.label)}
-                            className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-grab active:cursor-grabbing text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors group"
-                          >
-                            <Icon className="h-3.5 w-3.5 shrink-0 group-hover:text-foreground transition-colors" />
-                            <span>{item.label}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                      {CatIcon && <CatIcon className="h-3.5 w-3.5" />}
+                      <span className="flex-1 text-left">{category}</span>
+                      {items.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground/60 mr-1">
+                          {items.length}
+                        </span>
+                      )}
+                      <span
+                        className={cn(
+                          "text-[10px] transition-transform",
+                          isExpanded && "rotate-90"
+                        )}
+                      >
+                        ›
+                      </span>
+                    </button>
+                    {isExpanded && (
+                      <div className="ml-1 space-y-0.5 mt-0.5">
+                        {items.map((item) => {
+                          const Icon = item.icon
+                          return (
+                            <div
+                              key={item.type}
+                              draggable
+                              onDragStart={(e) => onDragStart(e, item.type, item.label)}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-grab active:cursor-grabbing text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors group"
+                            >
+                              <Icon className="h-3.5 w-3.5 shrink-0 group-hover:text-foreground transition-colors" />
+                              <span>{item.label}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
           </div>
         </ScrollArea>
       )}
