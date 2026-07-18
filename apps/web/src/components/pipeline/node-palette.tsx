@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { cn } from "@flowmind/ui"
 import { ScrollArea } from "@flowmind/ui"
 import { Input } from "@/components/ui/input"
@@ -101,27 +101,34 @@ export function NodePalette() {
     new Set(categories)
   )
   const [skillItems, setSkillItems] = useState<PaletteItem[]>([])
+  const [skillsError, setSkillsError] = useState(false)
+
+  const loadSkills = useCallback(async () => {
+    try {
+      const token = getToken()
+      const res = await fetch(`${API_URL}/trpc/skills.list?input=${JSON.stringify({})}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: AbortSignal.timeout(5000),
+      })
+      const json: { result?: { data?: Array<{ name: string; description: string }> } } = await res.json()
+      const skills = json.result?.data ?? []
+      setSkillItems(
+        skills.map((s) => ({
+          type: `skill.${s.name}`,
+          label: s.name,
+          icon: Puzzle,
+          category: "Skills",
+        }))
+      )
+      setSkillsError(false)
+    } catch {
+      setSkillsError(true)
+    }
+  }, [])
 
   useEffect(() => {
-    const token = getToken()
-    fetch(`${API_URL}/trpc/skills.list?input=${JSON.stringify({})}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      signal: AbortSignal.timeout(5000),
-    })
-      .then((res) => res.json())
-      .then((json: { result?: { data?: Array<{ name: string; description: string }> } }) => {
-        const skills = json.result?.data ?? []
-        setSkillItems(
-          skills.map((s) => ({
-            type: `skill.${s.name}`,
-            label: s.name,
-            icon: Puzzle,
-            category: "Skills",
-          }))
-        )
-      })
-      .catch(() => {})
-  }, [])
+    loadSkills()
+  }, [loadSkills])
 
   // Debounce search input by 150ms
   useEffect(() => {
@@ -249,6 +256,7 @@ export function NodePalette() {
                 if (isSearching && items.length === 0) return null
                 const CatIcon = categoryIcons[category]
                 const isExpanded = expandedCategories.has(category)
+                const isSkillsCategory = category === "Skills"
                 return (
                   <div key={category}>
                     <button
@@ -260,6 +268,18 @@ export function NodePalette() {
                     >
                       {CatIcon && <CatIcon className="h-3.5 w-3.5" />}
                       <span className="flex-1 text-left">{category}</span>
+                      {isSkillsCategory && skillsError && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            loadSkills()
+                          }}
+                          className="text-[10px] text-red-500 hover:text-red-400 mr-1"
+                          title="Failed to load skills. Click to retry"
+                        >
+                          retry
+                        </button>
+                      )}
                       {items.length > 0 && (
                         <span className="text-[10px] text-muted-foreground/60 mr-1">
                           {items.length}

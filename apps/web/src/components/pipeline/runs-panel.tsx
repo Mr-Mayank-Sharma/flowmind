@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { ScrollArea, Button } from "@flowmind/ui"
 import { X, Clock, CheckCircle, XCircle, Loader2, ChevronRight, RefreshCw } from "lucide-react"
 import { Skeleton } from "../ui/skeleton"
+import { ErrorState } from "../ui/error-state"
 import { api } from "../../lib/api"
 
 interface RunsPanelProps {
@@ -30,14 +31,17 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
   const [selectedRun, setSelectedRun] = useState<any | null>(null)
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
   const loadRuns = useCallback(async () => {
     try {
       const data = await api.pipeline.getRuns(pipelineId)
       setRuns(data)
-    } catch (err) {
+      setError(null)
+    } catch (err: any) {
       console.error("Failed to load runs:", err)
+      setError(err?.message || "Failed to load run history")
     }
   }, [pipelineId])
 
@@ -47,6 +51,33 @@ export function RunsPanel({ pipelineId, onClose }: RunsPanelProps) {
     const interval = setInterval(loadRuns, 5000)
     return () => clearInterval(interval)
   }, [loadRuns])
+
+  if (error && !loading) {
+    return (
+      <div className="w-80 h-full bg-surface border-l border flex flex-col shrink-0">
+        <div className="flex items-center justify-between px-3 h-10 border-b shrink-0">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            Run History
+          </span>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-accent rounded-md transition-colors"
+          >
+            <X className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setError(null)
+            setLoading(true)
+            loadRuns().finally(() => setLoading(false))
+          }}
+        />
+      </div>
+    )
+  }
 
   const onRefresh = async () => {
     setRefreshing(true)

@@ -6,6 +6,7 @@ import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardConten
 import { Store, Download, Star, Tag, Search, ArrowLeft, Puzzle } from "lucide-react"
 import { CardSkeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ErrorState } from "@/components/ui/error-state"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
@@ -17,30 +18,36 @@ export default function MarketplacePage() {
   const [skills, setSkills] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (tab === "workflows") {
-      setLoaded(false)
-      Promise.all([
-        api.pipeline.listMarketplace(selectedCategory ?? undefined),
-        api.pipeline.marketplaceCategories(),
-      ]).then(([flowsData, catsData]) => {
+  const loadData = async () => {
+    setLoaded(false)
+    setError(null)
+    try {
+      if (tab === "workflows") {
+        const [flowsData, catsData] = await Promise.all([
+          api.pipeline.listMarketplace(selectedCategory ?? undefined),
+          api.pipeline.marketplaceCategories(),
+        ])
         setFlows(flowsData ?? [])
         setCategories(catsData ?? [])
-        setLoaded(true)
-      }).catch(() => setLoaded(true))
-    } else {
-      setLoaded(false)
-      api.skills.list(selectedCategory ? { tag: selectedCategory } : undefined)
-        .then((data) => {
-          setSkills(data ?? [])
-          setLoaded(true)
-        })
-        .catch(() => setLoaded(true))
+      } else {
+        const data = await api.skills.list(selectedCategory ? { tag: selectedCategory } : undefined)
+        setSkills(data ?? [])
+      }
+    } catch (err: any) {
+      console.error("Failed to load marketplace data:", err)
+      setError(err?.message || "Failed to load marketplace data")
+    } finally {
+      setLoaded(true)
     }
+  }
+
+  useEffect(() => {
+    loadData()
   }, [tab, selectedCategory])
 
   const handleClone = async (id: string) => {
@@ -166,6 +173,11 @@ export default function MarketplacePage() {
               <CardSkeleton key={i} />
             ))}
           </div>
+        ) : error ? (
+          <ErrorState
+            message={error}
+            onRetry={loadData}
+          />
         ) : tab === "workflows" ? (
           filteredFlows.length === 0 ? (
             <EmptyState
