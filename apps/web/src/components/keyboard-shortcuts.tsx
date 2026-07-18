@@ -19,6 +19,10 @@ const shortcuts: Shortcut[] = [
   { key: "G then P", description: "Go to Pipelines" },
   { key: "G then M", description: "Go to Marketplace" },
   { key: "G then S", description: "Go to Settings" },
+  { key: "Ctrl+S", description: "Save pipeline (canvas)" },
+  { key: "Ctrl+Enter", description: "Run pipeline (canvas)" },
+  { key: "Delete", description: "Delete selected node (canvas)" },
+  { key: "Ctrl+D", description: "Duplicate selected node (canvas)" },
 ]
 
 export function KeyboardShortcuts() {
