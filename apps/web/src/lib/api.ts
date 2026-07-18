@@ -125,6 +125,13 @@ export const api = {
     register: (input: { email: string; password: string; name?: string }) =>
       tRPCMutation<AuthResponse>("auth.register", input),
     me: () => tRPCQuery<User>("auth.me"),
+    refresh: () => tRPCMutation<{ token: string; refreshToken: string }>("auth.refresh", {}),
+    ssoUrl: (provider: string) =>
+      tRPCQuery<{ url: string }>("auth.ssoUrl", { provider }),
+    ssoCallback: (input: { provider: string; code: string; state: string }) =>
+      tRPCMutation<AuthResponse>("auth.ssoCallback", input),
+    ssoProviders: () =>
+      tRPCQuery<Array<{ id: string; name: string; icon: string }>>("auth.ssoProviders"),
   },
     pipeline: {
     list: () => tRPCQuery<{ pipelines: any[]; nextCursor?: string }>("pipeline.list"),
@@ -243,12 +250,22 @@ export const api = {
   },
   mcp: {
     list: () => tRPCQuery<any[]>("mcp.list"),
-    create: (input: { provider: string; accessToken: string; scope?: string }) =>
+    create: (input: { provider: string; accessToken: string; refreshToken?: string; scope?: string; expiresAt?: string }) =>
       tRPCMutation<any>("mcp.create", input),
     delete: (id: string) => tRPCMutation<{ success: boolean }>("mcp.delete", { id }),
+    toggle: (id: string) => tRPCMutation<any>("mcp.toggle", { id }),
+    providers: () => tRPCQuery<Array<{ id: string; name: string; icon: string }>>("mcp.providers"),
+    oauthInitiate: (input: { provider: string }) =>
+      tRPCMutation<{ url: string; state: string }>("mcp.oauthInitiate", input),
+    oauthCallback: (input: { provider: string; code: string; state: string }) =>
+      tRPCMutation<any>("mcp.oauthCallback", input),
+    execute: (input: { id: string; method: string; params?: Record<string, unknown> }) =>
+      tRPCMutation<any>("mcp.execute", input),
   },
   tools: {
     list: () => tRPCQuery<any[]>("tools.list"),
+    execute: (input: { id: string; args: Record<string, unknown> }) =>
+      tRPCMutation<any>("tools.execute", input),
     toggle: (id: string) => tRPCMutation<any>("tools.toggle", { id }),
   },
   jobs: {
@@ -271,6 +288,10 @@ export const api = {
       tRPCMutation<any>("marketplace.clone", { flowId }),
     search: (query: string) =>
       tRPCQuery<any[]>("marketplace.search", { query }),
+    publish: (input: { flowId: string; title: string; description: string; category: string; tags?: string[] }) =>
+      tRPCMutation<any>("marketplace.publish", input),
+    rate: (input: { flowId: string; rating: number; review?: string }) =>
+      tRPCMutation<any>("marketplace.rate", input),
   },
   knowledge: {
     list: () => tRPCQuery<any[]>("knowledge.list"),
@@ -358,11 +379,15 @@ export const api = {
       tRPCQuery<Array<{ id: string; name: string; description: string; author: string; version: string; tags: string[]; downloads: number; ratingAvg: number; ratingCount: number; createdAt: string }>>("skills.list", input),
     search: (query: string) =>
       tRPCQuery<Array<{ id: string; name: string; description: string; author: string; version: string }>>("skills.search", { query }),
-    getById: (id: string) => tRPCQuery<any>("skills.getById", { id }),
+    getById: (name: string) => tRPCQuery<any>("skills.getById", { name }),
     install: (skillId: string) => tRPCMutation<any>("skills.install", { skillId }),
-    publish: (input: { name: string; description: string; author: string; version: string; tags?: string[]; entryPoint?: string }) =>
+    publish: (input: { manifest: { name: string; description: string; author: string; version: string; tags?: string[]; entryPoint?: string }; code: string }) =>
       tRPCMutation<any>("skills.publish", input),
+    run: (input: { skillId: string; args?: Record<string, unknown> }) =>
+      tRPCMutation<any>("skills.run", input),
     delete: (id: string) => tRPCMutation<{ success: boolean }>("skills.delete", { id }),
+    versions: (skillName: string) =>
+      tRPCQuery<any[]>("skills.versions", { name: skillName }),
   },
   runtime: {
     list: () => tRPCQuery<Array<{ id: string; name: string; endpoint: string; description: string; version: string; status: string; capabilities: any[]; registeredAt: string; lastHealthCheck: string | null; currentLoad: number }>>("runtime.list"),
@@ -371,6 +396,35 @@ export const api = {
     unregister: (id: string) => tRPCMutation<{ success: boolean }>("runtime.unregister", { id }),
     dispatch: (input: { nodeType: string; inputType?: string }) =>
       tRPCQuery<{ runtimeId: string; endpoint: string; authHeader: string | null } | { error: string }>("runtime.dispatch", input),
+    healthCheck: (id: string) =>
+      tRPCQuery<{ online: boolean; latency: number; status: string }>("runtime.healthCheck", { id }),
+  },
+  notifications: {
+    sendEmail: (input: { to: string; subject: string; body: string }) =>
+      tRPCMutation<{ success: boolean }>("notifications.sendEmail", input),
+    list: () => tRPCQuery<any[]>("notifications.list"),
+    markRead: (id: string) => tRPCMutation<{ success: boolean }>("notifications.markRead", { id }),
+    markAllRead: () => tRPCMutation<{ success: boolean }>("notifications.markAllRead", {}),
+  },
+  billing: {
+    getSubscription: () => tRPCQuery<any>("billing.getSubscription"),
+    createCheckout: (input: { tier: string; orgId?: string }) =>
+      tRPCMutation<{ url: string }>("billing.createCheckout", input),
+    createPortalSession: () => tRPCMutation<{ url: string }>("billing.createPortalSession", {}),
+    getUsage: () => tRPCQuery<any>("billing.getUsage"),
+    getInvoices: () => tRPCQuery<any[]>("billing.getInvoices"),
+  },
+  webhooks: {
+    whatsapp: (input: Record<string, unknown>) =>
+      tRPCMutation<any>("webhooks.whatsapp", input),
+    ingest: (input: Record<string, unknown>) =>
+      tRPCMutation<any>("webhooks.ingest", input),
+    telegram: (input: Record<string, unknown>) =>
+      tRPCMutation<any>("webhooks.telegram", input),
+    slack: (input: Record<string, unknown>) =>
+      tRPCMutation<any>("webhooks.slack", input),
+    discord: (input: Record<string, unknown>) =>
+      tRPCMutation<any>("webhooks.discord", input),
   },
   console: {
     listWorkspaces: () => tRPCQuery<any[]>("console.listWorkspaces"),
