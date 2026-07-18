@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
 import { Plus, Workflow, Clock, Play, Trash2, Store, LayoutTemplate } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
+import { TemplatePicker } from "@/components/pipeline/template-picker"
+import type { PipelineTemplate } from "@/lib/pipeline-templates"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
@@ -34,6 +37,8 @@ export default function PipelinesPage() {
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [runningId, setRunningId] = useState<string | null>(null)
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false)
+  const router = useRouter()
   const { toast } = useToast()
 
   useEffect(() => {
@@ -56,12 +61,22 @@ export default function PipelinesPage() {
     }
   }
 
-  const handleNew = async () => {
+  const handleNew = () => {
+    setTemplatePickerOpen(true)
+  }
+
+  const handleTemplateSelect = async (template: PipelineTemplate) => {
+    setTemplatePickerOpen(false)
     setCreating(true)
     try {
-      const created = await api.pipeline.create({ name: "New Pipeline", description: "Start building your workflow", graph: { nodes: [], edges: [] } })
-      setPipelines((prev) => [{ ...created, nodeCount: 0 }, ...prev])
+      const created = await api.pipeline.create({
+        name: template.name,
+        description: template.description,
+        graph: { nodes: template.nodes, edges: template.edges },
+      })
+      setPipelines((prev) => [{ ...created, nodeCount: template.nodes.length }, ...prev])
       toast({ title: "Pipeline created", variant: "success" })
+      router.push(`/pipelines/${created.id}`)
     } finally {
       setCreating(false)
     }
@@ -84,6 +99,11 @@ export default function PipelinesPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <TemplatePicker
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        onSelect={handleTemplateSelect}
+      />
       <main className="container px-4 py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
