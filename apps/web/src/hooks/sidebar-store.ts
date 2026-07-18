@@ -5,10 +5,12 @@ interface SidebarState {
   isMobileOpen: boolean
   isMobile: boolean
   isTablet: boolean
+  hydrated: boolean
   toggle: () => void
   setOpen: (open: boolean) => void
   setMobileOpen: (open: boolean) => void
   setResponsive: (isMobile: boolean, isTablet: boolean) => void
+  setHydrated: () => void
 }
 
 export const useSidebarStore = create<SidebarState>((set) => ({
@@ -16,8 +18,10 @@ export const useSidebarStore = create<SidebarState>((set) => ({
   isMobileOpen: false,
   isMobile: false,
   isTablet: false,
+  hydrated: false,
   toggle: () => set((state) => ({ isOpen: !state.isOpen })),
   setOpen: (open) => set({ isOpen: open }),
   setMobileOpen: (open) => set({ isMobileOpen: open }),
   setResponsive: (isMobile, isTablet) => set({ isMobile, isTablet }),
+  setHydrated: () => set({ hydrated: true }),
 }))

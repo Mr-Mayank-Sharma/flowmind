@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactNode, useEffect } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
@@ -11,7 +11,7 @@ import { useSidebarStore } from "@/hooks/sidebar-store"
 const noSidebarRoutes = ["/login", "/forgot-password", "/", "/install", "/docs"]
 
 function useResponsiveSidebar() {
-  const { setResponsive, setOpen, setMobileOpen, isMobile } = useSidebarStore()
+  const { setResponsive, setOpen, setMobileOpen, setHydrated } = useSidebarStore()
 
   useEffect(() => {
     const check = () => {
@@ -29,19 +29,23 @@ function useResponsiveSidebar() {
         setOpen(true)
         setMobileOpen(false)
       }
+      setHydrated()
     }
     check()
     window.addEventListener("resize", check)
     return () => window.removeEventListener("resize", check)
-  }, [setResponsive, setOpen, setMobileOpen])
-
-  return isMobile
+  }, [setResponsive, setOpen, setMobileOpen, setHydrated])
 }
 
 export function LayoutWithSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const { isOpen, isMobileOpen, isMobile, isTablet, setMobileOpen } = useSidebarStore()
-  const _isMobile = useResponsiveSidebar()
+  const { isOpen, isMobileOpen, isMobile, hydrated, setMobileOpen } = useSidebarStore()
+  const [mounted, setMounted] = useState(false)
+  useResponsiveSidebar()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   if (noSidebarRoutes.includes(pathname)) {
     return (
@@ -49,6 +53,16 @@ export function LayoutWithSidebar({ children }: { children: ReactNode }) {
         {children}
         <KeyboardShortcuts />
       </>
+    )
+  }
+
+  if (!mounted || !hydrated) {
+    return (
+      <div className="flex min-h-screen">
+        <main className="flex-1 min-w-0">
+          {children}
+        </main>
+      </div>
     )
   }
 

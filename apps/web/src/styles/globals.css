@@ -108,9 +108,8 @@ body {
 
 /* Focus styles */
 *:focus-visible {
-  outline: none;
-  ring: 2px solid hsl(var(--color-ring));
-  ring-offset: 2px;
+  outline: 2px solid hsl(var(--color-ring));
+  outline-offset: 2px;
 }
 
 /* Selection */
