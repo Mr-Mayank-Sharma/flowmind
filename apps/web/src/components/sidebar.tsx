@@ -69,7 +69,7 @@ const bottomItems = [
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { isOpen, toggle } = useSidebarStore()
+  const { isOpen, isMobile, isMobileOpen, toggle, setMobileOpen } = useSidebarStore()
   const { user, logout } = useAuth()
 
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -92,134 +92,140 @@ export function Sidebar() {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/")
 
+  const showExpanded = isMobile || isOpen
+
+  const handleCloseMobile = () => {
+    if (isMobile) setMobileOpen(false)
+  }
+
   return (
-    <>
-      <aside
-        className={cn(
-          "fixed left-0 top-0 z-40 h-full border-r border-border bg-surface transition-all duration-300 flex flex-col",
-          isOpen ? "w-56" : "w-14"
-        )}
-      >
-        <div className={cn("flex items-center h-14 border-b border-border gap-1", isOpen ? "px-3 justify-between" : "justify-center")}>
-          {isOpen ? (
-            <>
-              <Link href="/" className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary shrink-0" />
-                <span className="font-bold text-sm">FlowMind</span>
-              </Link>
-              <div className="flex items-center gap-0.5">
-                <NotificationCenter />
+    <aside
+      className={cn(
+        "h-full border-r border-border bg-surface transition-all duration-300 flex flex-col",
+        isMobile ? "w-56" : showExpanded ? "w-56" : "w-14"
+      )}
+    >
+      <div className={cn("flex items-center h-14 border-b border-border gap-1", showExpanded ? "px-3 justify-between" : "justify-center")}>
+        {showExpanded ? (
+          <>
+            <Link href="/" className="flex items-center gap-2" onClick={handleCloseMobile}>
+              <Sparkles className="h-5 w-5 text-primary shrink-0" />
+              <span className="font-bold text-sm">FlowMind</span>
+            </Link>
+            <div className="flex items-center gap-0.5">
+              <NotificationCenter />
+              {!isMobile && (
                 <Button variant="ghost" size="icon" onClick={toggle} className="h-7 w-7">
                   <PanelLeftClose className="h-4 w-4" />
                 </Button>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={toggle} className="h-8 w-8">
-                <PanelLeft className="h-4 w-4" />
-              </Button>
-              <NotificationCenter />
+              )}
+              {isMobile && (
+                <Button variant="ghost" size="icon" onClick={handleCloseMobile} className="h-7 w-7">
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={toggle} className="h-8 w-8">
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+            <NotificationCenter />
+          </div>
+        )}
+      </div>
 
-        <nav className="flex-1 flex flex-col py-2 gap-0.5 px-2">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md transition-colors",
-                  isOpen ? "px-3 py-2 text-sm" : "justify-center p-2",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                )}
-                title={!isOpen ? item.label : undefined}
-              >
-                <Icon className={cn("shrink-0", isOpen ? "h-4 w-4" : "h-5 w-5")} />
-                {isOpen && <span>{item.label}</span>}
-              </Link>
-            )
-          })}
-        </nav>
-
-        <div className="border-t border-border py-2 px-2 space-y-0.5">
-          {bottomItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md transition-colors",
-                  isOpen ? "px-3 py-2 text-sm" : "justify-center p-2",
-                  isActive(item.href)
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                )}
-                title={!isOpen ? item.label : undefined}
-              >
-                <Icon className={cn("shrink-0", isOpen ? "h-4 w-4" : "h-5 w-5")} />
-                {isOpen && <span>{item.label}</span>}
-              </Link>
-            )
-          })}
-
-          {isOpen && <ThemeToggle />}
-          {!isOpen && (
-            <button
-              onClick={() => setShowShortcuts(true)}
-              className="flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
-              title="Keyboard shortcuts"
+      <nav className="flex-1 flex flex-col py-2 gap-0.5 px-2">
+        {navItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={handleCloseMobile}
+              className={cn(
+                "flex items-center gap-3 rounded-md transition-colors",
+                showExpanded ? "px-3 py-2 text-sm" : "justify-center p-2",
+                isActive(item.href)
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+              title={!showExpanded ? item.label : undefined}
             >
-              <Keyboard className="h-5 w-5" />
-            </button>
-          )}
+              <Icon className={cn("shrink-0", showExpanded ? "h-4 w-4" : "h-5 w-5")} />
+              {showExpanded && <span>{item.label}</span>}
+            </Link>
+          )
+        })}
+      </nav>
 
-          {user && isOpen && (
-            <div className="px-3 py-2 mt-1 border-t border-border space-y-2">
-              <div>
-                <p className="text-sm font-medium truncate">{user.name ?? user.email}</p>
-                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                  {user.role}
-                </Badge>
-              </div>
-              <button className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
-                <span className="truncate">FlowMind Inc.</span>
-                <ChevronDown className="h-3 w-3 shrink-0 ml-auto" />
-              </button>
-            </div>
-          )}
+      <div className="border-t border-border py-2 px-2 space-y-0.5">
+        {bottomItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={handleCloseMobile}
+              className={cn(
+                "flex items-center gap-3 rounded-md transition-colors",
+                showExpanded ? "px-3 py-2 text-sm" : "justify-center p-2",
+                isActive(item.href)
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+              title={!showExpanded ? item.label : undefined}
+            >
+              <Icon className={cn("shrink-0", showExpanded ? "h-4 w-4" : "h-5 w-5")} />
+              {showExpanded && <span>{item.label}</span>}
+            </Link>
+          )
+        })}
 
+        {showExpanded && <ThemeToggle />}
+        {!showExpanded && (
           <button
-            onClick={handleSignOut}
-            className={cn(
-              "flex items-center gap-3 rounded-md transition-colors w-full text-destructive hover:bg-destructive/10",
-              isOpen ? "px-3 py-2 text-sm" : "justify-center p-2"
-            )}
-            title={!isOpen ? "Log Out" : undefined}
+            onClick={() => setShowShortcuts(true)}
+            className="flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
+            title="Keyboard shortcuts"
           >
-            <LogOut className={cn("shrink-0", isOpen ? "h-4 w-4" : "h-5 w-5")} />
-            {isOpen && <span>Log Out</span>}
+            <Keyboard className="h-5 w-5" />
           </button>
-        </div>
+        )}
 
-        {showShortcuts && <KeyboardShortcuts />}
-      </aside>
+        {user && showExpanded && (
+          <div className="px-3 py-2 mt-1 border-t border-border space-y-2">
+            <div>
+              <p className="text-sm font-medium truncate">{user.name ?? user.email}</p>
+              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                {user.role}
+              </Badge>
+            </div>
+            <button className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+              <span className="truncate">FlowMind Inc.</span>
+              <ChevronDown className="h-3 w-3 shrink-0 ml-auto" />
+            </button>
+          </div>
+        )}
 
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/20 md:hidden"
-          onClick={toggle}
-        />
-      )}
-    </>
+        <button
+          onClick={() => { handleSignOut(); handleCloseMobile() }}
+          className={cn(
+            "flex items-center gap-3 rounded-md transition-colors w-full text-destructive hover:bg-destructive/10",
+            showExpanded ? "px-3 py-2 text-sm" : "justify-center p-2"
+          )}
+          title={!showExpanded ? "Log Out" : undefined}
+        >
+          <LogOut className={cn("shrink-0", showExpanded ? "h-4 w-4" : "h-5 w-5")} />
+          {showExpanded && <span>Log Out</span>}
+        </button>
+      </div>
+
+      {showShortcuts && <KeyboardShortcuts />}
+    </aside>
   )
 }
