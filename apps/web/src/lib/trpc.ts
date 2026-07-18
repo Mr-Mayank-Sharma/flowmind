@@ -1,12 +1,6 @@
 import { createTRPCClient, httpBatchLink, type TRPCClient } from "@trpc/client";
 import type { AppRouter } from "@flowmind/api";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-
-function getToken() {
-  if (typeof window === "undefined") return "";
-  return localStorage.getItem("token") || "";
-}
+import { API_URL, getToken } from "@/lib/api";
 
 export const trpc = createTRPCClient<AppRouter>({
   links: [

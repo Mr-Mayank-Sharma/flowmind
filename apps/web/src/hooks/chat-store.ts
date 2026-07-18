@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api } from "@/lib/api";
+import { api, getToken, API_URL } from "@/lib/api";
 
 export type Role = "user" | "assistant" | "system" | "tool";
 
@@ -67,14 +67,6 @@ function apiMessageToLocal(apiMsg: any, sessionId: string): Message {
     timestamp: new Date(apiMsg.createdAt || apiMsg.created_at || Date.now()).getTime(),
   }
 }
-
-function getToken(): string | null {
-  if (typeof document === "undefined") return null
-  const match = document.cookie.match(/(?:^|;\s*)flowmind_token=([^;]*)/)
-  return match?.[1] ? decodeURIComponent(match[1]) : null
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
 interface ChatState {
   sessions: Session[];

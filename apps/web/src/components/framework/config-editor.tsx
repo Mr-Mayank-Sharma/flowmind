@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@flowmind/ui"
 import { Save, RotateCcw, FileCode, CheckCircle, AlertCircle } from "lucide-react"
 
 const frameworkDefaults: Record<string, Record<string, unknown>> = {
@@ -162,8 +163,4 @@ export function ConfigEditor({ frameworkId }: { frameworkId: string }) {
       </div>
     </div>
   )
-}
-
-function cn(...classes: (string | boolean | undefined | null)[]): string {
-  return classes.filter(Boolean).join(" ")
 }

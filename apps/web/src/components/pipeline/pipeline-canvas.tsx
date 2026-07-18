@@ -27,17 +27,10 @@ import { PipelineToolbar } from "./pipeline-toolbar"
 import { RunsPanel } from "./runs-panel"
 import { cn } from "@flowmind/ui"
 import { Skeleton, SkeletonNode } from "../ui/skeleton"
-import { api } from "../../lib/api"
+import { api, API_URL, getToken } from "../../lib/api"
 import { useToast } from "../../hooks/use-toast"
 import { useCanvasShortcuts, SHORTCUTS } from "../../hooks/use-keyboard-shortcuts"
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
-
-function getToken(): string | null {
-  if (typeof document === "undefined") return null
-  const match = document.cookie.match(/(?:^|;\s*)flowmind_token=([^;]*)/)
-  return match?.[1] ? decodeURIComponent(match[1]) : null
-}
+import { NODE_TYPE_MAP, NODE_ICON_MAP, getVisualType, getIconName } from "../../lib/pipeline-node-config"
 
 interface PipelineCanvasProps {
   pipelineId: string
@@ -51,64 +44,14 @@ const defaultNode = (
   position: { x: number; y: number },
   label: string
 ): Node => {
-  const typeMap: Record<string, string> = {
-    cronTrigger: "triggerNode",
-    webhookTrigger: "triggerNode",
-    channelTrigger: "triggerNode",
-    manualTrigger: "triggerNode",
-    aiAgent: "aiNode",
-    contentWriter: "aiNode",
-    dataExtractor: "aiNode",
-    classifier: "aiNode",
-    summarizer: "aiNode",
-    webResearcher: "aiNode",
-    imageGenerator: "aiNode",
-    httpRequest: "actionNode",
-    databaseQuery: "actionNode",
-    sendEmail: "actionNode",
-    sendMessage: "actionNode",
-    codeExecute: "actionNode",
-    condition: "flowNode",
-    switch: "flowNode",
-    parallelFork: "flowNode",
-    merge: "flowNode",
-    loop: "flowNode",
-    wait: "flowNode",
-    openhumanMessage: "actionNode",
-  }
-  const iconMap: Record<string, string> = {
-    cronTrigger: "Clock",
-    webhookTrigger: "Webhook",
-    channelTrigger: "MessageSquare",
-    manualTrigger: "MousePointerClick",
-    aiAgent: "Zap",
-    contentWriter: "FileText",
-    dataExtractor: "Database",
-    classifier: "GitBranch",
-    summarizer: "FileText",
-    webResearcher: "Globe",
-    imageGenerator: "Image",
-    httpRequest: "Globe",
-    databaseQuery: "Database",
-    sendEmail: "Mail",
-    sendMessage: "MessageSquare",
-    codeExecute: "Code",
-    condition: "GitBranch",
-    switch: "SplitSquareHorizontal",
-    parallelFork: "ArrowRight",
-    merge: "Merge",
-    loop: "Repeat",
-    wait: "Clock",
-    openhumanMessage: "MessageSquare",
-  }
   const isSkill = type.startsWith("skill.")
   return {
     id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    type: isSkill ? "skillNode" : typeMap[type] || "actionNode",
+    type: isSkill ? "skillNode" : NODE_TYPE_MAP[type] || "actionNode",
     position,
     data: {
       label,
-      icon: isSkill ? "Puzzle" : iconMap[type] || "Zap",
+      icon: isSkill ? "Puzzle" : NODE_ICON_MAP[type] || "Zap",
       config: { summary: "" },
       status: "idle",
       engineType: type,
@@ -182,31 +125,14 @@ function CanvasInner({
         if (g.nodes) {
           setNodes(g.nodes.map((n: any) => {
             const engineType = n.engineType ?? n.type
-            const typeMapRev: Record<string, string> = {
-              cronTrigger: "triggerNode", webhookTrigger: "triggerNode", channelTrigger: "triggerNode", manualTrigger: "triggerNode",
-              aiAgent: "aiNode", contentWriter: "aiNode", dataExtractor: "aiNode", classifier: "aiNode",
-              summarizer: "aiNode", webResearcher: "aiNode", imageGenerator: "aiNode",
-              httpRequest: "actionNode", databaseQuery: "actionNode", sendEmail: "actionNode",
-              sendMessage: "actionNode", codeExecute: "actionNode",
-              condition: "flowNode", switch: "flowNode", parallelFork: "flowNode",
-              merge: "flowNode", loop: "flowNode", wait: "flowNode",
-            }
-            const visualType = typeMapRev[engineType] || n.type || "actionNode"
-            const iconMapRev: Record<string, string> = {
-              cronTrigger: "Clock", webhookTrigger: "Webhook", channelTrigger: "MessageSquare", manualTrigger: "MousePointerClick",
-              aiAgent: "Zap", contentWriter: "FileText", dataExtractor: "Database", classifier: "GitBranch",
-              summarizer: "FileText", webResearcher: "Globe", imageGenerator: "Image",
-              httpRequest: "Globe", databaseQuery: "Database", sendEmail: "Mail", sendMessage: "MessageSquare",
-              codeExecute: "Code", condition: "GitBranch", switch: "SplitSquareHorizontal",
-              parallelFork: "ArrowRight", merge: "Merge", loop: "Repeat", wait: "Clock",
-            }
+            const visualType = getVisualType(engineType)
             return {
               id: n.id,
               type: visualType,
               position: n.position ?? { x: 0, y: 0 },
               data: {
                 label: n.label ?? "Node",
-                icon: n.data?.icon ?? iconMapRev[engineType] ?? "Zap",
+                icon: n.data?.icon ?? getIconName(engineType),
                 config: n.config ?? n.data?.config ?? {},
                 status: "idle",
                 engineType,

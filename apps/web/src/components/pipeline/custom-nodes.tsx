@@ -95,174 +95,118 @@ function NodeHeader({
   )
 }
 
-export const TriggerNode = memo(({ data, selected }: NodeProps<BaseNodeData>) => (
-  <div
-    className={cn(
-      "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
-      selected && "ring-2 ring-ring shadow-md"
-    )}
-  >
-    <NodeHeader label={data.label} iconName={data.icon} color="bg-emerald-600" />
-    <div className="px-3 py-2 text-[11px] text-muted-foreground">
-      {data.config?.summary ? String(data.config.summary) : "Configure trigger..."}
+interface NodeConfig {
+  color: string
+  handleColor: string
+  placeholder: string
+  handles: Array<{ type: "source" | "target"; position: Position; id?: string }>
+}
+
+const NODE_CONFIGS: Record<string, NodeConfig> = {
+  triggerNode: {
+    color: "bg-emerald-600",
+    handleColor: "!bg-emerald-500",
+    placeholder: "Configure trigger...",
+    handles: [{ type: "source", position: Position.Bottom }],
+  },
+  aiNode: {
+    color: "bg-violet-600",
+    handleColor: "!bg-violet-500",
+    placeholder: "Configure AI node...",
+    handles: [
+      { type: "target", position: Position.Top },
+      { type: "source", position: Position.Bottom },
+    ],
+  },
+  actionNode: {
+    color: "bg-blue-600",
+    handleColor: "!bg-blue-500",
+    placeholder: "Configure action...",
+    handles: [
+      { type: "target", position: Position.Top },
+      { type: "source", position: Position.Bottom },
+    ],
+  },
+  flowNode: {
+    color: "bg-orange-600",
+    handleColor: "!bg-orange-500",
+    placeholder: "Configure flow...",
+    handles: [
+      { type: "target", position: Position.Top },
+      { type: "source", position: Position.Bottom },
+      { type: "source", position: Position.Left, id: "left" },
+      { type: "source", position: Position.Right, id: "right" },
+    ],
+  },
+  integrationNode: {
+    color: "bg-gray-600",
+    handleColor: "!bg-gray-500",
+    placeholder: "Configure integration...",
+    handles: [
+      { type: "target", position: Position.Top },
+      { type: "source", position: Position.Bottom },
+    ],
+  },
+  skillNode: {
+    color: "bg-pink-600",
+    handleColor: "!bg-pink-500",
+    placeholder: "Skill node",
+    handles: [
+      { type: "target", position: Position.Top },
+      { type: "source", position: Position.Bottom },
+    ],
+  },
+}
+
+function PipelineNodeComponent({ data, selected }: NodeProps<BaseNodeData>, nodeType: string) {
+  const config: NodeConfig = NODE_CONFIGS[nodeType] ?? {
+    color: "bg-blue-600",
+    handleColor: "!bg-blue-500",
+    placeholder: "Configure action...",
+    handles: [
+      { type: "target", position: Position.Top },
+      { type: "source", position: Position.Bottom },
+    ],
+  }
+  const iconName = nodeType === "skillNode" ? "Puzzle" : data.icon
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
+        selected && "ring-2 ring-ring shadow-md"
+      )}
+    >
+      <NodeHeader label={data.label} iconName={iconName} color={config.color} />
+      <div className="px-3 py-2 text-[11px] text-muted-foreground">
+        {data.config?.summary ? String(data.config.summary) : config.placeholder}
+      </div>
+      <StatusDot status={data.status} />
+      {config.handles.map((h, i) => (
+        <Handle
+          key={h.id || `${h.type}-${i}`}
+          type={h.type}
+          position={h.position}
+          id={h.id}
+          className={cn(config.handleColor, "!border-2 !border-background !w-3 !h-3")}
+        />
+      ))}
     </div>
-    <StatusDot status={data.status} />
-    <Handle
-      type="source"
-      position={Position.Bottom}
-      className="!bg-emerald-500 !border-2 !border-background !w-3 !h-3"
-    />
-  </div>
-))
+  )
+}
 
-TriggerNode.displayName = "TriggerNode"
+function makeNode(nodeType: string) {
+  const Component = memo((props: NodeProps<BaseNodeData>) => PipelineNodeComponent(props, nodeType))
+  Component.displayName = nodeType
+  return Component
+}
 
-export const AINode = memo(({ data, selected }: NodeProps<BaseNodeData>) => (
-  <div
-    className={cn(
-      "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
-      selected && "ring-2 ring-ring shadow-md"
-    )}
-  >
-    <NodeHeader label={data.label} iconName={data.icon} color="bg-violet-600" />
-    <div className="px-3 py-2 text-[11px] text-muted-foreground">
-      {data.config?.summary ? String(data.config.summary) : "Configure AI node..."}
-    </div>
-    <StatusDot status={data.status} />
-    <Handle
-      type="target"
-      position={Position.Top}
-      className="!bg-violet-500 !border-2 !border-background !w-3 !h-3"
-    />
-    <Handle
-      type="source"
-      position={Position.Bottom}
-      className="!bg-violet-500 !border-2 !border-background !w-3 !h-3"
-    />
-  </div>
-))
-
-AINode.displayName = "AINode"
-
-export const ActionNode = memo(({ data, selected }: NodeProps<BaseNodeData>) => (
-  <div
-    className={cn(
-      "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
-      selected && "ring-2 ring-ring shadow-md"
-    )}
-  >
-    <NodeHeader label={data.label} iconName={data.icon} color="bg-blue-600" />
-    <div className="px-3 py-2 text-[11px] text-muted-foreground">
-      {data.config?.summary ? String(data.config.summary) : "Configure action..."}
-    </div>
-    <StatusDot status={data.status} />
-    <Handle
-      type="target"
-      position={Position.Top}
-      className="!bg-blue-500 !border-2 !border-background !w-3 !h-3"
-    />
-    <Handle
-      type="source"
-      position={Position.Bottom}
-      className="!bg-blue-500 !border-2 !border-background !w-3 !h-3"
-    />
-  </div>
-))
-
-ActionNode.displayName = "ActionNode"
-
-export const FlowNode = memo(({ data, selected }: NodeProps<BaseNodeData>) => (
-  <div
-    className={cn(
-      "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
-      selected && "ring-2 ring-ring shadow-md"
-    )}
-  >
-    <NodeHeader label={data.label} iconName={data.icon} color="bg-orange-600" />
-    <div className="px-3 py-2 text-[11px] text-muted-foreground">
-      {data.config?.summary ? String(data.config.summary) : "Configure flow..."}
-    </div>
-    <StatusDot status={data.status} />
-    <Handle
-      type="target"
-      position={Position.Top}
-      className="!bg-orange-500 !border-2 !border-background !w-3 !h-3"
-    />
-    <Handle
-      type="source"
-      position={Position.Bottom}
-      className="!bg-orange-500 !border-2 !border-background !w-3 !h-3"
-    />
-    <Handle
-      type="source"
-      position={Position.Left}
-      id="left"
-      className="!bg-orange-500 !border-2 !border-background !w-3 !h-3"
-    />
-    <Handle
-      type="source"
-      position={Position.Right}
-      id="right"
-      className="!bg-orange-500 !border-2 !border-background !w-3 !h-3"
-    />
-  </div>
-))
-
-FlowNode.displayName = "FlowNode"
-
-export const IntegrationNode = memo(({ data, selected }: NodeProps<BaseNodeData>) => (
-  <div
-    className={cn(
-      "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
-      selected && "ring-2 ring-ring shadow-md"
-    )}
-  >
-    <NodeHeader label={data.label} iconName={data.icon} color="bg-gray-600" />
-    <div className="px-3 py-2 text-[11px] text-muted-foreground">
-      {data.config?.summary ? String(data.config.summary) : "Configure integration..."}
-    </div>
-    <StatusDot status={data.status} />
-    <Handle
-      type="target"
-      position={Position.Top}
-      className="!bg-gray-500 !border-2 !border-background !w-3 !h-3"
-    />
-    <Handle
-      type="source"
-      position={Position.Bottom}
-      className="!bg-gray-500 !border-2 !border-background !w-3 !h-3"
-    />
-  </div>
-))
-
-IntegrationNode.displayName = "IntegrationNode"
-
-export const SkillNode = memo(({ data, selected }: NodeProps<BaseNodeData>) => (
-  <div
-    className={cn(
-      "rounded-lg border bg-surface shadow-sm transition-shadow min-w-[160px]",
-      selected && "ring-2 ring-ring shadow-md"
-    )}
-  >
-    <NodeHeader label={data.label} iconName="Puzzle" color="bg-pink-600" />
-    <div className="px-3 py-2 text-[11px] text-muted-foreground">
-      {data.config?.summary ? String(data.config.summary) : "Skill node"}
-    </div>
-    <StatusDot status={data.status} />
-    <Handle
-      type="target"
-      position={Position.Top}
-      className="!bg-pink-500 !border-2 !border-background !w-3 !h-3"
-    />
-    <Handle
-      type="source"
-      position={Position.Bottom}
-      className="!bg-pink-500 !border-2 !border-background !w-3 !h-3"
-    />
-  </div>
-))
-
-SkillNode.displayName = "SkillNode"
+export const TriggerNode = makeNode("triggerNode")
+export const AINode = makeNode("aiNode")
+export const ActionNode = makeNode("actionNode")
+export const FlowNode = makeNode("flowNode")
+export const IntegrationNode = makeNode("integrationNode")
+export const SkillNode = makeNode("skillNode")
 
 export const nodeTypes = {
   triggerNode: TriggerNode,

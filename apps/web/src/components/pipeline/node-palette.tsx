@@ -5,6 +5,7 @@ import { cn } from "@flowmind/ui"
 import { ScrollArea } from "@flowmind/ui"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
+import { api } from "@/lib/api"
 import {
   Clock,
   Webhook,
@@ -33,14 +34,6 @@ interface PaletteItem {
   label: string
   icon: React.ElementType
   category: string
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
-
-function getToken(): string | null {
-  if (typeof document === "undefined") return null
-  const match = document.cookie.match(/(?:^|;\s*)flowmind_token=([^;]*)/)
-  return match?.[1] ? decodeURIComponent(match[1]) : null
 }
 
 const paletteItems: PaletteItem[] = [
@@ -105,13 +98,7 @@ export function NodePalette() {
 
   const loadSkills = useCallback(async () => {
     try {
-      const token = getToken()
-      const res = await fetch(`${API_URL}/trpc/skills.list?input=${JSON.stringify({})}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        signal: AbortSignal.timeout(5000),
-      })
-      const json: { result?: { data?: Array<{ name: string; description: string }> } } = await res.json()
-      const skills = json.result?.data ?? []
+      const skills = await api.skills.list()
       setSkillItems(
         skills.map((s) => ({
           type: `skill.${s.name}`,
