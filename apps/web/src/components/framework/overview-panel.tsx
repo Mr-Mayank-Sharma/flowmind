@@ -1,9 +1,11 @@
 "use client"
 
+import { useState, useEffect, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Play, Square, RotateCcw, Globe, GitBranch, Server, Activity, ExternalLink, Bot, Sparkles, Brush, Shield, Zap, Keyboard, Image as ImageIcon, Brain } from "lucide-react"
+import { Play, Square, RotateCcw, Globe, GitBranch, Server, Activity, ExternalLink, Bot, Sparkles, Brush, Shield, Zap, Keyboard, Image as ImageIcon, Brain, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { api, type Framework } from "@/lib/api"
 import type { ReactNode } from "react"
 
 const frameworkIconMap: Record<string, ReactNode> = {
@@ -17,70 +19,105 @@ const frameworkIconMap: Record<string, ReactNode> = {
   localai: <Brain className="h-8 w-8 text-foreground" />,
 }
 
-interface FrameworkDetail {
-  id: string
-  name: string
-  icon: ReactNode
-  status: "running" | "stopped" | "error"
-  port: number
-  version: string
-  pid: number | null
-  description: string
-  homepage: string
-  docs: string
-}
-
-const frameworkDetails: Record<string, FrameworkDetail> = {
+const frameworkDescriptions: Record<string, { description: string; homepage: string; docs: string }> = {
   ollama: {
-    id: "ollama", name: "Ollama", icon: frameworkIconMap.ollama, status: "running", port: 11434, version: "0.3.12", pid: 28491,
     description: "Local LLM inference server. Run, manage, and serve open-source language models locally with GPU acceleration.",
-    homepage: "https://ollama.ai", docs: "https://github.com/ollama/ollama",
+    homepage: "https://ollama.ai",
+    docs: "https://github.com/ollama/ollama",
   },
   "lm-studio": {
-    id: "lm-studio", name: "LM Studio", icon: frameworkIconMap["lm-studio"], status: "running", port: 1234, version: "0.2.29", pid: 28512,
     description: "Desktop application for running local LLMs. Provides an OpenAI-compatible API for model inference.",
-    homepage: "https://lmstudio.ai", docs: "https://lmstudio.ai/docs",
+    homepage: "https://lmstudio.ai",
+    docs: "https://lmstudio.ai/docs",
   },
   comfyui: {
-    id: "comfyui", name: "ComfyUI", icon: frameworkIconMap.comfyui, status: "running", port: 8188, version: "0.2.4", pid: 28534,
     description: "Powerful node-based Stable Diffusion workflow editor and inference engine.",
-    homepage: "https://github.com/comfyanonymous/ComfyUI", docs: "https://comfyui-wiki.com",
+    homepage: "https://github.com/comfyanonymous/ComfyUI",
+    docs: "https://comfyui-wiki.com",
   },
   openclaw: {
-    id: "openclaw", name: "OpenClaw", icon: frameworkIconMap.openclaw, status: "stopped", port: 9090, version: "1.2.0", pid: null,
     description: "Open-source agent framework for building and orchestrating AI agents with tool-use capabilities.",
-    homepage: "#", docs: "#",
+    homepage: "#",
+    docs: "#",
   },
   hermes: {
-    id: "hermes", name: "Hermes Agent", icon: frameworkIconMap.hermes, status: "running", port: 3001, version: "2.1.5", pid: 28567,
     description: "General-purpose AI agent runtime with tool registry, memory store, and multi-model support.",
-    homepage: "#", docs: "#",
+    homepage: "#",
+    docs: "#",
   },
   opencode: {
-    id: "opencode", name: "OpenCode", icon: frameworkIconMap.opencode, status: "error", port: 8080, version: "0.8.3", pid: null,
     description: "AI coding assistant that integrates with your editor for code generation, refactoring, and review.",
-    homepage: "https://opencode.ai", docs: "https://opencode.ai/docs",
+    homepage: "https://opencode.ai",
+    docs: "https://opencode.ai/docs",
   },
   sd: {
-    id: "sd", name: "Stable Diffusion", icon: frameworkIconMap.sd, status: "stopped", port: 7860, version: "1.9.4", pid: null,
     description: "Text-to-image generation using Stable Diffusion models with LoRA and ControlNet support.",
-    homepage: "https://github.com/AUTOMATIC1111/stable-diffusion-webui", docs: "#",
+    homepage: "https://github.com/AUTOMATIC1111/stable-diffusion-webui",
+    docs: "#",
   },
   localai: {
-    id: "localai", name: "LocalAI", icon: frameworkIconMap.localai, status: "running", port: 8080, version: "2.17.1", pid: 28589,
     description: "Open-source OpenAI alternative. Run LLMs, image generation, and audio models locally.",
-    homepage: "https://localai.io", docs: "https://localai.io/docs",
+    homepage: "https://localai.io",
+    docs: "https://localai.io/docs",
   },
 }
 
 export function OverviewPanel({ frameworkId }: { frameworkId: string }) {
-  const fw = frameworkDetails[frameworkId]
+  const [framework, setFramework] = useState<Framework | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  if (!fw) return <div className="text-muted-foreground text-sm">Framework not found</div>
+  const fetchFramework = useCallback(async () => {
+    try {
+      const frameworks = await api.system.getFrameworks()
+      const fw = frameworks.find((f) => f.id === frameworkId)
+      setFramework(fw ?? null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load framework")
+    } finally {
+      setLoading(false)
+    }
+  }, [frameworkId])
 
-  const handleAction = (action: "start" | "stop" | "restart") => {
-    console.log(`${action} ${fw.name}`)
+  useEffect(() => {
+    fetchFramework()
+  }, [fetchFramework])
+
+  const handleAction = async (action: "start" | "stop" | "restart") => {
+    setActionLoading(true)
+    try {
+      if (action === "start") {
+        await api.system.startFramework(frameworkId)
+      } else if (action === "stop") {
+        await api.system.stopFramework(frameworkId)
+      } else {
+        await api.system.stopFramework(frameworkId)
+        await new Promise((r) => setTimeout(r, 1000))
+        await api.system.startFramework(frameworkId)
+      }
+      await fetchFramework()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `${action} failed`)
+    } finally {
+      setActionLoading(false)
+    }
   }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!framework) {
+    return <div className="text-muted-foreground text-sm py-8 text-center">Framework not found. It may not be detected on this system.</div>
+  }
+
+  const meta = frameworkDescriptions[frameworkId] ?? { description: framework.description, homepage: "#", docs: "#" }
+  const icon = frameworkIconMap[frameworkId] ?? <Bot className="h-8 w-8 text-foreground" />
 
   const statusColor = {
     running: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
@@ -94,33 +131,45 @@ export function OverviewPanel({ frameworkId }: { frameworkId: string }) {
     error: { label: "Error", dot: "bg-red-500" },
   }
 
-  const s = statusBadge[fw.status]
+  const s = statusBadge[framework.status]
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="text-xs text-red-400 bg-red-500/10 rounded-md px-3 py-2">{error}</div>
+      )}
+
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div className="text-3xl">{fw.icon}</div>
+          <div className="text-3xl">{icon}</div>
           <div>
-            <h2 className="text-xl font-bold">{fw.name}</h2>
-            <p className="text-sm text-muted-foreground mt-0.5 max-w-lg">{fw.description}</p>
+            <h2 className="text-xl font-bold">{framework.name}</h2>
+            <p className="text-sm text-muted-foreground mt-0.5 max-w-lg">{meta.description}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            className={cn("h-8 text-xs gap-1.5", fw.status === "running" ? "text-amber-400 border-amber-500/30" : "text-emerald-400 border-emerald-500/30")}
-            onClick={() => handleAction(fw.status === "running" ? "stop" : "start")}
+            className={cn("h-8 text-xs gap-1.5", framework.status === "running" ? "text-amber-400 border-amber-500/30" : "text-emerald-400 border-emerald-500/30")}
+            onClick={() => handleAction(framework.status === "running" ? "stop" : "start")}
+            disabled={actionLoading}
           >
-            {fw.status === "running" ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-            {fw.status === "running" ? "Stop" : "Start"}
+            {actionLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : framework.status === "running" ? (
+              <Square className="h-3.5 w-3.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            {framework.status === "running" ? "Stop" : "Start"}
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="h-8 text-xs gap-1.5"
             onClick={() => handleAction("restart")}
+            disabled={actionLoading}
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Restart
@@ -129,32 +178,36 @@ export function OverviewPanel({ frameworkId }: { frameworkId: string }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className={cn("rounded-lg border px-4 py-3", statusColor[fw.status])}>
+        <div className={cn("rounded-lg border px-4 py-3", statusColor[framework.status])}>
           <div className="flex items-center gap-2 mb-1">
-            <span className={cn("h-2 w-2 rounded-full", s.dot, fw.status === "running" && "animate-pulse")} />
+            <span className={cn("h-2 w-2 rounded-full", s.dot, framework.status === "running" && "animate-pulse")} />
             <span className="text-xs font-medium">Status</span>
           </div>
           <span className="text-sm font-semibold">{s.label}</span>
         </div>
 
-        <InfoCard icon={<Server className="h-3.5 w-3.5" />} label="Port" value={String(fw.port)} />
-        <InfoCard icon={<GitBranch className="h-3.5 w-3.5" />} label="Version" value={fw.version} />
-        <InfoCard icon={<Activity className="h-3.5 w-3.5" />} label="PID" value={fw.pid ? String(fw.pid) : "N/A"} />
+        <InfoCard icon={<Server className="h-3.5 w-3.5" />} label="Port" value={String(framework.port)} />
+        <InfoCard icon={<GitBranch className="h-3.5 w-3.5" />} label="Version" value={framework.version} />
+        <InfoCard icon={<Activity className="h-3.5 w-3.5" />} label="PID" value={framework.pid ? String(framework.pid) : "N/A"} />
 
-        {fw.homepage !== "#" && (
+        {framework.models > 0 && (
+          <InfoCard icon={<Sparkles className="h-3.5 w-3.5" />} label="Models" value={`${framework.models} installed`} />
+        )}
+
+        {meta.homepage !== "#" && (
           <InfoCard
             icon={<Globe className="h-3.5 w-3.5" />}
             label="Homepage"
-            value={fw.homepage}
-            href={fw.homepage}
+            value={meta.homepage}
+            href={meta.homepage}
           />
         )}
-        {fw.docs !== "#" && (
+        {meta.docs !== "#" && (
           <InfoCard
             icon={<ExternalLink className="h-3.5 w-3.5" />}
             label="Documentation"
             value="View docs"
-            href={fw.docs}
+            href={meta.docs}
           />
         )}
       </div>

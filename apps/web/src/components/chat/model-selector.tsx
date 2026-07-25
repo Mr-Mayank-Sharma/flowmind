@@ -55,10 +55,19 @@ export function ModelSelector({ selectedModel, onModelChange, disabled }: ModelS
     async function load() {
       try {
         const [m, p] = await Promise.all([
-          api.models.list().catch(() => [] as ModelInfo[]),
-          api.models.getProviders().catch(() => [] as ProviderInfo[]),
+          api.models.list().catch(() => []),
+          api.models.getProviders().catch(() => []),
         ])
-        setModels(Array.isArray(m) ? m : [])
+        const mapped: ModelInfo[] = Array.isArray(m)
+          ? m.map((item: any) => ({
+              id: item.name ?? item.id ?? "",
+              name: item.name ?? "",
+              provider: "ollama",
+              available: true,
+              local: true,
+            }))
+          : []
+        setModels(mapped)
         setProviders(Array.isArray(p) ? p : [])
       } finally {
         setLoading(false)

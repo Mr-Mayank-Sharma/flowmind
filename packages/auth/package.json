@@ -16,7 +16,9 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-saml": "^3.0.0",
-    "@xmldom/xmldom": "^0.9.10"
+    "@xmldom/xmldom": "^0.9.10",
+    "otpauth": "^9.3.6",
+    "@simplewebauthn/server": "^10.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

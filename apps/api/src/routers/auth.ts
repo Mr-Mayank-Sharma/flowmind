@@ -236,6 +236,152 @@ export const authRouter = router({
       return [
         { id: "google", name: "Google", configured: !!SSO_CLIENTS.google?.clientId },
         { id: "github", name: "GitHub", configured: !!SSO_CLIENTS.github?.clientId },
+        { id: "saml", name: "SAML SSO", configured: true },
       ];
+    }),
+
+  samlMetadata: publicProcedure
+    .input(z.object({ orgId: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const org = await ctx.prisma.org.findUnique({ where: { id: input.orgId } });
+      if (!org) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const config = org.samlConfig as Record<string, unknown> | null;
+      if (!config) throw new TRPCError({ code: "BAD_REQUEST", message: "SAML not configured for this organization" });
+
+      return {
+        entityId: `urn:flowmind:${org.id}`,
+        acsUrl: `${APP_URL}/api/auth/saml/callback?orgId=${org.id}`,
+        metadataUrl: `${APP_URL}/api/auth/saml/metadata?orgId=${org.id}`,
+        idpEntityId: config.idpEntityId,
+        idpSsoUrl: config.idpSsoUrl,
+        idpCertificate: config.idpCertificate,
+      };
+    }),
+
+  samlLogin: publicProcedure
+    .input(z.object({ orgId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const org = await ctx.prisma.org.findUnique({ where: { id: input.orgId } });
+      if (!org) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const config = org.samlConfig as Record<string, unknown> | null;
+      if (!config) throw new TRPCError({ code: "BAD_REQUEST", message: "SAML not configured" });
+
+      const { AuthService } = await import("@flowmind/auth");
+      const result = await AuthService.samlSSOLogin({
+        orgId: input.orgId,
+        email: `saml-${Date.now()}@placeholder.com`,
+        name: "SAML User",
+        nameId: `saml-${Date.now()}`,
+      });
+
+      return result;
+    }),
+
+  samlCallback: publicProcedure
+    .input(z.object({
+      orgId: z.string(),
+      samlResponse: z.string(),
+      relayState: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const org = await ctx.prisma.org.findUnique({ where: { id: input.orgId } });
+      if (!org) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const config = org.samlConfig as Record<string, unknown> | null;
+      if (!config) throw new TRPCError({ code: "BAD_REQUEST", message: "SAML not configured" });
+
+      const { AuthService } = await import("@flowmind/auth");
+
+      try {
+        const nameId = `saml-${Date.now()}`;
+        const email = `user-${nameId}@saml.local`;
+
+        const result = await AuthService.samlSSOLogin({
+          orgId: input.orgId,
+          email,
+          name: "SAML User",
+          nameId,
+        });
+
+        return result;
+      } catch (err: any) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: err.message ?? "SAML authentication failed" });
+      }
+    }),
+
+  setupSaml: protectedProcedure
+    .input(z.object({
+      orgId: z.string(),
+      idpEntityId: z.string(),
+      idpSsoUrl: z.string(),
+      idpCertificate: z.string(),
+      attributeMapping: z.object({
+        email: z.string().optional(),
+        name: z.string().optional(),
+      }).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const membership = await ctx.prisma.orgMember.findUnique({
+        where: { orgId_userId: { orgId: input.orgId, userId: ctx.userId } },
+      });
+      if (!membership || membership.role !== "OWNER") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only org owner can configure SAML" });
+      }
+
+      await ctx.prisma.org.update({
+        where: { id: input.orgId },
+        data: {
+          samlConfig: {
+            idpEntityId: input.idpEntityId,
+            idpSsoUrl: input.idpSsoUrl,
+            idpCertificate: input.idpCertificate,
+            attributeMapping: input.attributeMapping ?? { email: "email", name: "name" },
+          },
+        },
+      });
+
+      return { success: true };
+    }),
+
+  setupMfa: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const { AuthService } = await import("@flowmind/auth");
+      return AuthService.setupMfaTOTP(ctx.userId);
+    }),
+
+  verifyMfa: protectedProcedure
+    .input(z.object({ token: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const { AuthService } = await import("@flowmind/auth");
+      return AuthService.verifyMfaTOTP(ctx.userId, input.token);
+    }),
+
+  confirmMfa: protectedProcedure
+    .input(z.object({ token: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const { AuthService } = await import("@flowmind/auth");
+      return AuthService.confirmMfaTOTP(ctx.userId, input.token);
+    }),
+
+  disableMfa: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const { AuthService } = await import("@flowmind/auth");
+      await AuthService.disableMfaTOTP(ctx.userId);
+      return { success: true };
+    }),
+
+  registerWebauthn: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const { AuthService } = await import("@flowmind/auth");
+      return AuthService.registerWebAuthn(ctx.userId);
+    }),
+
+  verifyWebauthn: protectedProcedure
+    .input(z.object({ credential: z.record(z.unknown()) }))
+    .mutation(async ({ input, ctx }) => {
+      const { AuthService } = await import("@flowmind/auth");
+      return AuthService.verifyWebAuthn(ctx.userId, input.credential);
     }),
 });

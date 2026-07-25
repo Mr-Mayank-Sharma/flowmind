@@ -327,7 +327,32 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
   async databaseQuery(node, context) {
     const exprCtx = buildExpressionContext(context)
     const query = resolveValue(node.config.query ?? "", exprCtx) as string
-    return { query, rows: [], rowCount: 0, json: { query, rowCount: 0, rows: [] } }
+    const connectionString = (node.config.connectionString as string) ?? process.env.DATABASE_URL ?? ""
+
+    if (!connectionString) {
+      return { query, rows: [], rowCount: 0, error: "No database connection string configured", json: { query, rowCount: 0, rows: [], error: "No connection string" } }
+    }
+
+    try {
+      const { Client } = await import("pg")
+      const client = new Client({ connectionString })
+      await client.connect()
+
+      try {
+        const result = await client.query(query)
+        return {
+          query,
+          rows: result.rows,
+          rowCount: result.rowCount ?? 0,
+          fields: result.fields?.map(f => f.name) ?? [],
+          json: { query, rowCount: result.rowCount ?? 0, rows: result.rows },
+        }
+      } finally {
+        await client.end()
+      }
+    } catch (err: any) {
+      return { query, rows: [], rowCount: 0, error: err.message, json: { query, rowCount: 0, rows: [], error: err.message } }
+    }
   },
   async sendEmail(node, context) {
     const exprCtx = buildExpressionContext(context)
@@ -457,16 +482,70 @@ const flowRunners: Record<string, (node: PipelineNode, context: ExecutionContext
     const cases = ((node.config.cases as string) ?? "default").split(",").map((c: string) => c.trim())
     return { expression: switchExpr, value: resolved, cases, json: { expression: switchExpr, value: resolved, cases } }
   },
-  async parallelFork(node, _context) {
-    return { forked: true, branches: [], json: { forked: true, branchCount: 0 } }
+  async parallelFork(node, context) {
+    const exprCtx = buildExpressionContext(context)
+    const branchCount = (node.config.branchCount as number) ?? 2
+    const items = resolveValue(node.config.items ?? "[]", exprCtx) as string | unknown[]
+
+    let itemList: unknown[]
+    if (typeof items === "string") {
+      try { itemList = JSON.parse(items) } catch { itemList = [items] }
+    } else {
+      itemList = Array.isArray(items) ? items : [items]
+    }
+
+    const branches = itemList.map((item, idx) => ({
+      branchIndex: idx,
+      item,
+      status: "pending" as const,
+    }))
+
+    return {
+      forked: true,
+      branchCount: branches.length,
+      branches,
+      json: { forked: true, branchCount: branches.length, items: itemList },
+    }
   },
   async merge(node, context) {
     const predecessorData = predecessorsInput(node, context)
-    return { merged: true, inputs: predecessorData, json: { merged: true, inputCount: Object.keys(predecessorData).length } }
+    const allItems: unknown[] = []
+
+    for (const [sourceId, data] of Object.entries(predecessorData)) {
+      if (data && typeof data === "object" && "branches" in data && Array.isArray((data as any).branches)) {
+        for (const branch of (data as any).branches) {
+          if (branch.item !== undefined) allItems.push(branch.item)
+        }
+      } else if (Array.isArray(data)) {
+        allItems.push(...data)
+      } else {
+        allItems.push(data)
+      }
+    }
+
+    return { merged: true, inputs: predecessorData, items: allItems, json: { merged: true, inputCount: Object.keys(predecessorData).length, itemCount: allItems.length } }
   },
   async loop(node, context) {
     const iterations = (node.config.iterations as number) ?? 3
-    return { loop: true, iterations, current: 1, json: { iterations, current: 1 } }
+    const dataKey = (node.config.dataKey as string) ?? ""
+    const predecessorData = predecessorsInput(node, context)
+
+    let items: unknown[] = []
+    if (dataKey && predecessorData[dataKey]) {
+      items = Array.isArray(predecessorData[dataKey]) ? predecessorData[dataKey] as unknown[] : [predecessorData[dataKey]]
+    } else {
+      items = Array.from({ length: iterations }, (_, i) => i)
+    }
+
+    const results: unknown[] = []
+    for (let i = 0; i < items.length; i++) {
+      context.variables[`$loop.index`] = i
+      context.variables[`$loop.item`] = items[i]
+      context.variables[`$loop.total`] = items.length
+      results.push({ index: i, item: items[i] })
+    }
+
+    return { loop: true, iterations: items.length, items, results, json: { iterations: items.length, items, results } }
   },
   async wait(node, context) {
     const durationMs = (node.config.durationMs as number) ?? 1000
@@ -490,7 +569,58 @@ const integrationRunners: Record<string, (node: PipelineNode, context: Execution
     const predecessorData = predecessorsInput(node, context)
     const exprCtx = buildExpressionContext(context)
     const action = resolveValue(node.config.action ?? "execute", exprCtx) as string
-    return { provider, action, input: predecessorData, result: `[${provider} ${action} simulated]`, json: { provider, action } }
+    const config = node.config as Record<string, unknown>
+
+    if (provider === "slack" || provider === "discord" || provider === "telegram" || provider === "whatsapp" || provider === "email") {
+      try {
+        const channelPayload = {
+          channel: provider,
+          action,
+          channelId: config.channelId ?? "",
+          message: config.message ?? JSON.stringify(predecessorData),
+          ...config,
+        }
+
+        const apiUrl = process.env.APP_URL || "http://localhost:3001"
+        const token = process.env.INTERNAL_API_TOKEN || ""
+        const res = await fetch(`${apiUrl}/trpc/webhooks.ingest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ channel: provider, body: channelPayload }),
+          signal: AbortSignal.timeout(10_000),
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          return { provider, action, input: predecessorData, result: data, sent: true, json: { provider, action, sent: true } }
+        }
+        return { provider, action, input: predecessorData, result: `Channel send failed: ${res.status}`, sent: false, json: { provider, action, sent: false } }
+      } catch (err) {
+        return { provider, action, input: predecessorData, result: `Channel error: ${err}`, sent: false, error: String(err), json: { provider, action, sent: false } }
+      }
+    }
+
+    if (provider === "http" || provider === "api") {
+      const url = (config.url as string) ?? ""
+      const method = (config.method as string) ?? "POST"
+      const headers = (config.headers as Record<string, string>) ?? {}
+      const body = config.body ?? predecessorData
+
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json", ...headers },
+          body: method !== "GET" ? JSON.stringify(body) : undefined,
+          signal: context.abortSignal,
+        })
+        const data = await res.json()
+        return { provider, action, status: res.status, result: data, json: { provider, action, status: res.status } }
+      } catch (err) {
+        return { provider, action, error: String(err), json: { provider, action, error: String(err) } }
+      }
+    }
+
+    return { provider, action, input: predecessorData, result: `[${provider} ${action} - no handler registered]`, json: { provider, action } }
   },
 }
 

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer"
+import { ImapFlow } from "imapflow"
 import type { ChannelAdapter, OutgoingMessage, ChannelMessage } from '../index.js'
 
 export interface SmtpConfig {
@@ -23,6 +24,8 @@ export class EmailAdapter implements ChannelAdapter {
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private inboxCallback: ((msg: ChannelMessage) => void) | null = null
   private transporter: nodemailer.Transporter
+  private imapClient: ImapFlow | null = null
+  private lastUid: number = 0
 
   constructor(
     private smtp: SmtpConfig,
@@ -84,8 +87,35 @@ export class EmailAdapter implements ChannelAdapter {
     this.inboxCallback = callback
     this.watching = true
 
+    this.imapClient = new ImapFlow({
+      host: this.imap.host,
+      port: this.imap.port,
+      secure: this.imap.secure,
+      auth: this.imap.auth,
+      logger: false,
+    })
+
+    try {
+      await this.imapClient.connect()
+      const mailbox = this.imap.mailbox ?? 'INBOX'
+      await this.imapClient.mailboxOpen(mailbox)
+
+      const lock = await this.imapClient.getMailboxLock(mailbox)
+      try {
+        const lastMessage = await this.imapClient.fetchOne('*', { uid: true }, { uid: true })
+        if (lastMessage) {
+          this.lastUid = lastMessage.uid
+        }
+      } finally {
+        lock.release()
+      }
+    } catch (err) {
+      console.error('[EmailAdapter] IMAP connect error', err)
+      return
+    }
+
     this.pollTimer = setInterval(async () => {
-      if (!this.watching) return
+      if (!this.watching || !this.imapClient) return
       try {
         const emails = await this.pollInbox()
         for (const email of emails) {
@@ -106,14 +136,63 @@ export class EmailAdapter implements ChannelAdapter {
       clearInterval(this.pollTimer)
       this.pollTimer = null
     }
+    if (this.imapClient) {
+      this.imapClient.logout().catch(() => {})
+      this.imapClient = null
+    }
   }
 
   private async pollInbox(): Promise<Array<Record<string, unknown>>> {
-    console.log('[EmailAdapter] Polling IMAP inbox', {
-      host: this.imap.host,
-      mailbox: this.imap.mailbox ?? 'INBOX',
-    })
-    return []
+    if (!this.imapClient) return []
+
+    const results: Array<Record<string, unknown>> = []
+    const mailbox = this.imap.mailbox ?? 'INBOX'
+
+    try {
+      await this.imapClient.mailboxOpen(mailbox)
+      const lock = await this.imapClient.getMailboxLock(mailbox)
+
+      try {
+        const searchResult = await this.imapClient.search(
+          { uid: `${this.lastUid + 1}:*` },
+          { uid: true }
+        )
+
+        if (!searchResult || searchResult.length === 0) return []
+
+        for (const uid of searchResult) {
+          if (uid <= this.lastUid) continue
+
+          const message = await this.imapClient.fetchOne(uid.toString(), {
+            uid: true,
+            envelope: true,
+            bodyStructure: true,
+            source: true,
+          }, { uid: true })
+
+          if (message && message.envelope) {
+            const envelope = message.envelope
+            results.push({
+              id: uid.toString(),
+              messageId: envelope.messageId,
+              from: envelope.from?.[0] ? { address: envelope.from[0].address, name: envelope.from[0].name } : undefined,
+              to: envelope.to?.map(t => t.address ?? '').join(', '),
+              subject: envelope.subject,
+              date: envelope.date?.toISOString(),
+              text: message.source?.toString() ?? '',
+              uid,
+            })
+            this.lastUid = uid
+          }
+        }
+      } finally {
+        lock.release()
+      }
+    } catch (err) {
+      console.error('[EmailAdapter] IMAP fetch error', err)
+    }
+
+    return results
   }
 
   private parseEmailPayload(payload: unknown): ChannelMessage | null {

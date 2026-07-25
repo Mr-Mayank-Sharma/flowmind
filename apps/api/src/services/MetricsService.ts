@@ -1,6 +1,7 @@
 import { execSync } from "child_process"
 import os from "os"
 import { cacheProvider, logger } from "../infrastructure"
+import { prisma } from "@flowmind/db"
 
 function run(cmd: string, fallback = ""): string {
   try {
@@ -120,7 +121,7 @@ export interface ProcessInfo {
 }
 
 export class MetricsService {
-  getMetrics(): SystemMetrics {
+  async getMetrics(): Promise<SystemMetrics> {
     const cached = cacheProvider.get<SystemMetrics>("system:metrics")
     if (cached) return cached
     const totalMem = os.totalmem()
@@ -139,7 +140,7 @@ export class MetricsService {
     const uptime = os.uptime()
     const uptimeStr = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`
 
-    const frameworks = this.getFrameworks()
+    const frameworks = await this.getFrameworks()
     const servicesRunning = frameworks.filter((f) => f.status === "running").length
 
     const metrics: SystemMetrics = {
@@ -167,7 +168,7 @@ export class MetricsService {
     return metrics
   }
 
-  getFrameworks(): FrameworkInfo[] {
+  async getFrameworks(): Promise<FrameworkInfo[]> {
     const cached = cacheProvider.get<FrameworkInfo[]>("system:frameworks")
     if (cached) return cached
     const ports = getListeningPorts()
@@ -211,8 +212,13 @@ export class MetricsService {
       const ollama = candidates.find((c) => c.id === "ollama")!
       ollama.status = "running"
       ollama.pid = parseInt(run("pgrep -x ollama 2>/dev/null || echo 0", "0")) || null
-      const modelList = run("ollama list 2>/dev/null || echo ''", "")
-      ollama.models = modelList ? modelList.split("\n").filter((l) => l.trim()).length - 1 : 0
+      try {
+        const res = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(3000) })
+        if (res.ok) {
+          const data = (await res.json()) as { models?: Array<{ name: string }> }
+          ollama.models = data.models?.length ?? 0
+        }
+      } catch {}
       ollama.version = run("ollama --version 2>/dev/null || echo '0.23.2'", "0.23.2")
     }
 
@@ -295,35 +301,84 @@ export class MetricsService {
     return { success: false, message: `${id} not running` }
   }
 
-  getRecentActivity(limit = 8) {
-    const activityTypes = ["success", "info", "warning", "error"] as const
-    const messages = [
-      "Pipeline 'Data Ingestion' completed",
-      "Agent 'Customer Support' deployed to production",
-      "LLM response time exceeded 5s threshold",
-      "Model download failed: mixtral-8x7b",
-      "Context store backup completed",
-      "Ollama server restarted",
-      "New agent template published to marketplace",
-      "GPU memory at 82%",
-      "API key expires in 7 days",
-      "System health check passed",
-    ]
-    const activities = []
+  async getRecentActivity(limit = 8) {
     const now = Date.now()
-    for (let i = 0; i < limit; i++) {
-      const type = activityTypes[Math.floor(Math.random() * activityTypes.length)]
-      const msgIdx = (i + Math.floor(Math.random() * 3)) % messages.length
-      const minutesAgo = i * (2 + Math.floor(Math.random() * 15))
-      activities.push({
-        id: `act-${i}`,
-        type,
-        message: messages[msgIdx],
-        time: minutesAgo < 60 ? `${minutesAgo} min ago` : `${Math.floor(minutesAgo / 60)} hours ago`,
-        timestamp: new Date(now - minutesAgo * 60 * 1000).toISOString(),
-      })
+    const entries: Array<{ id: string; type: "success" | "info" | "warning" | "error"; message: string; time: string; timestamp: string }> = []
+
+    try {
+      const [recentRuns, recentSessions, recentSkills, recentFlows] = await Promise.all([
+        prisma.pipelineRun.findMany({
+          orderBy: { createdAt: "desc" },
+          take: limit,
+          include: { pipeline: { select: { name: true } } },
+        }),
+        prisma.session.findMany({
+          orderBy: { createdAt: "desc" },
+          take: Math.min(limit, 4),
+          select: { id: true, createdAt: true, title: true },
+        }),
+        prisma.skill.findMany({
+          orderBy: { createdAt: "desc" },
+          take: Math.min(limit, 3),
+          select: { id: true, name: true, createdAt: true },
+        }),
+        prisma.marketplaceFlow.findMany({
+          orderBy: { createdAt: "desc" },
+          take: Math.min(limit, 3),
+          select: { id: true, title: true, createdAt: true },
+        }),
+      ])
+
+      for (const run of recentRuns) {
+        const pipelineName = run.pipeline?.name ?? "Unknown"
+        const minsAgo = Math.max(1, Math.floor((now - run.createdAt.getTime()) / 60000))
+        entries.push({
+          id: `run-${run.id}`,
+          type: run.status === "SUCCESS" ? "success" : run.status === "FAILED" ? "error" : "info",
+          message: `Pipeline "${pipelineName}" ${run.status.toLowerCase()}`,
+          time: minsAgo < 60 ? `${minsAgo} min ago` : `${Math.floor(minsAgo / 60)}h ago`,
+          timestamp: run.createdAt.toISOString(),
+        })
+      }
+
+      for (const session of recentSessions) {
+        const minsAgo = Math.max(1, Math.floor((now - session.createdAt.getTime()) / 60000))
+        entries.push({
+          id: `session-${session.id}`,
+          type: "info",
+          message: session.title ? `Chat: "${session.title}"` : "New chat session started",
+          time: minsAgo < 60 ? `${minsAgo} min ago` : `${Math.floor(minsAgo / 60)}h ago`,
+          timestamp: session.createdAt.toISOString(),
+        })
+      }
+
+      for (const skill of recentSkills) {
+        const minsAgo = Math.max(1, Math.floor((now - skill.createdAt.getTime()) / 60000))
+        entries.push({
+          id: `skill-${skill.id}`,
+          type: "success",
+          message: `Skill "${skill.name}" installed`,
+          time: minsAgo < 60 ? `${minsAgo} min ago` : `${Math.floor(minsAgo / 60)}h ago`,
+          timestamp: skill.createdAt.toISOString(),
+        })
+      }
+
+      for (const flow of recentFlows) {
+        const minsAgo = Math.max(1, Math.floor((now - flow.createdAt.getTime()) / 60000))
+        entries.push({
+          id: `flow-${flow.id}`,
+          type: "success",
+          message: `Flow "${flow.title}" published to marketplace`,
+          time: minsAgo < 60 ? `${minsAgo} min ago` : `${Math.floor(minsAgo / 60)}h ago`,
+          timestamp: flow.createdAt.toISOString(),
+        })
+      }
+    } catch (e) {
+      logger.warn("Failed to fetch real activity from DB, using fallback")
     }
-    return activities
+
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    return entries.slice(0, limit)
   }
 }
 

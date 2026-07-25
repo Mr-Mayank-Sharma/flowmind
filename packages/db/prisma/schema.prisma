@@ -354,6 +354,9 @@ model PipelineRun {
   output     Json?
   startedAt  DateTime?
   completedAt DateTime?
+  costCents  Int        @default(0)
+  tokensIn   Int        @default(0)
+  tokensOut  Int        @default(0)
 
   pipeline Pipeline  @relation(fields: [pipelineId], references: [id])
   logs     RunLog[]
@@ -373,6 +376,9 @@ model RunLog {
   output   Json?
   error    String?
   duration Int?
+  tokensIn Int?
+  tokensOut Int?
+  costCents Int?
 
   run PipelineRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 

@@ -1,16 +1,88 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from typing import Any
 
 from src.models import ContextBlock
 
+try:
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import (
+        Distance,
+        PointStruct,
+        VectorParams,
+        Filter,
+        FieldCondition,
+        MatchValue,
+    )
+
+    QDRANT_AVAILABLE = True
+except ImportError:
+    QDRANT_AVAILABLE = False
+
 
 class ContextEngine:
-    def __init__(self, qdrant_url: str | None = None) -> None:
+    def __init__(self, qdrant_url: str | None = None, embedding_dim: int = 384) -> None:
         self._qdrant_url = qdrant_url
         self._use_mock = qdrant_url is None
         self._mock_contexts: dict[str, list[dict[str, Any]]] = {}
+        self._embedding_dim = embedding_dim
+        self._client: "QdrantClient | None" = None
+        self._collection_name = "flowmind_contexts"
+
+        if qdrant_url and QDRANT_AVAILABLE:
+            try:
+                self._client = QdrantClient(url=qdrant_url)
+                self._ensure_collection()
+                self._use_mock = False
+            except Exception:
+                self._use_mock = True
+                self._client = None
+
+    def _ensure_collection(self) -> None:
+        if not self._client:
+            return
+        try:
+            collections = self._client.get_collections().collections
+            collection_names = [c.name for c in collections]
+            if self._collection_name not in collection_names:
+                self._client.create_collection(
+                    collection_name=self._collection_name,
+                    vectors_config=VectorParams(
+                        size=self._embedding_dim,
+                        distance=Distance.COSINE,
+                    ),
+                )
+        except Exception:
+            pass
+
+    def _get_embedding(self, text: str) -> list[float]:
+        import hashlib
+        hash_bytes = hashlib.md5(text.encode()).digest()
+        embedding = []
+        for i in range(self._embedding_dim):
+            byte_val = hash_bytes[i % len(hash_bytes)]
+            embedding.append((byte_val / 127.5) - 1.0)
+        norm = sum(x * x for x in embedding) ** 0.5
+        if norm > 0:
+            embedding = [x / norm for x in embedding]
+        return embedding
+
+    def _get_embedding_from_ollama(self, text: str) -> list[float]:
+        try:
+            import httpx
+            ollama_url = self._qdrant_url.rsplit(":", 1)[0] if self._qdrant_url else "http://localhost:11434"
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(
+                    f"{ollama_url}/api/embeddings",
+                    json={"model": "all-minilm", "prompt": text},
+                )
+                if resp.status_code == 200:
+                    return resp.json()["embedding"]
+        except Exception:
+            pass
+        return self._get_embedding(text)
 
     async def ingest(self, user_id: str, documents: list[dict[str, Any]]) -> None:
         if self._use_mock:
@@ -47,7 +119,106 @@ class ContextEngine:
     async def _vector_search(
         self, user_id: str, query: str, top_k: int
     ) -> list[ContextBlock]:
-        raise NotImplementedError("Qdrant integration not yet wired")
+        if not self._client:
+            return await self._mock_retrieve(user_id, query, top_k)
+
+        try:
+            query_vector = self._get_embedding_from_ollama(query)
+
+            results = self._client.search(
+                collection_name=self._collection_name,
+                query_vector=query_vector,
+                limit=top_k,
+                query_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="user_id",
+                            match=MatchValue(value=user_id),
+                        )
+                    ]
+                ),
+            )
+
+            return [
+                ContextBlock(
+                    source=hit.payload.get("source", "knowledge"),
+                    content=hit.payload.get("content", ""),
+                    relevance=hit.score,
+                    metadata={
+                        k: v
+                        for k, v in (hit.payload or {}).items()
+                        if k not in ("source", "content", "user_id")
+                    },
+                )
+                for hit in results
+            ]
+        except Exception:
+            return await self._mock_retrieve(user_id, query, top_k)
 
     async def _vector_ingest(self, user_id: str, documents: list[dict[str, Any]]) -> None:
-        raise NotImplementedError("Qdrant integration not yet wired")
+        if not self._client:
+            self._mock_contexts.setdefault(user_id, []).extend(documents)
+            return
+
+        try:
+            points = []
+            for i, doc in enumerate(documents):
+                content = doc.get("content", "")
+                vector = self._get_embedding_from_ollama(content)
+
+                doc_id = doc.get("id") or hashlib.md5(
+                    f"{user_id}:{content[:100]}".encode()
+                ).hexdigest()
+
+                points.append(
+                    PointStruct(
+                        id=doc_id,
+                        vector=vector,
+                        payload={
+                            "user_id": user_id,
+                            "source": doc.get("source", "upload"),
+                            "content": content,
+                            **{k: v for k, v in doc.items() if k not in ("content", "source", "id")},
+                        },
+                    )
+                )
+
+            if points:
+                self._client.upsert(
+                    collection_name=self._collection_name,
+                    points=points,
+                )
+        except Exception:
+            self._mock_contexts.setdefault(user_id, []).extend(documents)
+
+    async def delete_by_user(self, user_id: str) -> None:
+        if not self._client:
+            self._mock_contexts.pop(user_id, None)
+            return
+
+        try:
+            self._client.delete(
+                collection_name=self._collection_name,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="user_id",
+                            match=MatchValue(value=user_id),
+                        )
+                    ]
+                ),
+            )
+        except Exception:
+            pass
+
+    async def delete_by_document(self, user_id: str, doc_id: str) -> None:
+        if not self._client:
+            return
+
+        try:
+            self._client.delete(
+                collection_name=self._collection_name,
+                points_selector=[doc_id],
+            )
+        except Exception:
+            pass

@@ -1,100 +1,203 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-import { Trash2, Download, CheckCircle, Loader2, HardDrive } from "lucide-react"
+import { Trash2, Download, CheckCircle, Loader2, HardDrive, RefreshCw, Search, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-interface Model {
-  name: string
-  size: string
-  bytes: number
-  modified: string
-  quantization?: string
-  status: "loaded" | "unloaded" | "downloading"
-  downloadProgress?: number
-}
-
-const frameworkModels: Record<string, Model[]> = {
-  ollama: [
-    { name: "mistral:7b", size: "4.1 GB", bytes: 4_100_000_000, modified: "2 days ago", quantization: "Q4_K_M", status: "loaded" },
-    { name: "llama3:8b", size: "4.7 GB", bytes: 4_700_000_000, modified: "5 days ago", quantization: "Q4_K_M", status: "unloaded" },
-    { name: "codellama:7b", size: "3.8 GB", bytes: 3_800_000_000, modified: "1 week ago", quantization: "Q5_K_M", status: "unloaded" },
-    { name: "mixtral:8x7b", size: "26 GB", bytes: 26_000_000_000, modified: "3 weeks ago", quantization: "Q2_K", status: "loaded" },
-    { name: "nomic-embed-text", size: "274 MB", bytes: 274_000_000, modified: "1 month ago", quantization: "F16", status: "loaded" },
-  ],
-  "lm-studio": [
-    { name: "phi-3-mini-4k", size: "2.3 GB", bytes: 2_300_000_000, modified: "1 day ago", quantization: "Q4_K_M", status: "loaded" },
-    { name: "phi-3-medium-128k", size: "7.5 GB", bytes: 7_500_000_000, modified: "3 days ago", quantization: "Q4_K_M", status: "unloaded" },
-    { name: "nemotron-mini-4k", size: "3.1 GB", bytes: 3_100_000_000, modified: "1 week ago", quantization: "Q4_K_M", status: "unloaded" },
-  ],
-  comfyui: [
-    { name: "sdxl-base-1.0", size: "6.9 GB", bytes: 6_900_000_000, modified: "2 days ago", quantization: "fp16", status: "loaded" },
-    { name: "sd3.5-medium", size: "5.2 GB", bytes: 5_200_000_000, modified: "5 days ago", quantization: "fp16", status: "unloaded" },
-    { name: "realvisxl-v4.0", size: "6.9 GB", bytes: 6_900_000_000, modified: "1 week ago", quantization: "fp16", status: "loaded" },
-    { name: "dreamshaper-xl", size: "6.9 GB", bytes: 6_900_000_000, modified: "2 weeks ago", quantization: "fp16", status: "unloaded" },
-  ],
-  hermes: [
-    { name: "hermes-2-pro-mistral", size: "4.1 GB", bytes: 4_100_000_000, modified: "3 days ago", quantization: "Q4_K_M", status: "loaded" },
-    { name: "hermes-2-dpo-mistral", size: "4.1 GB", bytes: 4_100_000_000, modified: "1 week ago", quantization: "Q4_K_M", status: "unloaded" },
-  ],
-  localai: [
-    { name: "gpt-4-vision-local", size: "8.2 GB", bytes: 8_200_000_000, modified: "2 days ago", quantization: "Q4_K_M", status: "loaded" },
-    { name: "whisper-local", size: "1.5 GB", bytes: 1_500_000_000, modified: "5 days ago", quantization: "fp16", status: "unloaded" },
-    { name: "stable-diffusion-local", size: "5.8 GB", bytes: 5_800_000_000, modified: "1 week ago", quantization: "fp16", status: "unloaded" },
-  ],
-}
+import { api, type OllamaModel } from "@/lib/api"
 
 export function ModelManager({ frameworkId }: { frameworkId: string }) {
-  const [models, setModels] = useState<Model[]>([])
+  const [models, setModels] = useState<OllamaModel[]>([])
+  const [loading, setLoading] = useState(true)
   const [pulling, setPulling] = useState<string | null>(null)
   const [pullProgress, setPullProgress] = useState(0)
+  const [pullStatus, setPullStatus] = useState("")
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [pullInput, setPullInput] = useState("")
+  const [showPullInput, setShowPullInput] = useState(false)
 
-  useEffect(() => {
-    const initial = frameworkModels[frameworkId] ?? []
-    setModels(initial)
+  const fetchModels = useCallback(async () => {
+    try {
+      if (frameworkId === "ollama") {
+        const data = await api.models.list()
+        setModels(data)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load models")
+    } finally {
+      setLoading(false)
+    }
   }, [frameworkId])
 
+  useEffect(() => {
+    fetchModels()
+  }, [fetchModels])
+
   const handlePull = async (modelName: string) => {
-    setPulling(modelName)
+    if (!modelName.trim()) return
+    setPulling(modelName.trim())
     setPullProgress(0)
-    for (let i = 0; i <= 100; i += Math.floor(Math.random() * 15) + 5) {
-      await new Promise((r) => setTimeout(r, 400))
-      setPullProgress(Math.min(i, 100))
+    setPullStatus("Starting download...")
+    setError(null)
+
+    try {
+      const progressInterval = setInterval(() => {
+        setPullProgress((prev) => {
+          if (prev >= 90) return prev
+          return prev + Math.random() * 8
+        })
+      }, 2000)
+
+      await api.models.pullModel(modelName.trim())
+
+      clearInterval(progressInterval)
+      setPullProgress(100)
+      setPullStatus("Complete")
+      await fetchModels()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pull failed")
+      setPullStatus("Failed")
+    } finally {
+      setTimeout(() => {
+        setPulling(null)
+        setPullProgress(0)
+        setPullStatus("")
+      }, 1500)
     }
-    setPullProgress(100)
-    await new Promise((r) => setTimeout(r, 500))
-    setModels((prev) => [
-      { name: modelName, size: "4.1 GB", bytes: 4_100_000_000, modified: "Just now", quantization: "Q4_K_M", status: "loaded" },
-      ...prev,
-    ])
-    setPulling(null)
-    setPullProgress(0)
   }
 
-  const handleDelete = (name: string) => {
-    setModels((prev) => prev.filter((m) => m.name !== name))
+  const handleDelete = async (name: string) => {
+    if (!confirm(`Delete model "${name}"? This cannot be undone.`)) return
+    setDeleting(name)
+    setError(null)
+    try {
+      await api.models.deleteModel(name)
+      await fetchModels()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed")
+    } finally {
+      setDeleting(null)
+    }
   }
 
-  const totalSize = models.reduce((acc, m) => acc + m.bytes, 0)
+  const formatBytes = (bytes: number): string => {
+    if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
+    if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`
+    return `${(bytes / 1_000).toFixed(0)} KB`
+  }
+
+  const formatDate = (iso: string): string => {
+    try {
+      const d = new Date(iso)
+      const now = new Date()
+      const diffMs = now.getTime() - d.getTime()
+      const diffH = Math.floor(diffMs / 3600000)
+      if (diffH < 1) return "just now"
+      if (diffH < 24) return `${diffH}h ago`
+      const diffD = Math.floor(diffH / 24)
+      if (diffD < 7) return `${diffD}d ago`
+      return d.toLocaleDateString()
+    } catch {
+      return "unknown"
+    }
+  }
+
+  const totalSize = models.reduce((acc, m) => acc + m.size, 0)
+
+  if (frameworkId !== "ollama") {
+    return (
+      <div className="text-center py-8 text-muted-foreground text-sm">
+        Model management is only available for Ollama. Detected framework: {frameworkId}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h3 className="text-sm font-medium">Installed Models</h3>
-          <Badge variant="secondary" className="text-[10px]">{models.length} models</Badge>
+          <Badge variant="secondary" className="text-[10px]">{loading ? "--" : models.length} models</Badge>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <HardDrive className="h-3 w-3" />
-          <span>{formatBytes(totalSize)} total</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <HardDrive className="h-3 w-3" />
+            <span>{formatBytes(totalSize)} total</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => fetchModels()}
+            disabled={loading}
+          >
+            <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+          </Button>
         </div>
       </div>
 
+      <div className="flex items-center gap-2">
+        {showPullInput ? (
+          <div className="flex items-center gap-2 flex-1">
+            <Input
+              placeholder="Model name (e.g. llama3.2, qwen2.5-coder:latest)"
+              value={pullInput}
+              onChange={(e) => setPullInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handlePull(pullInput)
+                if (e.key === "Escape") { setShowPullInput(false); setPullInput("") }
+              }}
+              className="h-8 text-xs"
+              autoFocus
+            />
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => handlePull(pullInput)}
+              disabled={!pullInput.trim() || pulling !== null}
+            >
+              {pulling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+              Pull
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => { setShowPullInput(false); setPullInput("") }}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            onClick={() => setShowPullInput(true)}
+          >
+            <Download className="h-3 w-3" />
+            Pull Model
+          </Button>
+        )}
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-md px-3 py-2">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          {error}
+        </div>
+      )}
+
       <div className="space-y-1">
-        {models.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : models.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">
             No models installed. Pull a model to get started.
           </div>
@@ -107,46 +210,33 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate">{model.name}</span>
-                  <span className={cn(
-                    "text-[10px] px-1.5 py-0.5 rounded font-mono",
-                    model.status === "loaded"
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : model.status === "downloading"
-                      ? "bg-blue-500/10 text-blue-400"
-                      : "bg-muted text-muted-foreground"
-                  )}>
-                    {model.status}
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-emerald-500/10 text-emerald-400">
+                    loaded
                   </span>
-                  {model.quantization && (
+                  {model.quantization !== "unknown" && (
                     <span className="text-[10px] text-muted-foreground font-mono">{model.quantization}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
-                  <span>{model.size}</span>
-                  <span>Modified {model.modified}</span>
+                  <span>{formatBytes(model.size)}</span>
+                  <span>{formatDate(model.modified)}</span>
+                  {model.family !== "unknown" && <span>{model.family}</span>}
                 </div>
               </div>
 
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {model.status !== "loaded" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs gap-1"
-                    onClick={() => handlePull(model.name)}
-                    disabled={pulling === model.name}
-                  >
-                    <Download className="h-3 w-3" />
-                    Load
-                  </Button>
-                )}
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
                   onClick={() => handleDelete(model.name)}
+                  disabled={deleting === model.name}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting === model.name ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
                 </Button>
               </div>
             </div>
@@ -159,13 +249,16 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
           <div className="flex items-center gap-2 text-sm">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             <span>Pulling {pulling}...</span>
-            <span className="text-xs text-muted-foreground ml-auto">{pullProgress}%</span>
+            <span className="text-xs text-muted-foreground ml-auto">{Math.round(pullProgress)}%</span>
           </div>
           <Progress value={pullProgress} variant="default" className="h-1.5" />
+          {pullStatus && pullStatus !== "Complete" && pullStatus !== "Failed" && (
+            <p className="text-[11px] text-muted-foreground">{pullStatus}</p>
+          )}
         </div>
       )}
 
-      {pulling && pullProgress === 100 && (
+      {pulling && pullProgress >= 100 && (
         <div className="flex items-center gap-2 text-sm text-emerald-400">
           <CheckCircle className="h-4 w-4" />
           Model {pulling} pulled successfully
@@ -173,10 +266,4 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
       )}
     </div>
   )
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`
-  return `${(bytes / 1_000).toFixed(0)} KB`
 }

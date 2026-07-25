@@ -1,5 +1,6 @@
 export { API_URL, getToken, setToken, setRefreshToken, setUserCookie, clearAuth } from "./core"
 export type { User, AuthResponse, Framework, SystemMetrics, ActivityEntry, GPUMetrics } from "./core"
+export type { OllamaModel } from "./models"
 
 import { authApi } from "./auth"
 import { pipelineApi } from "./pipeline"

@@ -1,58 +1,107 @@
-import { z } from "zod";
-import { router, protectedProcedure } from "../middleware/trpc";
+import { z } from "zod"
+import { router, protectedProcedure } from "../middleware/trpc"
 
-const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://127.0.0.1:8001";
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
 
-async function fetchFromRuntime<T>(path: string): Promise<T> {
-  const res = await fetch(`${AGENT_RUNTIME_URL}${path}`, {
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`Runtime error: ${res.statusText}`);
-  return res.json() as Promise<T>;
+interface OllamaModel {
+  name: string
+  modified_at: string
+  size: number
+  digest: string
+  details?: {
+    format: string
+    family: string
+    families: string[]
+    parameter_size: string
+    quantization_level: string
+  }
 }
 
-async function postToRuntime<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${AGENT_RUNTIME_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(300000),
-  });
-  if (!res.ok) throw new Error(`Runtime error: ${res.statusText}`);
-  return res.json() as Promise<T>;
+interface OllamaTagsResponse {
+  models: OllamaModel[]
+}
+
+async function ollamaFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${OLLAMA_BASE_URL}${path}`, {
+    signal: AbortSignal.timeout(15000),
+    ...init,
+  })
+  if (!res.ok) throw new Error(`Ollama API error ${res.status}: ${await res.text()}`)
+  return res.json() as Promise<T>
 }
 
 export const modelsRouter = router({
 
   list: protectedProcedure.query(async () => {
     try {
-      return await fetchFromRuntime<any[]>("/models");
+      const data = await ollamaFetch<OllamaTagsResponse>("/api/tags")
+      return (data.models ?? []).map((m) => ({
+        name: m.name,
+        size: m.size,
+        modified: m.modified_at,
+        digest: m.digest,
+        parameterSize: m.details?.parameter_size ?? "unknown",
+        quantization: m.details?.quantization_level ?? "unknown",
+        family: m.details?.family ?? "unknown",
+        status: "loaded" as const,
+      }))
     } catch {
-      return [];
+      return []
     }
   }),
 
   getProviders: protectedProcedure.query(async () => {
+    const providers = [
+      { id: "ollama", name: "Ollama", available: false, modelCount: 0 },
+      { id: "openai", name: "OpenAI", available: !!process.env.OPENAI_API_KEY, modelCount: 0 },
+      { id: "anthropic", name: "Anthropic", available: !!process.env.ANTHROPIC_API_KEY, modelCount: 0 },
+      { id: "google", name: "Google", available: !!process.env.GOOGLE_API_KEY, modelCount: 0 },
+      { id: "groq", name: "Groq", available: !!process.env.GROQ_API_KEY, modelCount: 0 },
+      { id: "deepseek", name: "DeepSeek", available: !!process.env.DEEPSEEK_API_KEY, modelCount: 0 },
+      { id: "openrouter", name: "OpenRouter", available: !!process.env.OPENROUTER_API_KEY, modelCount: 0 },
+      { id: "together", name: "Together", available: !!process.env.TOGETHER_API_KEY, modelCount: 0 },
+      { id: "mistral", name: "Mistral", available: !!process.env.MISTRAL_API_KEY, modelCount: 0 },
+    ]
     try {
-      return await fetchFromRuntime<any[]>("/models/providers");
-    } catch {
-      return [
-        { id: "ollama", name: "Ollama", available: false, modelCount: 0 },
-        { id: "openai", name: "Openai", available: false, modelCount: 0 },
-        { id: "anthropic", name: "Anthropic", available: false, modelCount: 0 },
-        { id: "google", name: "Google", available: false, modelCount: 0 },
-        { id: "huggingface", name: "Huggingface", available: false, modelCount: 0 },
-      ];
-    }
+      const data = await ollamaFetch<OllamaTagsResponse>("/api/tags")
+      const ollama = providers.find((p) => p.id === "ollama")!
+      ollama.available = true
+      ollama.modelCount = data.models?.length ?? 0
+    } catch {}
+    return providers
   }),
 
   pullModel: protectedProcedure
     .input(z.object({ name: z.string() }))
     .mutation(async ({ input }) => {
       try {
-        return await postToRuntime<{ status: string }>("/models/pull/status", { name: input.name });
+        const res = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: input.name, stream: false }),
+          signal: AbortSignal.timeout(600000),
+        })
+        if (!res.ok) throw new Error(`Pull failed: ${res.statusText}`)
+        return { status: "success", name: input.name }
       } catch (e) {
-        throw new Error(e instanceof Error ? e.message : "Pull failed");
+        throw new Error(e instanceof Error ? e.message : "Pull failed")
+      }
+    }),
+
+  deleteModel: protectedProcedure
+    .input(z.object({ name: z.string() }))
+    .mutation(async ({ input }) => {
+      try {
+        const res = await fetch(`${OLLAMA_BASE_URL}/api/delete`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: input.name }),
+          signal: AbortSignal.timeout(10000),
+        })
+        if (!res.ok) throw new Error(`Delete failed: ${res.statusText}`)
+        return { success: true }
+      } catch (e) {
+        throw new Error(e instanceof Error ? e.message : "Delete failed")
       }
     }),
 
@@ -60,18 +109,24 @@ export const modelsRouter = router({
     .input(z.object({ query: z.string().default("") }))
     .query(async ({ input }) => {
       try {
-        return await fetchFromRuntime<any[]>(`/models/search?q=${encodeURIComponent(input.query)}`);
+        const data = await ollamaFetch<OllamaTagsResponse>("/api/tags")
+        const models = data.models ?? []
+        if (!input.query) return models.map((m) => ({ name: m.name, size: m.size }))
+        const q = input.query.toLowerCase()
+        return models
+          .filter((m) => m.name.toLowerCase().includes(q))
+          .map((m) => ({ name: m.name, size: m.size }))
       } catch {
-        return [];
+        return []
       }
     }),
 
   getRuntimeHealth: protectedProcedure.query(async () => {
     try {
-      const res = await fetch(`${AGENT_RUNTIME_URL}/health`, { signal: AbortSignal.timeout(3000) });
-      return { online: res.ok, status: res.ok ? "ok" : "error" };
+      const res = await fetch(OLLAMA_BASE_URL, { signal: AbortSignal.timeout(3000) })
+      return { online: res.ok, status: res.ok ? "ok" : "error" }
     } catch {
-      return { online: false, status: "unreachable" };
+      return { online: false, status: "unreachable" }
     }
   }),
-});
+})

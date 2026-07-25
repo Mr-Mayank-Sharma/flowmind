@@ -149,13 +149,100 @@ export const pipelineRouter = router({
       if (!pipeline || (pipeline.userId !== ctx.userId)) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
+
+      const updateData: Record<string, unknown> = {};
+      if (input.name) updateData.name = input.name;
+      if (input.description) updateData.description = input.description;
+      if (input.isActive !== undefined) updateData.isActive = input.isActive;
+
+      if (input.graph) {
+        const currentVersion = pipeline.version;
+        const versionHistory = (pipeline.versionHistory as any[]) ?? [];
+
+        versionHistory.push({
+          version: currentVersion,
+          graph: pipeline.graph,
+          name: pipeline.name,
+          description: pipeline.description,
+          savedAt: pipeline.updatedAt.toISOString(),
+          savedBy: ctx.userId,
+        });
+
+        if (versionHistory.length > 50) {
+          versionHistory.splice(0, versionHistory.length - 50);
+        }
+
+        updateData.graph = input.graph;
+        updateData.version = { increment: 1 };
+        updateData.versionHistory = versionHistory;
+      }
+
+      return ctx.prisma.pipeline.update({
+        where: { id: input.id },
+        data: updateData,
+      });
+    }),
+
+  getVersionHistory: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const pipeline = await ctx.prisma.pipeline.findUnique({
+        where: { id: input.id },
+        select: { userId: true, version: true, versionHistory: true },
+      });
+      if (!pipeline || pipeline.userId !== ctx.userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const history = (pipeline.versionHistory as any[]) ?? [];
+      return {
+        currentVersion: pipeline.version,
+        versions: history.map((v: any) => ({
+          version: v.version,
+          name: v.name,
+          description: v.description,
+          savedAt: v.savedAt,
+          savedBy: v.savedBy,
+        })),
+      };
+    }),
+
+  restoreVersion: protectedProcedure
+    .input(z.object({ id: z.string(), version: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const pipeline = await ctx.prisma.pipeline.findUnique({
+        where: { id: input.id },
+      });
+      if (!pipeline || pipeline.userId !== ctx.userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const history = (pipeline.versionHistory as any[]) ?? [];
+      const targetVersion = history.find((v: any) => v.version === input.version);
+      if (!targetVersion) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+      }
+
+      const currentVersion = pipeline.version;
+      const currentHistory = history.filter((v: any) => v.version !== input.version);
+
+      currentHistory.push({
+        version: currentVersion,
+        graph: pipeline.graph,
+        name: pipeline.name,
+        description: pipeline.description,
+        savedAt: pipeline.updatedAt.toISOString(),
+        savedBy: ctx.userId,
+      });
+
       return ctx.prisma.pipeline.update({
         where: { id: input.id },
         data: {
-          ...(input.name && { name: input.name }),
-          ...(input.description && { description: input.description }),
-          ...(input.graph && { graph: input.graph, version: { increment: 1 } }),
-          ...(input.isActive !== undefined && { isActive: input.isActive }),
+          graph: targetVersion.graph,
+          name: targetVersion.name ?? pipeline.name,
+          description: targetVersion.description ?? pipeline.description,
+          version: { increment: 1 },
+          versionHistory: currentHistory,
         },
       });
     }),
@@ -478,5 +565,172 @@ export const pipelineRouter = router({
       return ctx.prisma.flowCategory.findMany({
         orderBy: { sortOrder: "asc" },
       });
+    }),
+
+  exportPipeline: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const pipeline = await ctx.prisma.pipeline.findUnique({
+        where: { id: input.id },
+      });
+      if (!pipeline || pipeline.userId !== ctx.userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const exportData = {
+        format: "flowmind",
+        version: "1.0",
+        exportedAt: new Date().toISOString(),
+        pipeline: {
+          name: pipeline.name,
+          description: pipeline.description,
+          graph: pipeline.graph,
+          tags: pipeline.tags,
+          category: pipeline.category,
+        },
+      };
+
+      return {
+        data: JSON.stringify(exportData, null, 2),
+        filename: `${pipeline.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-export.json`,
+      };
+    }),
+
+  importPipeline: protectedProcedure
+    .input(z.object({
+      data: z.string(),
+      name: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(input.data);
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid JSON data" });
+      }
+
+      if (parsed.format === "flowmind") {
+        const pipelineData = parsed.pipeline;
+        if (!pipelineData?.graph?.nodes) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid FlowMind export format" });
+        }
+
+        return ctx.prisma.pipeline.create({
+          data: {
+            userId: ctx.userId,
+            name: input.name ?? pipelineData.name ?? "Imported Pipeline",
+            description: pipelineData.description,
+            graph: pipelineData.graph,
+            tags: pipelineData.tags ?? [],
+            category: pipelineData.category,
+          },
+        });
+      }
+
+      if (parsed.nodes && parsed.edges) {
+        return ctx.prisma.pipeline.create({
+          data: {
+            userId: ctx.userId,
+            name: input.name ?? "Imported Pipeline",
+            graph: { nodes: parsed.nodes, edges: parsed.edges },
+          },
+        });
+      }
+
+      if (parsed.name && (parsed.graph || parsed.nodes)) {
+        return ctx.prisma.pipeline.create({
+          data: {
+            userId: ctx.userId,
+            name: input.name ?? parsed.name,
+            description: parsed.description,
+            graph: parsed.graph ?? { nodes: parsed.nodes ?? [], edges: parsed.edges ?? [] },
+            tags: parsed.tags ?? [],
+          },
+        });
+      }
+
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Unrecognized pipeline format" });
+    }),
+
+  batchTrigger: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      inputs: z.array(z.record(z.unknown())),
+      settings: workflowSettingsSchema,
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const pipeline = await ctx.prisma.pipeline.findUnique({
+        where: { id: input.id },
+      });
+      if (!pipeline || pipeline.userId !== ctx.userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const results: Array<{ index: number; runId: string; status: string }> = [];
+
+      for (let i = 0; i < input.inputs.length; i++) {
+        const batchInput = input.inputs[i];
+        const run = await ctx.prisma.pipelineRun.create({
+          data: {
+            pipelineId: input.id,
+            status: "PENDING",
+            input: batchInput as any,
+          },
+        });
+
+        results.push({ index: i, runId: run.id, status: "PENDING" });
+
+        setImmediate(async () => {
+          try {
+            const rawGraph = pipeline.graph as any;
+            const graph = normalizeGraph(rawGraph);
+            const batchEngine = new PipelineEngine({ llm });
+            const result = await batchEngine.execute(run.id, input.id, graph, batchInput, input.settings);
+
+            await ctx.prisma.pipelineRun.update({
+              where: { id: run.id },
+              data: {
+                status: result.status === "success" ? "SUCCESS" : "FAILED",
+                output: result as any,
+                completedAt: new Date(),
+              },
+            });
+          } catch (err: any) {
+            await ctx.prisma.pipelineRun.update({
+              where: { id: run.id },
+              data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
+            });
+          }
+        });
+      }
+
+      return {
+        batchId: `batch-${Date.now()}`,
+        totalInputs: input.inputs.length,
+        runs: results,
+      };
+    }),
+
+  getBatchStatus: protectedProcedure
+    .input(z.object({ runIds: z.array(z.string()) }))
+    .query(async ({ input, ctx }) => {
+      const runs = await ctx.prisma.pipelineRun.findMany({
+        where: { id: { in: input.runIds } },
+        select: { id: true, status: true, input: true, output: true, startedAt: true, completedAt: true },
+      });
+
+      const total = runs.length;
+      const completed = runs.filter(r => r.status === "SUCCESS" || r.status === "FAILED").length;
+      const succeeded = runs.filter(r => r.status === "SUCCESS").length;
+      const failed = runs.filter(r => r.status === "FAILED").length;
+
+      return {
+        total,
+        completed,
+        succeeded,
+        failed,
+        progress: total > 0 ? completed / total : 1,
+        runs,
+      };
     }),
 });

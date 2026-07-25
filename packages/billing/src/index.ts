@@ -297,7 +297,17 @@ async function getUsageMetrics(userId: string): Promise<UsageMetrics> {
   const pipelineCount = await prisma.pipeline.count({ where: { userId } });
   const cronJobCount = await prisma.cronJob.count({ where: { userId } });
   const skillCount = await prisma.skill.count({ where: { userId } });
-  const storageUsedMb = 0;
+
+  const knowledgeBases = await prisma.knowledgeBase.findMany({
+    where: { userId },
+    select: { totalSize: true },
+  });
+  const storageUsedBytes = knowledgeBases.reduce((acc, kb) => acc + Number(kb.totalSize), 0);
+  const storageUsedMb = Math.round(storageUsedBytes / (1024 * 1024));
+
+  const mcpTokenCount = await prisma.mcpToken.count({
+    where: { userId },
+  });
 
   return {
     chatsUsed,
@@ -310,9 +320,9 @@ async function getUsageMetrics(userId: string): Promise<UsageMetrics> {
     cronJobLimit: config.features.cronJobs,
     skillCount,
     skillLimit: config.features.skills,
-    channelCount: 0,
+    channelCount: mcpTokenCount,
     channelLimit: config.features.channels,
-    mcpConnectionCount: 0,
+    mcpConnectionCount: mcpTokenCount,
     mcpConnectionLimit: config.features.mcpConnections,
   };
 }

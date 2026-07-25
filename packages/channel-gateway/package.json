@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@flowmind/shared": "workspace:*",
-    "nodemailer": "^9.0.3"
+    "nodemailer": "^9.0.3",
+    "imapflow": "^1.0.170"
   },
   "devDependencies": {
     "@types/nodemailer": "^8.0.1",

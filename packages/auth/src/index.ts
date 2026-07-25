@@ -1,9 +1,21 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import * as OTPAuth from "otpauth";
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from "@simplewebauthn/server";
+import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
 import { prisma } from "@flowmind/db";
 import { OrgRole, Tier, type User, type UserRole } from "@flowmind/shared";
 import { JwtPayload } from "./strategies/jwt";
 import { hasPermission, Permission } from "./rbac";
+
+const RP_NAME = process.env.RP_NAME ?? "FlowMind";
+const RP_ID = process.env.RP_ID ?? "localhost";
+const ORIGIN = process.env.APP_URL ?? "http://localhost:3000";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "fallback-secret-change-in-production";
 const ACCESS_TOKEN_EXPIRY = "15m";
@@ -373,17 +385,72 @@ export interface MfaTOTPSetup {
 }
 
 async function setupMfaTOTP(userId: string): Promise<MfaTOTPSetup> {
-  void userId;
-  return {
-    secret: "PLACEHOLDER_SECRET",
-    qrCodeUrl: "otpauth://totp/flowmind:user@example.com?secret=PLACEHOLDER&issuer=flowmind",
-  };
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
+
+  const totp = new OTPAuth.TOTP({
+    issuer: RP_NAME,
+    label: user.email,
+    algorithm: "SHA1",
+    digits: 6,
+    period: 30,
+    secret: new OTPAuth.Secret({ size: 20 }),
+  });
+
+  const secret = totp.secret.base32;
+  const qrCodeUrl = totp.toString();
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { defaultModel: `mfa_secret:${secret}` },
+  });
+
+  return { secret, qrCodeUrl };
 }
 
 async function verifyMfaTOTP(userId: string, token: string): Promise<boolean> {
-  void userId;
-  void token;
-  return false;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.defaultModel?.startsWith("mfa_secret:")) return false;
+
+  const secret = user.defaultModel.replace("mfa_secret:", "");
+  const totp = new OTPAuth.TOTP({
+    issuer: RP_NAME,
+    label: user.email,
+    algorithm: "SHA1",
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secret),
+  });
+
+  const delta = totp.validate({ token, window: 1 });
+  return delta !== null;
+}
+
+async function confirmMfaTOTP(userId: string, token: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.defaultModel?.startsWith("mfa_secret:")) return false;
+
+  const secret = user.defaultModel.replace("mfa_secret:", "");
+  const totp = new OTPAuth.TOTP({
+    issuer: RP_NAME,
+    label: user.email,
+    algorithm: "SHA1",
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secret),
+  });
+
+  const delta = totp.validate({ token, window: 1 });
+  if (delta === null) return false;
+
+  return true;
+}
+
+async function disableMfaTOTP(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { defaultModel: null },
+  });
 }
 
 export interface WebAuthnCredential {
@@ -394,14 +461,81 @@ export interface WebAuthnCredential {
 }
 
 async function registerWebAuthn(userId: string): Promise<Record<string, unknown>> {
-  void userId;
-  return { challenge: "PLACEHOLDER_CHALLENGE", rp: { name: "FlowMind" }, user: { id: userId, name: "user" } };
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
+
+  const options = await generateRegistrationOptions({
+    rpName: RP_NAME,
+    rpID: RP_ID,
+    userName: user.email,
+    attestationType: "none",
+    authenticatorSelection: {
+      residentKey: "preferred",
+      userVerification: "preferred",
+    },
+  });
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { defaultModel: `webauthn_challenge:${options.challenge}` },
+  });
+
+  return options as unknown as Record<string, unknown>;
 }
 
 async function verifyWebAuthn(userId: string, credential: Record<string, unknown>): Promise<boolean> {
-  void userId;
-  void credential;
-  return false;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.defaultModel?.startsWith("webauthn_challenge:")) return false;
+
+  const challenge = user.defaultModel.replace("webauthn_challenge:", "");
+
+  try {
+    const verification = await verifyRegistrationResponse({
+      response: credential as unknown as RegistrationResponseJSON,
+      expectedChallenge: challenge,
+      expectedOrigin: ORIGIN,
+      expectedRPID: RP_ID,
+    });
+
+    if (verification.verified && verification.registrationInfo) {
+      const { credential: regCredential } = verification.registrationInfo;
+      await prisma.user.update({
+        where: { id: userId },
+        data: { defaultModel: null },
+      });
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+async function getWebAuthnAuthOptions(userId: string): Promise<Record<string, unknown>> {
+  const options = await generateAuthenticationOptions({
+    rpID: RP_ID,
+    userVerification: "preferred",
+  });
+  return options as unknown as Record<string, unknown>;
+}
+
+async function verifyWebAuthnLogin(userId: string, credential: Record<string, unknown>): Promise<boolean> {
+  try {
+    const verification = await verifyAuthenticationResponse({
+      response: credential as unknown as AuthenticationResponseJSON,
+      expectedOrigin: ORIGIN,
+      expectedRPID: RP_ID,
+      credential: {
+        id: credential.id as string,
+        publicKey: Uint8Array.from(Buffer.from(credential.publicKey as string, "base64")),
+        counter: credential.counter as number,
+      },
+    });
+
+    return verification.verified;
+  } catch {
+    return false;
+  }
 }
 
 export const AuthService = {
@@ -414,8 +548,12 @@ export const AuthService = {
   enforceRbac,
   setupMfaTOTP,
   verifyMfaTOTP,
+  confirmMfaTOTP,
+  disableMfaTOTP,
   registerWebAuthn,
   verifyWebAuthn,
+  getWebAuthnAuthOptions,
+  verifyWebAuthnLogin,
   generateTokens,
   verifyToken,
   hashPassword,
