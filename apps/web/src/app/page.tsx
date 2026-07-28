@@ -72,10 +72,10 @@ const features = [
 ]
 
 const stats = [
-  { value: "160K", label: "GitHub Stars" },
-  { value: "900", label: "Contributors" },
-  { value: "7.5M", label: "Monthly Developers" },
-  { value: "13K+", label: "Commits" },
+  { value: "28+", label: "Node Types" },
+  { value: "17", label: "LLM Providers" },
+  { value: "23", label: "Data Models" },
+  { value: "10", label: "Built-in Tools" },
 ]
 
 const faqs = [
@@ -244,10 +244,10 @@ export default function LandingPage() {
       <section className="border-y border-border/50 bg-surface/50 py-16">
         <div className="max-w-4xl mx-auto px-4">
           <p className="text-center text-sm text-muted-foreground mb-10">
-            With over <strong className="text-foreground">160,000</strong> GitHub stars,{" "}
-            <strong className="text-foreground">900</strong> contributors, and over{" "}
-            <strong className="text-foreground">13,000</strong> commits, FlowMind is used and
-            trusted by over <strong className="text-foreground">7.5M</strong> developers every month.
+            FlowMind ships with <strong className="text-foreground">28+ node types</strong>,{" "}
+            <strong className="text-foreground">17 LLM provider</strong> integrations, and{" "}
+            <strong className="text-foreground">10 built-in tools</strong> — all open source
+            and ready to use.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((s) => (
@@ -310,7 +310,7 @@ export default function LandingPage() {
                 className="flex items-center gap-1 hover:text-foreground transition-colors"
               >
                 <Star className="h-3 w-3" />
-                160K stars
+                MIT licensed
               </a>
             </div>
           </div>

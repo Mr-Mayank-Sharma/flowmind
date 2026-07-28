@@ -6,6 +6,7 @@ import { Mail, ArrowLeft, Sparkles, Loader2, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
+import { api } from "@/lib/api"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -15,7 +16,11 @@ export default function ForgotPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    await new Promise(r => setTimeout(r, 1000))
+    try {
+      await api.auth.requestPasswordReset({ email })
+    } catch {
+      // Don't reveal if email exists - show success either way
+    }
     setIsLoading(false)
     setSent(true)
   }

@@ -17,7 +17,7 @@ export const agentsRouter = router({
   list: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.agent.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { createdAt: "desc" },
       })
     }),
@@ -42,7 +42,7 @@ export const agentsRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.agent.create({
-        data: { ...input, userId: ctx.userId, status: "DEPLOYING" },
+        data: { ...input, userId: ctx.userId!, status: "DEPLOYING" },
       })
     }),
 
@@ -68,7 +68,7 @@ export const agentsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.agent.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       })
       return { success: true }
     }),

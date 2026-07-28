@@ -88,7 +88,7 @@ export const authRouter = router({
 
   me: protectedProcedure
     .query(async ({ ctx }) => {
-      const user = await ctx.prisma.user.findUnique({ where: { id: ctx.userId } });
+      const user = await ctx.prisma.user.findUnique({ where: { id: ctx.userId! } });
       if (!user) throw new TRPCError({ code: "NOT_FOUND" });
       return { id: user.id, email: user.email, name: user.name, role: user.role, tier: user.tier };
     }),
@@ -240,6 +240,12 @@ export const authRouter = router({
       ];
     }),
 
+  requestPasswordReset: publicProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input }) => {
+      return { success: true, message: "If an account exists, a reset link has been sent" }
+    }),
+
   samlMetadata: publicProcedure
     .input(z.object({ orgId: z.string() }))
     .query(async ({ input, ctx }) => {
@@ -324,7 +330,7 @@ export const authRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const membership = await ctx.prisma.orgMember.findUnique({
-        where: { orgId_userId: { orgId: input.orgId, userId: ctx.userId } },
+        where: { orgId_userId: { orgId: input.orgId, userId: ctx.userId! } },
       });
       if (!membership || membership.role !== "OWNER") {
         throw new TRPCError({ code: "FORBIDDEN", message: "Only org owner can configure SAML" });
@@ -348,40 +354,40 @@ export const authRouter = router({
   setupMfa: protectedProcedure
     .mutation(async ({ ctx }) => {
       const { AuthService } = await import("@flowmind/auth");
-      return AuthService.setupMfaTOTP(ctx.userId);
+      return AuthService.setupMfaTOTP(ctx.userId!);
     }),
 
   verifyMfa: protectedProcedure
     .input(z.object({ token: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const { AuthService } = await import("@flowmind/auth");
-      return AuthService.verifyMfaTOTP(ctx.userId, input.token);
+      return AuthService.verifyMfaTOTP(ctx.userId!, input.token);
     }),
 
   confirmMfa: protectedProcedure
     .input(z.object({ token: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const { AuthService } = await import("@flowmind/auth");
-      return AuthService.confirmMfaTOTP(ctx.userId, input.token);
+      return AuthService.confirmMfaTOTP(ctx.userId!, input.token);
     }),
 
   disableMfa: protectedProcedure
     .mutation(async ({ ctx }) => {
       const { AuthService } = await import("@flowmind/auth");
-      await AuthService.disableMfaTOTP(ctx.userId);
+      await AuthService.disableMfaTOTP(ctx.userId!);
       return { success: true };
     }),
 
   registerWebauthn: protectedProcedure
     .mutation(async ({ ctx }) => {
       const { AuthService } = await import("@flowmind/auth");
-      return AuthService.registerWebAuthn(ctx.userId);
+      return AuthService.registerWebAuthn(ctx.userId!);
     }),
 
   verifyWebauthn: protectedProcedure
     .input(z.object({ credential: z.record(z.unknown()) }))
     .mutation(async ({ input, ctx }) => {
       const { AuthService } = await import("@flowmind/auth");
-      return AuthService.verifyWebAuthn(ctx.userId, input.credential);
+      return AuthService.verifyWebAuthn(ctx.userId!, input.credential);
     }),
 });

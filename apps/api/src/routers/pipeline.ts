@@ -126,7 +126,7 @@ export const pipelineRouter = router({
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.pipeline.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           name: input.name,
           description: input.description,
           graph: JSON.parse(JSON.stringify(input.graph)),
@@ -516,7 +516,7 @@ export const pipelineRouter = router({
       return ctx.prisma.marketplaceFlow.create({
         data: {
           pipelineId: input.pipelineId,
-          creatorId: ctx.userId,
+          creatorId: ctx.userId!,
           title: input.title,
           description: input.description,
           category: input.category,
@@ -537,7 +537,7 @@ export const pipelineRouter = router({
 
       const clonedPipeline = await ctx.prisma.pipeline.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           name: `${marketFlow.title} (clone)`,
           description: marketFlow.description,
           graph: marketFlow.pipeline.graph as any,
@@ -548,7 +548,7 @@ export const pipelineRouter = router({
         data: {
           sourceFlowId: input.marketplaceId,
           clonePipelineId: clonedPipeline.id,
-          userId: ctx.userId,
+          userId: ctx.userId!,
         },
       });
 
@@ -617,7 +617,7 @@ export const pipelineRouter = router({
 
         return ctx.prisma.pipeline.create({
           data: {
-            userId: ctx.userId,
+            userId: ctx.userId!,
             name: input.name ?? pipelineData.name ?? "Imported Pipeline",
             description: pipelineData.description,
             graph: pipelineData.graph,
@@ -630,7 +630,7 @@ export const pipelineRouter = router({
       if (parsed.nodes && parsed.edges) {
         return ctx.prisma.pipeline.create({
           data: {
-            userId: ctx.userId,
+            userId: ctx.userId!,
             name: input.name ?? "Imported Pipeline",
             graph: { nodes: parsed.nodes, edges: parsed.edges },
           },
@@ -640,7 +640,7 @@ export const pipelineRouter = router({
       if (parsed.name && (parsed.graph || parsed.nodes)) {
         return ctx.prisma.pipeline.create({
           data: {
-            userId: ctx.userId,
+            userId: ctx.userId!,
             name: input.name ?? parsed.name,
             description: parsed.description,
             graph: parsed.graph ?? { nodes: parsed.nodes ?? [], edges: parsed.edges ?? [] },

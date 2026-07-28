@@ -67,7 +67,7 @@ export const marketplaceRouter = router({
 
       const clonedPipeline = await ctx.prisma.pipeline.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           name: `${sourceFlow.title} (clone)`,
           description: sourceFlow.description,
           graph: sourceFlow.pipeline.graph as any,
@@ -80,7 +80,7 @@ export const marketplaceRouter = router({
         data: {
           sourceFlowId: input.flowId,
           clonePipelineId: clonedPipeline.id,
-          userId: ctx.userId,
+          userId: ctx.userId!,
         },
       });
 
@@ -128,7 +128,7 @@ export const marketplaceRouter = router({
       return ctx.prisma.marketplaceFlow.create({
         data: {
           pipelineId: input.pipelineId,
-          creatorId: ctx.userId,
+          creatorId: ctx.userId!,
           category: input.category,
           title: input.title,
           description: input.description,
@@ -142,11 +142,11 @@ export const marketplaceRouter = router({
     .input(z.object({ flowId: z.string(), stars: z.number().min(1).max(5), body: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       const review = await ctx.prisma.flowReview.upsert({
-        where: { flowId_reviewerId: { flowId: input.flowId, reviewerId: ctx.userId } },
+        where: { flowId_reviewerId: { flowId: input.flowId, reviewerId: ctx.userId! } },
         update: { stars: input.stars, body: input.body },
         create: {
           flowId: input.flowId,
-          reviewerId: ctx.userId,
+          reviewerId: ctx.userId!,
           stars: input.stars,
           body: input.body,
         },

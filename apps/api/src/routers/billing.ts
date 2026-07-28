@@ -8,7 +8,7 @@ export const billingRouter = router({
   getSubscription: protectedProcedure
     .query(async ({ ctx }) => {
       const sub = await ctx.prisma.subscription.findUnique({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
       });
       if (!sub) {
         return { tier: "FREE", status: "active", currentPeriodEnd: null };
@@ -21,15 +21,15 @@ export const billingRouter = router({
     .mutation(async ({ input, ctx }) => {
       if (!process.env.STRIPE_SECRET_KEY) {
         await ctx.prisma.subscription.upsert({
-          where: { userId: ctx.userId },
+          where: { userId: ctx.userId ?? undefined },
           update: { tier: input.tier },
-          create: { userId: ctx.userId, tier: input.tier },
+          create: { userId: ctx.userId!, tier: input.tier },
         });
         return { url: "/settings/billing?success=1", mock: true };
       }
 
       const url = await BillingService.createCheckoutSession({
-        userId: ctx.userId,
+        userId: ctx.userId!,
         tier: input.tier as Tier,
       });
       return { url, mock: false };
@@ -41,17 +41,17 @@ export const billingRouter = router({
         return { url: "/settings/billing" };
       }
 
-      const url = await BillingService.createPortalSession(ctx.userId);
+      const url = await BillingService.createPortalSession(ctx.userId!);
       return { url };
     }),
 
   getUsage: protectedProcedure
     .query(async ({ ctx }) => {
-      return BillingService.getUsageMetrics(ctx.userId);
+      return BillingService.getUsageMetrics(ctx.userId!);
     }),
 
   getInvoices: protectedProcedure
     .query(async ({ ctx }) => {
-      return BillingService.getInvoices(ctx.userId);
+      return BillingService.getInvoices(ctx.userId!);
     }),
 });

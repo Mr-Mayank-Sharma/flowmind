@@ -69,6 +69,20 @@ const triggerRunners: Record<string, (node: PipelineNode, context: ExecutionCont
     const channel = (node.config.channel as string) ?? "email"
     return { triggered: true, source: "channel", channel, timestamp: new Date().toISOString(), json: _context.input ?? {} }
   },
+  async pollingTrigger(node, context) {
+    const endpoint = (node.config.endpoint as string) ?? ""
+    const intervalMs = (node.config.intervalMs as number) ?? 60000
+    let payload: unknown = { polled: true, time: new Date().toISOString() }
+    if (endpoint) {
+      try {
+        const res = await fetch(endpoint, { signal: AbortSignal.timeout(10_000) })
+        payload = await res.json()
+      } catch (err) {
+        payload = { error: String(err), time: new Date().toISOString() }
+      }
+    }
+    return { triggered: true, source: "polling", endpoint, intervalMs, payload, timestamp: new Date().toISOString(), json: payload }
+  },
 }
 
 function modelFromNode(node: PipelineNode): string {
@@ -344,7 +358,7 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
           query,
           rows: result.rows,
           rowCount: result.rowCount ?? 0,
-          fields: result.fields?.map(f => f.name) ?? [],
+          fields: result.fields?.map((f: any) => f.name) ?? [],
           json: { query, rowCount: result.rowCount ?? 0, rows: result.rows },
         }
       } finally {

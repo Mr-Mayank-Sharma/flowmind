@@ -481,7 +481,8 @@ const DEMO_WORKFLOWS: SeedWorkflow[] = [
 async function seed() {
   console.log("Seeding marketplace flows...");
 
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  const passwordFromEnv = process.env.ADMIN_PASSWORD || "admin123";
+  const passwordHash = await bcrypt.hash(passwordFromEnv, 10);
 
   const org = await prisma.org.upsert({
     where: { slug: "flowmind" },
@@ -507,7 +508,7 @@ async function seed() {
     create: { orgId: org.id, userId: adminUser.id, role: "OWNER" },
   });
 
-  console.log(`  Admin: admin@flowmind.ai / admin123`);
+  console.log(`  Admin: admin@flowmind.ai / ${passwordFromEnv}`);
 
   for (const cat of CATEGORIES) {
     await prisma.flowCategory.upsert({

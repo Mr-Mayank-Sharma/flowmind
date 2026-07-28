@@ -136,7 +136,7 @@ export const skillsRouter = router({
         data: {
           name: input.manifest.name,
           description: input.manifest.description,
-          author: ctx.userId,
+          author: ctx.userId!,
           manifest: input.manifest as any,
           code: input.code,
           version: input.manifest.version,
@@ -174,7 +174,7 @@ export const skillsRouter = router({
         const { SkillEngine } = await import("@flowmind/skill-engine")
         const engine = new SkillEngine()
         const inputStr = JSON.stringify(input.inputs)
-        const result = await engine.execute(skill.id, { userId: ctx.userId, input: inputStr })
+        const result = await engine.execute(skill.id, { userId: ctx.userId!, input: inputStr })
         return result
       }
 

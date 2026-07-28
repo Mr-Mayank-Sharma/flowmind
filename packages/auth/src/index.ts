@@ -7,7 +7,7 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from "@simplewebauthn/server";
-import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
+import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { prisma } from "@flowmind/db";
 import { OrgRole, Tier, type User, type UserRole } from "@flowmind/shared";
 import { JwtPayload } from "./strategies/jwt";
@@ -498,7 +498,7 @@ async function verifyWebAuthn(userId: string, credential: Record<string, unknown
     });
 
     if (verification.verified && verification.registrationInfo) {
-      const { credential: regCredential } = verification.registrationInfo;
+      const { credentialPublicKey, credentialID } = verification.registrationInfo;
       await prisma.user.update({
         where: { id: userId },
         data: { defaultModel: null },
@@ -523,12 +523,14 @@ async function verifyWebAuthnLogin(userId: string, credential: Record<string, un
   try {
     const verification = await verifyAuthenticationResponse({
       response: credential as unknown as AuthenticationResponseJSON,
+      expectedChallenge: (credential.challenge as string) ?? "",
       expectedOrigin: ORIGIN,
       expectedRPID: RP_ID,
-      credential: {
-        id: credential.id as string,
-        publicKey: Uint8Array.from(Buffer.from(credential.publicKey as string, "base64")),
+      authenticator: {
+        credentialID: credential.id as string,
+        credentialPublicKey: Uint8Array.from(Buffer.from(credential.publicKey as string, "base64")),
         counter: credential.counter as number,
+        transports: credential.transports as any,
       },
     });
 

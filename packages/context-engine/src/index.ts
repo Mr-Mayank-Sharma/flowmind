@@ -1,6 +1,5 @@
 import { QdrantClient } from "@qdrant/js-client-rest"
 
-const QDRANT_URL = process.env.QDRANT_URL || "http://localhost:6333"
 const COLLECTION_NAME = "context_chunks"
 const EMBEDDING_DIM = 384
 
@@ -19,10 +18,12 @@ export interface ContextQuery {
 }
 
 async function embed(text: string): Promise<number[]> {
-  const res = await fetch("http://localhost:11434/api/embeddings", {
+  const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434"
+  const model = process.env.EMBEDDING_MODEL || "all-minilm"
+  const res = await fetch(`${ollamaUrl}/api/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "all-minilm", prompt: text }),
+    body: JSON.stringify({ model, prompt: text }),
   })
   if (!res.ok) throw new Error(`Embedding API error: ${res.status}`)
   const data = await res.json()
@@ -50,7 +51,7 @@ export class ContextEngine {
   private ready: Promise<void>
 
   constructor() {
-    this.client = new QdrantClient({ url: QDRANT_URL })
+    this.client = new QdrantClient({ url: process.env.QDRANT_URL || "http://localhost:6333" })
     this.ready = this.ensureCollection()
   }
 

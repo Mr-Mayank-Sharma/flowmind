@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
-import { McpExecutor, McpServerRegistry, McpConnectionPool, McpToolRouter, OAUTH_PROVIDERS } from "@flowmind/mcp-executor";
+import { McpExecutor, McpServerRegistry, McpConnectionPool, McpToolRouter, OAUTH_PROVIDERS, getClientId, getClientSecret } from "@flowmind/mcp-executor";
 
 const registry = new McpServerRegistry();
 const connectionPool = new McpConnectionPool();
@@ -27,8 +27,48 @@ const tokenStore = {
       create: { id: `${userId}_${provider}`, userId, provider, accessToken: token.accessToken, refreshToken: token.refreshToken ?? null, scope: token.scopes.join(" "), expiresAt: token.expiresAt },
     });
   },
-  refreshToken: async (_userId: string, _provider: string) => {
-    throw new Error("Token refresh not yet implemented");
+  refreshToken: async (userId: string, provider: string) => {
+    const token = await tokenStore.getToken(userId, provider);
+    if (!token) throw new TRPCError({ code: "NOT_FOUND", message: `No stored token for ${provider}` });
+    if (!token.refreshToken) throw new TRPCError({ code: "BAD_REQUEST", message: `No refresh token available for ${provider}` });
+
+    const config = OAUTH_PROVIDERS[provider];
+    if (!config) throw new Error(`Unknown OAuth provider: ${provider}`);
+
+    const clientId = getClientId(provider);
+    const clientSecret = getClientSecret(provider);
+    if (!clientId || !clientSecret) throw new Error(`OAuth credentials not configured for ${provider}`);
+
+    const body: Record<string, string> = {
+      grant_type: "refresh_token",
+      refresh_token: token.refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    };
+
+    const res = await fetch(config.tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`Token refresh failed: ${res.status} ${errBody}`);
+    }
+
+    const data = (await res.json()) as Record<string, unknown>;
+    const accessToken = (data.access_token ?? data.accessToken) as string;
+    const refreshToken = (data.refresh_token ?? data.refreshToken) as string | undefined;
+    const expiresIn = (data.expires_in ?? data.expiresIn ?? 3600) as number;
+    const scopes = ((data.scope ?? data.scopes) as string ?? "").split(" ").filter(Boolean);
+
+    if (!accessToken) throw new Error("No access token in refresh response");
+
+    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+    const newToken = { accessToken, refreshToken, expiresAt, scopes };
+    await tokenStore.setToken(userId, provider, newToken);
+    return newToken;
   },
 };
 
@@ -54,7 +94,7 @@ export const mcpRouter = router({
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.mcpToken.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           provider: input.provider,
           accessToken: input.accessToken,
           refreshToken: input.refreshToken ?? null,
@@ -95,7 +135,7 @@ export const mcpRouter = router({
     .input(z.object({ provider: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const redirectUri = `${process.env.APP_URL ?? "http://localhost:3000"}/mcp/oauth/callback`;
-      return executor.initiateOAuthFlow(input.provider, redirectUri, ctx.userId);
+      return executor.initiateOAuthFlow(input.provider, redirectUri, ctx.userId!);
     }),
 
   oauthCallback: publicProcedure
@@ -108,6 +148,6 @@ export const mcpRouter = router({
   execute: protectedProcedure
     .input(z.object({ toolName: z.string(), args: z.any() }))
     .mutation(async ({ input, ctx }) => {
-      return executor.execute(input.toolName, input.args, ctx.userId);
+      return executor.execute(input.toolName, input.args, ctx.userId!);
     }),
 });

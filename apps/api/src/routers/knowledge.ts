@@ -36,7 +36,7 @@ export const knowledgeRouter = router({
   list: protectedProcedure
     .query(async ({ ctx }) => {
       const res = await ctx.prisma.knowledgeBase.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { updatedAt: "desc" },
       })
       return serialize(res) as typeof res
@@ -63,7 +63,7 @@ export const knowledgeRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const res = await ctx.prisma.knowledgeBase.create({
-        data: { ...input, userId: ctx.userId },
+        data: { ...input, userId: ctx.userId! },
       })
       return serialize(res) as typeof res
     }),
@@ -72,7 +72,7 @@ export const knowledgeRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.knowledgeBase.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       })
       return { success: true }
     }),
@@ -116,7 +116,7 @@ export const knowledgeRouter = router({
 
       if (input.content) {
         callAgentRuntime("/knowledge/index", {
-          user_id: ctx.userId,
+          user_id: ctx.userId!,
           doc_id: doc.id,
           content: input.content,
           metadata: { name: input.name, type: input.type, kbId: input.kbId },
@@ -155,7 +155,7 @@ export const knowledgeRouter = router({
       await ctx.prisma.knowledgeDocument.delete({ where: { id: input.id } })
 
       callAgentRuntime("/knowledge/delete", {
-        user_id: ctx.userId,
+        user_id: ctx.userId!,
         doc_id: input.id,
         content: "",
       }).catch((err) => {
@@ -183,7 +183,7 @@ export const knowledgeRouter = router({
     .query(async ({ input, ctx }) => {
       try {
         const vectorResult = await callAgentRuntime("/knowledge/search", {
-          user_id: ctx.userId,
+          user_id: ctx.userId!,
           query: input.query,
           top_k: input.topK,
         })
@@ -197,7 +197,7 @@ export const knowledgeRouter = router({
         }))
       } catch {
         const kbs = await ctx.prisma.knowledgeBase.findMany({
-          where: { userId: ctx.userId },
+          where: { userId: ctx.userId ?? undefined },
           include: {
             documents: {
               where: {

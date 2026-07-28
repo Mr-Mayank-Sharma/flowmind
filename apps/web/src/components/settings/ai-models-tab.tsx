@@ -1,21 +1,43 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Plus, ArrowUpDown } from "lucide-react"
-
-const models = [
-  "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "claude-3-opus", "claude-3-sonnet",
-  "claude-3-haiku", "gemini-1.5-pro", "gemini-1.5-flash", "mistral-large",
-  "llama-3-70b", "llama-3-8b", "mixtral-8x22b",
-]
-
-const providers = ["OpenAI", "Anthropic", "Google AI", "Mistral AI", "Meta", "Groq", "Together AI", "Fireworks"]
+import { Plus, ArrowUpDown, Loader2 } from "lucide-react"
+import { api } from "@/lib/api"
 
 export function AiModelsTab() {
+  const [models, setModels] = useState<string[]>([])
+  const [providers, setProviders] = useState<{ id: string; name: string; available: boolean }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [m, p] = await Promise.all([
+          api.models.list().catch(() => []),
+          api.models.getProviders().catch(() => []),
+        ])
+        setModels((Array.isArray(m) ? m : []).map((mm: any) => mm.name ?? mm.id ?? ""))
+        setProviders(Array.isArray(p) ? p : [])
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       <Card>
@@ -27,7 +49,7 @@ export function AiModelsTab() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Model</label>
             <Select>
-              <SelectTrigger className="w-full"><SelectValue placeholder="gpt-4o" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder={models[0] || "No models available"} /></SelectTrigger>
               <SelectContent>
                 {models.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
               </SelectContent>
@@ -59,16 +81,21 @@ export function AiModelsTab() {
       <Card>
         <CardHeader>
           <CardTitle>Provider Priority</CardTitle>
-          <CardDescription>Drag to reorder fallback providers</CardDescription>
+          <CardDescription>Select available providers for model routing</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {providers.map((p, i) => (
-            <div key={p} className="flex items-center gap-3 rounded-lg border bg-surface px-4 py-3">
-              <ArrowUpDown className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span className="text-sm font-medium flex-1">{p}</span>
-              <Badge variant="secondary" className="text-xs">{i === 0 ? "Primary" : i === 1 ? "Fallback" : "Tier " + (i + 1)}</Badge>
-            </div>
-          ))}
+          {providers.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">No providers available</p>
+          ) : (
+            providers.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-lg border bg-surface px-4 py-3">
+                <ArrowUpDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm font-medium flex-1">{p.name}</span>
+                {p.available && <Badge variant="secondary" className="text-xs">Available</Badge>}
+                {!p.available && <Badge variant="outline" className="text-xs">Not Configured</Badge>}
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
 
@@ -78,20 +105,24 @@ export function AiModelsTab() {
           <CardDescription>Set spending caps per provider to control costs</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {["OpenAI", "Anthropic", "Google AI"].map(provider => (
-            <div key={provider} className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
-              <span className="text-sm font-medium">{provider}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">Monthly cap:</span>
-                <Input
-                  type="number"
-                  defaultValue={provider === "OpenAI" ? 200 : provider === "Anthropic" ? 150 : 100}
-                  className="w-24 h-8 text-sm"
-                />
-                <span className="text-xs text-muted-foreground">USD</span>
+          {providers.filter(p => p.available).length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">Configure API keys to set cost limits</p>
+          ) : (
+            providers.filter(p => p.available).map(provider => (
+              <div key={provider.id} className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
+                <span className="text-sm font-medium">{provider.name}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground">Monthly cap:</span>
+                  <Input
+                    type="number"
+                    defaultValue={200}
+                    className="w-24 h-8 text-sm"
+                  />
+                  <span className="text-xs text-muted-foreground">USD</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
           <div className="pt-2">
             <Button variant="outline" size="sm" className="gap-2">
               <Plus className="h-3.5 w-3.5" />

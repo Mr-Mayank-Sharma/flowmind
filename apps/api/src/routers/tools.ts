@@ -26,7 +26,7 @@ export const toolsRouter = router({
   list: protectedProcedure
     .query(async ({ ctx }) => {
       const skills = await ctx.prisma.skill.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         select: { id: true, name: true, isActive: true, useCount: true, updatedAt: true },
       });
       const skillMap = new Map(skills.map((s) => [s.name, s]));
@@ -47,7 +47,7 @@ export const toolsRouter = router({
     .input(z.object({ skillId: z.string(), input: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const result = await skillEngine.execute(input.skillId, {
-        userId: ctx.userId,
+        userId: ctx.userId!,
         input: input.input,
       })
       return result
@@ -60,7 +60,7 @@ export const toolsRouter = router({
       if (!tool) throw new TRPCError({ code: "NOT_FOUND", message: "Tool not found" });
 
       const existing = await ctx.prisma.skill.findFirst({
-        where: { userId: ctx.userId, name: tool.name },
+        where: { userId: ctx.userId ?? undefined, name: tool.name },
       });
 
       if (existing) {
@@ -72,7 +72,7 @@ export const toolsRouter = router({
 
       return ctx.prisma.skill.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           name: tool.name,
           description: tool.description,
           code: tool.id,

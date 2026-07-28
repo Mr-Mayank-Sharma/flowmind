@@ -103,6 +103,46 @@ if command -v psql &>/dev/null; then
   sudo -u postgres psql -c "CREATE DATABASE flowmind OWNER flowmind;" 2>/dev/null || true
 fi
 
+# ── Generate random admin password ──────────────────────────────────
+FLOWMIND_PASSWORD=$(openssl rand -base64 12 | tr -d '\n')
+log "Admin password generated"
+
+# ── Install Qdrant ───────────────────────────────────────────────────
+if ! curl -s http://127.0.0.1:6333/health &>/dev/null; then
+  if command -v docker &>/dev/null; then
+    cmd "Starting Qdrant via Docker..."
+    docker pull qdrant/qdrant 2>/dev/null || true
+    docker run -d --name flowmind-qdrant -p 6333:6333 -p 6334:6334 \
+      -v flowmind-qdrant-data:/qdrant/storage \
+      qdrant/qdrant 2>/dev/null || true
+    log "Qdrant started via Docker"
+  else
+    warn "Qdrant not installed. Install Docker or run Qdrant manually."
+  fi
+fi
+
+# ── Install Redis ────────────────────────────────────────────────────
+if ! command -v redis-cli &>/dev/null; then
+  if command -v docker &>/dev/null; then
+    cmd "Starting Redis via Docker..."
+    docker pull redis:7-alpine 2>/dev/null || true
+    docker run -d --name flowmind-redis -p 6379:6379 redis:7-alpine 2>/dev/null || true
+    log "Redis started via Docker"
+  elif [ "$OS" = "linux" ] && command -v apt-get &>/dev/null; then
+    cmd "Installing Redis via apt..."
+    sudo apt-get install -y -qq redis-server 2>/dev/null || true
+    sudo systemctl start redis-server 2>/dev/null || true
+    log "Redis installed via apt"
+  elif [ "$OS" = "darwin" ] && command -v brew &>/dev/null; then
+    cmd "Installing Redis via brew..."
+    brew install redis 2>/dev/null || true
+    brew services start redis 2>/dev/null || true
+    log "Redis installed via brew"
+  else
+    warn "Redis not installed. Install Docker, apt, or brew for automatic setup."
+  fi
+fi
+
 # ── Clone / Update ──────────────────────────────────────────────────
 if [ -d "$INSTALL_DIR" ]; then
   if [ -d "$INSTALL_DIR/.git" ]; then
@@ -144,7 +184,7 @@ DATABASE_URL="postgresql://flowmind:flowmind@localhost:5432/flowmind"
 export DATABASE_URL
 
 pnpm db:migrate 2>/dev/null || warn "DB migration skipped (manual: pnpm db:migrate)"
-pnpm db:seed 2>/dev/null || warn "DB seed skipped (manual: pnpm db:seed)"
+ADMIN_PASSWORD="$FLOWMIND_PASSWORD" pnpm db:seed 2>/dev/null || warn "DB seed skipped (manual: ADMIN_PASSWORD=... pnpm db:seed)"
 
 # ── CLI link ────────────────────────────────────────────────────────
 cmd "Linking CLI..."
@@ -290,6 +330,7 @@ echo "  Login: admin@flowmind.ai / admin123"
 echo "  CLI:   flowmind"
 echo ""
 LAUNCHER
+sed -i "s|admin123|$FLOWMIND_PASSWORD|g" "$INSTALL_DIR/flowmind.sh"
 chmod +x "$INSTALL_DIR/flowmind.sh"
 
 # ── Desktop App standalone launcher ──────────────────────────────────
@@ -324,9 +365,9 @@ echo ""
 echo -e "  ${CYAN}Quick Start:${NC}"
 echo -e "    ${YELLOW}1.${NC} Start services:  cd ~/.flowmind && bash flowmind.sh"
 echo -e "    ${YELLOW}2.${NC} Open browser:    http://localhost:3000"
-echo -e "    ${YELLOW}3.${NC} Login:           admin@flowmind.ai / admin123"
+echo -e "    ${YELLOW}3.${NC} Login:           admin@flowmind.ai / ${FLOWMIND_PASSWORD}"
 echo -e "    ${YELLOW}4.${NC} Use CLI:         flowmind chat start"
 echo -e "    ${YELLOW}5.${NC} Manage models:   flowmind model list"
 echo ""
-echo -e "  ${YELLOW}Default login: admin@flowmind.ai / admin123${NC}"
+echo -e "  ${YELLOW}Default login: admin@flowmind.ai / ${FLOWMIND_PASSWORD}${NC}"
 echo ""

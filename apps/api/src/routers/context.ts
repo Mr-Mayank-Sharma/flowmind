@@ -5,7 +5,7 @@ export const contextRouter = router({
   getSessions: protectedProcedure
     .query(async ({ ctx }) => {
       const sessions = await ctx.prisma.session.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { updatedAt: "desc" },
         take: 50,
         include: {
@@ -29,7 +29,7 @@ export const contextRouter = router({
   getSkills: protectedProcedure
     .query(async ({ ctx }) => {
       const skills = await ctx.prisma.skill.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { createdAt: "desc" },
         take: 50,
       });
@@ -48,7 +48,7 @@ export const contextRouter = router({
   getMemories: protectedProcedure
     .query(async ({ ctx }) => {
       const memories = await ctx.prisma.memory.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { createdAt: "desc" },
         take: 50,
       });
@@ -68,7 +68,7 @@ export const contextRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.memory.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       });
       return { success: true };
     }),
@@ -77,7 +77,7 @@ export const contextRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.session.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       });
       return { success: true };
     }),
@@ -86,7 +86,7 @@ export const contextRouter = router({
     .input(z.object({ id: z.string(), enabled: z.boolean() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.skill.updateMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
         data: { isActive: input.enabled },
       });
       return { success: true };

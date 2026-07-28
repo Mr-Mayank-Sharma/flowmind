@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flowmind-config
+  namespace: flowmind
+data:
+  API_PORT: "3001"
+  API_HOST: "0.0.0.0"
+  APP_URL: "http://localhost:3000"
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  DATABASE_URL: "postgresql://flowmind:flowmind@postgres:5432/flowmind"
+  REDIS_URL: "redis://redis:6379"
+  QDRANT_URL: "http://qdrant:6333"
+  OLLAMA_URL: "http://ollama:11434"

@@ -32,4 +32,7 @@ export const settingsApi = {
   getAuditLog: () => tRPCQuery<any[]>("settings.getAuditLog"),
   getSubscription: () => tRPCQuery<any>("settings.getSubscription"),
   getSessions: () => tRPCQuery<any[]>("settings.getSessions"),
+  exportData: () => tRPCQuery<any>("settings.exportData"),
+  deleteAccount: (input: { password: string }) =>
+    tRPCMutation<{ success: boolean }>("settings.deleteAccount", input),
 }

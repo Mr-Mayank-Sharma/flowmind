@@ -7,7 +7,7 @@ export const settingsRouter = router({
     .input(z.object({ name: z.string().optional(), timezone: z.string().optional(), language: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.user.update({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         data: input,
       });
     }),
@@ -15,7 +15,7 @@ export const settingsRouter = router({
   getApiKeys: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.apiKey.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         select: { id: true, name: true, provider: true, lastFour: true, lastUsedAt: true, createdAt: true, isActive: true },
       });
     }),
@@ -29,7 +29,7 @@ export const settingsRouter = router({
 
       return ctx.prisma.apiKey.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           name: input.name,
           provider: input.provider,
           keyHash,
@@ -42,7 +42,7 @@ export const settingsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.apiKey.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       });
       return { success: true };
     }),
@@ -50,7 +50,7 @@ export const settingsRouter = router({
   getNotifications: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.notification.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { createdAt: "desc" },
         take: 50,
       });
@@ -60,7 +60,7 @@ export const settingsRouter = router({
     .input(z.object({ id: z.string(), read: z.boolean() }))
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.notification.updateMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
         data: { read: input.read },
       });
     }),
@@ -69,7 +69,7 @@ export const settingsRouter = router({
     .input(z.object({ theme: z.string().optional(), fontSize: z.string().optional(), chatDensity: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.user.update({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         data: input as any,
       });
     }),
@@ -77,7 +77,7 @@ export const settingsRouter = router({
   getOrg: protectedProcedure
     .query(async ({ ctx }) => {
       const user = await ctx.prisma.user.findUnique({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         include: { org: true },
       });
       if (!user?.org) return null;
@@ -88,7 +88,7 @@ export const settingsRouter = router({
     .input(z.object({ name: z.string().optional(), slug: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       const user = await ctx.prisma.user.findUnique({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         select: { orgId: true },
       });
       if (!user?.orgId) throw new TRPCError({ code: "NOT_FOUND", message: "No organization" });
@@ -101,7 +101,7 @@ export const settingsRouter = router({
   getOrgMembers: protectedProcedure
     .query(async ({ ctx }) => {
       const user = await ctx.prisma.user.findUnique({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         select: { orgId: true },
       });
       if (!user?.orgId) return [];
@@ -116,7 +116,7 @@ export const settingsRouter = router({
   getConnections: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.account.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         select: { id: true, provider: true, scope: true },
       });
     }),
@@ -125,7 +125,7 @@ export const settingsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.account.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       });
       return { success: true };
     }),
@@ -133,7 +133,7 @@ export const settingsRouter = router({
   getApiTokens: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.apiKey.findMany({
-        where: { userId: ctx.userId, provider: "api_token" },
+        where: { userId: ctx.userId ?? undefined, provider: "api_token" },
         select: { id: true, name: true, lastFour: true, lastUsedAt: true, createdAt: true, isActive: true },
       });
     }),
@@ -148,7 +148,7 @@ export const settingsRouter = router({
 
       await ctx.prisma.apiKey.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           name: input.name,
           provider: "api_token",
           keyHash,
@@ -163,7 +163,7 @@ export const settingsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.apiKey.deleteMany({
-        where: { id: input.id, userId: ctx.userId, provider: "api_token" },
+        where: { id: input.id, userId: ctx.userId ?? undefined, provider: "api_token" },
       });
       return { success: true };
     }),
@@ -171,7 +171,7 @@ export const settingsRouter = router({
   getProfile: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.user.findUnique({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         select: {
           id: true, name: true, email: true, avatarUrl: true, role: true, tier: true,
           timezone: true, language: true, defaultModel: true, createdAt: true,
@@ -182,7 +182,7 @@ export const settingsRouter = router({
   getMemories: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.memory.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { createdAt: "desc" },
         take: 50,
       });
@@ -192,7 +192,7 @@ export const settingsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.memory.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       });
       return { success: true };
     }),
@@ -200,7 +200,7 @@ export const settingsRouter = router({
   getAuditLog: protectedProcedure
     .query(async ({ ctx }) => {
       const user = await ctx.prisma.user.findUnique({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         select: { orgId: true },
       });
       if (!user?.orgId) return [];
@@ -231,14 +231,52 @@ export const settingsRouter = router({
   getSubscription: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.subscription.findUnique({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
       });
+    }),
+
+  exportData: protectedProcedure
+    .query(async ({ ctx }) => {
+      const userId = ctx.userId!
+      const [pipelines, sessions, memories, apiKeys] = await Promise.all([
+        ctx.prisma.pipeline.findMany({ where: { userId } }),
+        ctx.prisma.session.findMany({ where: { userId }, include: { messages: true } }),
+        ctx.prisma.memory.findMany({ where: { userId } }),
+        ctx.prisma.apiKey.findMany({ where: { userId }, select: { id: true, name: true, provider: true, lastFour: true, createdAt: true } }),
+      ])
+      return {
+        exportedAt: new Date().toISOString(),
+        pipelines: pipelines.map(p => ({ name: p.name, description: p.description, graph: p.graph, tags: p.tags })),
+        sessions: sessions.map(s => ({ title: s.title, messageCount: s.messages?.length ?? 0, updatedAt: s.updatedAt })),
+        memories: memories.map(m => ({ content: m.content, type: m.type, summary: m.summary, createdAt: m.createdAt })),
+        apiKeys: apiKeys.map(k => ({ name: k.name, provider: k.provider, lastFour: k.lastFour, createdAt: k.createdAt })),
+      }
+    }),
+
+  deleteAccount: protectedProcedure
+    .input(z.object({ password: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const user = await ctx.prisma.user.findUnique({ where: { id: ctx.userId! } })
+      if (!user) throw new TRPCError({ code: "NOT_FOUND" })
+      const bcrypt = await import("bcryptjs")
+      const valid = await bcrypt.compare(input.password, user.passwordHash!)
+      if (!valid) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid password" })
+      await Promise.all([
+        ctx.prisma.pipeline.deleteMany({ where: { userId: ctx.userId! } }),
+        ctx.prisma.session.deleteMany({ where: { userId: ctx.userId! } }),
+        ctx.prisma.memory.deleteMany({ where: { userId: ctx.userId! } }),
+        ctx.prisma.apiKey.deleteMany({ where: { userId: ctx.userId! } }),
+        ctx.prisma.notification.deleteMany({ where: { userId: ctx.userId! } }),
+        ctx.prisma.mcpToken.deleteMany({ where: { userId: ctx.userId! } }),
+      ])
+      await ctx.prisma.user.delete({ where: { id: ctx.userId! } })
+      return { success: true }
     }),
 
   getSessions: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.session.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { updatedAt: "desc" },
         take: 20,
         include: {

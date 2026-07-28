@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flowmind-ingress
+  namespace: flowmind
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  rules:
+    - host: flowmind.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: flowmind-web
+                port:
+                  number: 3000
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: flowmind-api
+                port:
+                  number: 3001
+          - path: /trpc
+            pathType: Prefix
+            backend:
+              service:
+                name: flowmind-api
+                port:
+                  number: 3001

@@ -26,6 +26,7 @@ import {
 import type { AgentLoopStep } from "@flowmind/llm-router";
 import { getSessionEmitter } from "./services/session-emitters";
 import { getRunEmitter } from "./services/run-emitters";
+import { getCronScheduler } from "./services/cron-scheduler";
 
 const SENTRY_DSN = process.env.SENTRY_DSN;
 if (SENTRY_DSN) {
@@ -346,9 +347,23 @@ async function main() {
     });
   });
 
+  const cronScheduler = getCronScheduler();
+
+  const shutdown = async () => {
+    server.log.info("Shutting down...");
+    cronScheduler.stop();
+    await server.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
   try {
     await server.listen({ port: PORT, host: HOST });
     server.log.info(`FlowMind API running on http://${HOST}:${PORT}`);
+
+    await cronScheduler.start();
+    server.log.info("Cron scheduler started");
   } catch (err) {
     server.log.error(err);
     process.exit(1);

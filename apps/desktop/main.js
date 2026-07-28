@@ -5,6 +5,7 @@ const http = require("http");
 
 // ── Config ──────────────────────────────────────────────────────────
 const WEB_PORT = 3100;
+const WEB_URL = process.env.FLOWMIND_WEB_URL || `http://127.0.0.1:${WEB_PORT}`;
 const API_PORT = 3101;
 const RUNTIME_PORT = 8101;
 const PROJECT_ROOT = path.resolve(__dirname, "../..");
@@ -146,7 +147,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(`http://127.0.0.1:${WEB_PORT}`);
+  mainWindow.loadURL(WEB_URL);
 
   // ── Application Menu ─────────────────────────────────────────────
   const menuTemplate = [
@@ -160,7 +161,7 @@ function createWindow() {
               type: "info",
               title: "About FlowMind AI OS",
               message: "FlowMind AI OS v0.1.0",
-              detail: "The open-source AI Operating System.\nManage local and cloud AI models, build agents and pipelines.\n\nServers:\n  Web UI:     http://127.0.0.1:" + WEB_PORT + "\n  API:        http://127.0.0.1:" + API_PORT + "\n  Runtime:    http://127.0.0.1:" + RUNTIME_PORT,
+              detail: "The open-source AI Operating System.\nManage local and cloud AI models, build agents and pipelines.\n\nServers:\n  Web UI:     " + WEB_URL + "\n  API:        http://127.0.0.1:" + API_PORT + "\n  Runtime:    http://127.0.0.1:" + RUNTIME_PORT,
             });
           },
         },
@@ -168,7 +169,7 @@ function createWindow() {
         {
           label: "Settings",
           accelerator: "CmdOrCtrl+,",
-          click: () => mainWindow.loadURL(`http://127.0.0.1:${WEB_PORT}/settings`),
+          click: () => mainWindow.loadURL(`${WEB_URL}/settings`),
         },
         { type: "separator" },
         {
@@ -203,22 +204,22 @@ function createWindow() {
         {
           label: "Dashboard",
           accelerator: "CmdOrCtrl+1",
-          click: () => mainWindow.loadURL(`http://127.0.0.1:${WEB_PORT}/home`),
+          click: () => mainWindow.loadURL(`${WEB_URL}/home`),
         },
         {
           label: "Models",
           accelerator: "CmdOrCtrl+2",
-          click: () => mainWindow.loadURL(`http://127.0.0.1:${WEB_PORT}/models`),
+          click: () => mainWindow.loadURL(`${WEB_URL}/models`),
         },
         {
           label: "Chat",
           accelerator: "CmdOrCtrl+3",
-          click: () => mainWindow.loadURL(`http://127.0.0.1:${WEB_PORT}/chat`),
+          click: () => mainWindow.loadURL(`${WEB_URL}/chat`),
         },
         {
           label: "Pipelines",
           accelerator: "CmdOrCtrl+4",
-          click: () => mainWindow.loadURL(`http://127.0.0.1:${WEB_PORT}/pipelines`),
+          click: () => mainWindow.loadURL(`${WEB_URL}/pipelines`),
         },
         { type: "separator" },
         { role: "togglefullscreen" },
@@ -230,7 +231,7 @@ function createWindow() {
         {
           label: "Documentation",
           accelerator: "F1",
-          click: () => mainWindow.loadURL(`http://127.0.0.1:${WEB_PORT}/docs`),
+          click: () => mainWindow.loadURL(`${WEB_URL}/docs`),
         },
         {
           label: "Open Terminal",

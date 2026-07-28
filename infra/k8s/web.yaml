@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flowmind-web
+  namespace: flowmind
+  labels:
+    app: flowmind-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flowmind-web
+  template:
+    metadata:
+      labels:
+        app: flowmind-web
+    spec:
+      containers:
+        - name: web
+          image: flowmind/web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: API_URL
+              value: "http://flowmind-api:3001"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 250m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flowmind-web
+  namespace: flowmind
+spec:
+  selector:
+    app: flowmind-web
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

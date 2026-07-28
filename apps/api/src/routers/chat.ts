@@ -56,7 +56,7 @@ export const chatRouter = router({
     .input(z.object({ cursor: z.string().optional(), limit: z.number().default(20) }))
     .query(async ({ input, ctx }) => {
       const sessions = await ctx.prisma.session.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { updatedAt: "desc" },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
@@ -89,7 +89,7 @@ export const chatRouter = router({
     .input(z.object({ title: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.session.create({
-        data: { userId: ctx.userId, title: input.title || "New Chat" },
+        data: { userId: ctx.userId!, title: input.title || "New Chat" },
       })
     }),
 
@@ -97,7 +97,7 @@ export const chatRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.session.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
       })
       return { success: true }
     }),
@@ -107,7 +107,7 @@ export const chatRouter = router({
     .query(async ({ input, ctx }) => {
       return ctx.prisma.session.findMany({
         where: {
-          userId: ctx.userId,
+          userId: ctx.userId ?? undefined,
           title: { contains: input.query, mode: "insensitive" },
         },
         take: input.limit,

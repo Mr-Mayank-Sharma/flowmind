@@ -14,7 +14,7 @@ export const consoleRouter = router({
   listWorkspaces: protectedProcedure
     .query(async ({ ctx }) => {
       const memberships = await ctx.prisma.orgMember.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         include: { org: true },
       })
       return memberships.map((m) => ({ ...m.org, role: m.role }))
@@ -26,7 +26,7 @@ export const consoleRouter = router({
       const org = await ctx.prisma.org.findUnique({ where: { id: input.id } })
       if (!org) throw new TRPCError({ code: "NOT_FOUND" })
       const membership = await ctx.prisma.orgMember.findFirst({
-        where: { orgId: input.id, userId: ctx.userId },
+        where: { orgId: input.id, userId: ctx.userId ?? undefined },
       })
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" })
       return { ...org, role: membership.role }
@@ -45,7 +45,7 @@ export const consoleRouter = router({
         data: { name: input.name, slug: input.slug, tier: input.tier },
       })
       await ctx.prisma.orgMember.create({
-        data: { orgId: org.id, userId: ctx.userId, role: OrgRole.OWNER },
+        data: { orgId: org.id, userId: ctx.userId!, role: OrgRole.OWNER },
       })
       return org
     }),
@@ -58,7 +58,7 @@ export const consoleRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const membership = await ctx.prisma.orgMember.findFirst({
-        where: { orgId: input.id, userId: ctx.userId, role: OrgRole.OWNER },
+        where: { orgId: input.id, userId: ctx.userId ?? undefined, role: OrgRole.OWNER },
       })
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" })
       return ctx.prisma.org.update({ where: { id: input.id }, data: input })
@@ -68,7 +68,7 @@ export const consoleRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const membership = await ctx.prisma.orgMember.findFirst({
-        where: { orgId: input.id, userId: ctx.userId, role: OrgRole.OWNER },
+        where: { orgId: input.id, userId: ctx.userId ?? undefined, role: OrgRole.OWNER },
       })
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" })
       await ctx.prisma.org.delete({ where: { id: input.id } })
@@ -80,7 +80,7 @@ export const consoleRouter = router({
     .input(z.object({ orgId: z.string() }))
     .query(async ({ input, ctx }) => {
       const membership = await ctx.prisma.orgMember.findFirst({
-        where: { orgId: input.orgId, userId: ctx.userId },
+        where: { orgId: input.orgId, userId: ctx.userId ?? undefined },
       })
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" })
       return ctx.prisma.orgMember.findMany({
@@ -93,7 +93,7 @@ export const consoleRouter = router({
     .input(z.object({ orgId: z.string(), email: z.string().email(), role: z.nativeEnum(OrgRole) }))
     .mutation(async ({ input, ctx }) => {
       const membership = await ctx.prisma.orgMember.findFirst({
-        where: { orgId: input.orgId, userId: ctx.userId, role: OrgRole.OWNER },
+        where: { orgId: input.orgId, userId: ctx.userId ?? undefined, role: OrgRole.OWNER },
       })
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" })
       const user = await ctx.prisma.user.findUnique({ where: { email: input.email } })
@@ -111,7 +111,7 @@ export const consoleRouter = router({
     .input(z.object({ orgId: z.string(), userId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const membership = await ctx.prisma.orgMember.findFirst({
-        where: { orgId: input.orgId, userId: ctx.userId, role: OrgRole.OWNER },
+        where: { orgId: input.orgId, userId: ctx.userId ?? undefined, role: OrgRole.OWNER },
       })
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" })
       await ctx.prisma.orgMember.delete({
@@ -124,7 +124,7 @@ export const consoleRouter = router({
   listApiKeys: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.apiKey.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         select: { id: true, name: true, provider: true, lastFour: true, createdAt: true, lastUsedAt: true, isActive: true },
       })
     }),
@@ -136,7 +136,7 @@ export const consoleRouter = router({
       const lastFour = raw.slice(-4)
       return ctx.prisma.apiKey.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           name: input.name,
           provider: input.provider,
           keyHash: hashKey(raw),
@@ -149,7 +149,7 @@ export const consoleRouter = router({
   deleteApiKey: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const key = await ctx.prisma.apiKey.findFirst({ where: { id: input.id, userId: ctx.userId } })
+      const key = await ctx.prisma.apiKey.findFirst({ where: { id: input.id, userId: ctx.userId ?? undefined } })
       if (!key) throw new TRPCError({ code: "NOT_FOUND" })
       await ctx.prisma.apiKey.delete({ where: { id: input.id } })
       return { success: true }
@@ -158,7 +158,7 @@ export const consoleRouter = router({
   // --- Billing ---
   getSubscription: protectedProcedure
     .query(async ({ ctx }) => {
-      return ctx.prisma.subscription.findUnique({ where: { userId: ctx.userId } })
+      return ctx.prisma.subscription.findUnique({ where: { userId: ctx.userId ?? undefined } })
     }),
 
   createCheckoutSession: protectedProcedure
@@ -166,7 +166,7 @@ export const consoleRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         const url = await BillingService.createCheckoutSession({
-          userId: ctx.userId,
+          userId: ctx.userId!,
           tier: input.tier,
           orgId: input.orgId,
         })
@@ -178,7 +178,7 @@ export const consoleRouter = router({
 
   getUsageMetrics: protectedProcedure
     .query(async ({ ctx }) => {
-      return BillingService.getUsageMetrics(ctx.userId)
+      return BillingService.getUsageMetrics(ctx.userId!)
     }),
 
   manageTeamSeats: protectedProcedure
@@ -198,11 +198,11 @@ export const consoleRouter = router({
       const now = new Date()
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
       const sessions = await ctx.prisma.session.findMany({
-        where: { userId: ctx.userId, createdAt: { gte: startOfMonth } },
+        where: { userId: ctx.userId ?? undefined, createdAt: { gte: startOfMonth } },
         orderBy: { createdAt: "desc" },
       })
-      const pipelines = await ctx.prisma.pipeline.count({ where: { userId: ctx.userId } })
-      const jobs = await ctx.prisma.cronJob.count({ where: { userId: ctx.userId } })
+      const pipelines = await ctx.prisma.pipeline.count({ where: { userId: ctx.userId ?? undefined } })
+      const jobs = await ctx.prisma.cronJob.count({ where: { userId: ctx.userId ?? undefined } })
 
       const dailyUsage: Record<string, number> = {}
       for (const s of sessions) {

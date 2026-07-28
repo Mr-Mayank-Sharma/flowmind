@@ -13,4 +13,6 @@ export const authApi = {
     tRPCMutation<AuthResponse>("auth.ssoCallback", input),
   ssoProviders: () =>
     tRPCQuery<Array<{ id: string; name: string; icon: string }>>("auth.ssoProviders"),
+  requestPasswordReset: (input: { email: string }) =>
+    tRPCMutation<{ success: boolean; message: string }>("auth.requestPasswordReset", input),
 }

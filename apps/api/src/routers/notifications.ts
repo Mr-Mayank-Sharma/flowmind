@@ -22,7 +22,7 @@ export const notificationsRouter = router({
       if (!smtpConfigured) {
         await ctx.prisma.notification.create({
           data: {
-            userId: ctx.userId,
+            userId: ctx.userId!,
             type: "EMAIL",
             title: input.subject,
             body: input.text || input.html || "",
@@ -48,7 +48,7 @@ export const notificationsRouter = router({
 
       await ctx.prisma.notification.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           type: "EMAIL",
           title: input.subject,
           body: input.text || input.html || "",
@@ -62,7 +62,7 @@ export const notificationsRouter = router({
   list: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.notification.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId ?? undefined },
         orderBy: { createdAt: "desc" },
         take: 50,
       });
@@ -72,7 +72,7 @@ export const notificationsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       await ctx.prisma.notification.updateMany({
-        where: { id: input.id, userId: ctx.userId },
+        where: { id: input.id, userId: ctx.userId ?? undefined },
         data: { read: true },
       });
       return { success: true };
@@ -81,7 +81,7 @@ export const notificationsRouter = router({
   markAllRead: protectedProcedure
     .mutation(async ({ ctx }) => {
       await ctx.prisma.notification.updateMany({
-        where: { userId: ctx.userId, read: false },
+        where: { userId: ctx.userId ?? undefined, read: false },
         data: { read: true },
       });
       return { success: true };

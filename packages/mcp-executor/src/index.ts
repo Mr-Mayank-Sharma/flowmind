@@ -41,7 +41,7 @@ export const OAUTH_PROVIDERS: Record<string, OAuthConfig> = {
   },
 }
 
-function getClientId(provider: string): string | undefined {
+export function getClientId(provider: string): string | undefined {
   const map: Record<string, string | undefined> = {
     github: process.env.GITHUB_CLIENT_ID,
     slack: process.env.SLACK_CLIENT_ID,
@@ -51,7 +51,7 @@ function getClientId(provider: string): string | undefined {
   return map[provider]
 }
 
-function getClientSecret(provider: string): string | undefined {
+export function getClientSecret(provider: string): string | undefined {
   const map: Record<string, string | undefined> = {
     github: process.env.GITHUB_CLIENT_SECRET,
     slack: process.env.SLACK_CLIENT_SECRET,
