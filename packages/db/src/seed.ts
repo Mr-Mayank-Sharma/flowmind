@@ -555,6 +555,23 @@ async function seed() {
       },
     });
 
+    await prisma.marketplaceListing.create({
+      data: {
+        type: "PIPELINE",
+        ownerId: adminUser.id,
+        title: flow.title,
+        description: flow.description,
+        category: flow.category,
+        tags: flow.tags,
+        downloads: downloadCounts[i]!,
+        ratingAvg: ratingAvgs[i]!,
+        ratingCount: Math.floor(Math.random() * 200) + 50,
+        isFeatured: i < 3,
+        isVerified: true,
+        version: 1,
+      },
+    });
+
     console.log(`  Created: ${flow.title} (${flow.nodes.length} nodes, ${flow.edges.length} edges)`);
   }
 

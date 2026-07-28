@@ -55,12 +55,40 @@ const enforceUsageLimits = t.middleware(async ({ ctx, next }) => {
 
   const user = await prisma.user.findUnique({
     where: { id: ctx.userId },
-    select: { tier: true },
+    select: { tier: true, orgId: true },
   });
 
   if (!user) return next({ ctx });
 
-  const tierConfig = getTierConfig(user.tier as unknown as Tier);
+  const effectiveTier = user.tier as unknown as Tier;
+
+  if (user.orgId) {
+    const orgSub = await prisma.orgSubscription.findUnique({
+      where: { orgId: user.orgId },
+    });
+    if (orgSub && orgSub.tier !== "FREE") {
+      const tierOrder: Tier[] = [Tier.FREE, Tier.PRO, Tier.TEAM, Tier.ENTERPRISE];
+      const orgTierIndex = tierOrder.indexOf(orgSub.tier as unknown as Tier);
+      const userTierIndex = tierOrder.indexOf(effectiveTier);
+      if (orgTierIndex > userTierIndex) {
+        const tierConfig = getTierConfig(orgSub.tier as unknown as Tier);
+        if (tierConfig.features.chatsPerMonth !== "unlimited") {
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          const sessionCount = await prisma.session.count({
+            where: { userId: ctx.userId, createdAt: { gte: thirtyDaysAgo } },
+          });
+          if (sessionCount >= tierConfig.features.chatsPerMonth) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: `Chat limit reached. Upgrade your org plan.`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const tierConfig = getTierConfig(effectiveTier);
 
   if (tierConfig.features.chatsPerMonth !== "unlimited") {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);

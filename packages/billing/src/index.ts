@@ -418,6 +418,68 @@ async function getInvoices(userId: string): Promise<InvoiceData[]> {
   }));
 }
 
+export interface RecordUsageInput {
+  subjectType: "user" | "org";
+  subjectId: string;
+  metric: string;
+  quantity: number;
+  metadata?: Record<string, unknown>;
+}
+
+async function recordUsage(input: RecordUsageInput): Promise<void> {
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  await prisma.usageRecord.create({
+    data: {
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      metric: input.metric,
+      quantity: input.quantity,
+      metadata: (input.metadata as any) ?? undefined,
+      periodStart,
+      periodEnd,
+    },
+  });
+}
+
+export interface UsageAggregate {
+  metric: string;
+  total: number;
+  count: number;
+}
+
+async function getUsageAggregation(
+  subjectType: string,
+  subjectId: string,
+  metric: string,
+  since?: Date,
+): Promise<UsageAggregate> {
+  const where: any = {
+    subjectType,
+    subjectId,
+    metric,
+  };
+  if (since) {
+    where.createdAt = { gte: since };
+  }
+
+  const result = await prisma.usageRecord.aggregate({
+    where,
+    _sum: { quantity: true },
+    _count: true,
+  });
+
+  return {
+    metric,
+    total: result._sum.quantity ?? 0,
+    count: result._count,
+  };
+}
+
+export { recordUsage, getUsageAggregation };
+
 export const BillingService = {
   createCheckoutSession,
   createPortalSession,
@@ -429,4 +491,6 @@ export const BillingService = {
   getUsageMetrics,
   getInvoices,
   manageTeamSeats,
+  recordUsage,
+  getUsageAggregation,
 };

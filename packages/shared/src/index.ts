@@ -52,6 +52,16 @@ export enum Visibility {
   TEAM = "TEAM",
 }
 
+export enum MarketplaceItemType {
+  SKILL = "SKILL",
+  PIPELINE = "PIPELINE",
+  WORKFLOW = "WORKFLOW",
+  PROMPT_PACK = "PROMPT_PACK",
+  AGENT_TEMPLATE = "AGENT_TEMPLATE",
+  MCP_INTEGRATION = "MCP_INTEGRATION",
+  PLUGIN = "PLUGIN",
+}
+
 export type User = {
   id: string;
   email: string;

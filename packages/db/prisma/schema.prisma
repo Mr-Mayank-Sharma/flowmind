@@ -61,6 +61,16 @@ enum Visibility {
   TEAM
 }
 
+enum MarketplaceItemType {
+  SKILL
+  PIPELINE
+  WORKFLOW
+  PROMPT_PACK
+  AGENT_TEMPLATE
+  MCP_INTEGRATION
+  PLUGIN
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -83,10 +93,13 @@ model User {
   pipelines    Pipeline[]
   accounts     Account[]
   frameworks   FrameworkConfig[]
-  reviews      FlowReview[]
-  skillReviews SkillReview[]
-  clones       FlowClone[]
-  orgMembers   OrgMember[]
+  reviews         FlowReview[]
+  skillReviews    SkillReview[]
+  clones          FlowClone[]
+  orgMembers      OrgMember[]
+  listings        MarketplaceListing[]
+  listingReviews  MarketplaceReview[]
+  listingForks    MarketplaceFork[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -102,10 +115,12 @@ model Org {
   tier       Tier      @default(FREE)
   billingId  String?
 
-  members   OrgMember[]
-  pipelines Pipeline[]
-  mcpTokens McpToken[]
-  users     User[]
+  members      OrgMember[]
+  pipelines    Pipeline[]
+  mcpTokens    McpToken[]
+  users        User[]
+  subscription OrgSubscription?
+  listings     MarketplaceListing[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -486,6 +501,132 @@ model FlowCategory {
   sortOrder   Int     @default(0)
 
   @@map("flow_categories")
+}
+
+model MarketplaceListing {
+  id           String              @id @default(cuid())
+  type         MarketplaceItemType
+  ownerId      String?
+  orgId        String?
+  title        String
+  description  String
+  category     String?
+  tags         String[]
+  manifest     Json?
+  payloadRef   Json?
+  version      Int                 @default(1)
+  downloads    Int                 @default(0)
+  forkCount    Int                 @default(0)
+  ratingAvg    Float               @default(0)
+  ratingCount  Int                 @default(0)
+  visibility   Visibility          @default(PUBLIC)
+  forkedFromId String?
+  isFeatured   Boolean             @default(false)
+  isVerified   Boolean             @default(false)
+
+  owner      User?               @relation(fields: [ownerId], references: [id])
+  org        Org?                @relation(fields: [orgId], references: [id])
+  forkedFrom MarketplaceListing? @relation("ListingForks", fields: [forkedFromId], references: [id])
+  forks      MarketplaceListing[] @relation("ListingForks")
+
+  versions MarketplaceListingVersion[]
+  reviews  MarketplaceReview[]
+  sourceForks MarketplaceFork[] @relation("SourceForks")
+  forkTargets MarketplaceFork[] @relation("ForkTargets")
+
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type])
+  @@index([category])
+  @@index([ownerId])
+  @@index([orgId])
+  @@map("marketplace_listings")
+}
+
+model MarketplaceListingVersion {
+  id         String   @id @default(cuid())
+  listingId  String
+  version    Int
+  manifest   Json?
+  payloadRef Json?
+  changelog  String?
+
+  listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([listingId, version])
+  @@map("marketplace_listing_versions")
+}
+
+model MarketplaceReview {
+  id         String   @id @default(cuid())
+  listingId  String
+  reviewerId String
+  stars      Int
+  body       String?
+
+  listing  MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  reviewer User              @relation(fields: [reviewerId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([listingId, reviewerId])
+  @@map("marketplace_reviews")
+}
+
+model MarketplaceFork {
+  id            String   @id @default(cuid())
+  sourceId      String
+  forkListingId String
+  userId        String
+
+  source      MarketplaceListing @relation("SourceForks", fields: [sourceId], references: [id], onDelete: Cascade)
+  forkListing MarketplaceListing @relation("ForkTargets", fields: [forkListingId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id])
+
+  forkedAt DateTime @default(now())
+
+  @@map("marketplace_forks")
+}
+
+model OrgSubscription {
+  id                  String   @id @default(cuid())
+  orgId               String   @unique
+  stripeId            String?
+  tier                Tier     @default(FREE)
+  status              String   @default("active")
+  memberLimit         Int      @default(5)
+  membersUsed         Int      @default(0)
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  cancelAtPeriodEnd   Boolean  @default(false)
+
+  org Org @relation(fields: [orgId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("org_subscriptions")
+}
+
+model UsageRecord {
+  id          String   @id @default(cuid())
+  subjectType String
+  subjectId   String
+  metric      String
+  quantity    Float
+  metadata    Json?
+  periodStart DateTime
+  periodEnd   DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([subjectType, subjectId, metric])
+  @@index([periodStart, periodEnd])
+  @@map("usage_records")
 }
 
 model FrameworkConfig {

@@ -1,10 +1,11 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Plus } from "lucide-react"
+import { Plus, Building2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { useQuery } from "@/hooks/use-query"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -14,17 +15,42 @@ export function BillingTab() {
     "settings:subscription",
     () => api.settings.getSubscription(),
   )
+  const { data: usage, loading: usageLoading } = useQuery(
+    "settings:usage",
+    () => api.billing.getUsage(),
+  )
+  const [orgSub, setOrgSub] = useState<any>(null)
+  const [orgLoaded, setOrgLoaded] = useState(false)
 
-  const tier = subscription?.tier ?? "FREE"
+  useEffect(() => {
+    api.settings.getOrg().then((org: any) => {
+      if (org?.id) {
+        api.billing.getOrgSubscription(org.id).then(setOrgSub).finally(() => setOrgLoaded(true))
+      } else {
+        setOrgLoaded(true)
+      }
+    }).catch(() => setOrgLoaded(true))
+  }, [])
+
+  const tier = orgSub?.tier && orgSub.tier !== "FREE" ? orgSub.tier : subscription?.tier ?? "FREE"
   const planName = tier === "FREE" ? "Free" : tier === "PRO" ? "Pro" : tier === "TEAM" ? "Team" : "Enterprise"
   const planPrice = tier === "FREE" ? "$0" : tier === "PRO" ? "$19" : tier === "TEAM" ? "$49" : "$99"
+
+  const getProgress = (used: number, limit: number | string) => {
+    if (limit === "unlimited" || limit === 0) return 0
+    return Math.min(Math.round((used / (limit as number)) * 100), 100)
+  }
 
   return (
     <div className="space-y-8">
       <Card>
         <CardHeader>
           <CardTitle>Current Plan</CardTitle>
-          <CardDescription>You are on the {planName} plan</CardDescription>
+          <CardDescription>
+            {orgSub?.tier && orgSub.tier !== "FREE"
+              ? `Your organization is on the ${orgSub.tier} plan`
+              : `You are on the ${planName} plan`}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {subLoading ? (
@@ -63,28 +89,73 @@ export function BillingTab() {
         </CardContent>
       </Card>
 
+      {orgSub && orgSub.tier !== "FREE" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Organization Plan
+            </CardTitle>
+            <CardDescription>Org tier: {orgSub.tier} &middot; {orgSub.membersUsed}/{orgSub.memberLimit} seats used</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Seats</span>
+                <span className="text-muted-foreground">{orgSub.membersUsed} / {orgSub.memberLimit}</span>
+              </div>
+              <Progress value={getProgress(orgSub.membersUsed, orgSub.memberLimit)} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Usage This Month</CardTitle>
           <CardDescription>{new Date().toLocaleString("default", { month: "long", year: "numeric" })} billing period</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>API Calls</span>
-                <span className="text-muted-foreground">0 / unlimited</span>
-              </div>
-              <Progress value={0} />
+          {usageLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-1"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-full" /></div>
+              ))}
             </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>Storage Used</span>
-                <span className="text-muted-foreground">0 / unlimited</span>
+          ) : usage ? (
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Chats</span>
+                  <span className="text-muted-foreground">{usage.chatsUsed} / {usage.chatLimit}</span>
+                </div>
+                <Progress value={getProgress(usage.chatsUsed, usage.chatLimit)} />
               </div>
-              <Progress value={0} />
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Storage</span>
+                  <span className="text-muted-foreground">{usage.storageUsedMb}MB / {usage.storageLimitMb}MB</span>
+                </div>
+                <Progress value={getProgress(usage.storageUsedMb, usage.storageLimitMb)} />
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Pipelines</span>
+                  <span className="text-muted-foreground">{usage.pipelineCount} / {usage.pipelineNodeLimit}</span>
+                </div>
+                <Progress value={getProgress(usage.pipelineCount, usage.pipelineNodeLimit)} />
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>MCP Connections</span>
+                  <span className="text-muted-foreground">{usage.mcpConnectionCount} / {usage.mcpConnectionLimit}</span>
+                </div>
+                <Progress value={getProgress(usage.mcpConnectionCount, usage.mcpConnectionLimit)} />
+              </div>
             </div>
-          </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">Usage data unavailable</p>
+          )}
         </CardContent>
       </Card>
 

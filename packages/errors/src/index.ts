@@ -147,3 +147,52 @@ export class AuthError extends FlowMindError {
     super(message, { code: "AUTH_ERROR", statusCode: 401, retryable: false, context })
   }
 }
+
+export class BillingError extends FlowMindError {
+  constructor(message: string, context?: Record<string, unknown>) {
+    super(message, { code: "BILLING_ERROR", statusCode: 402, retryable: false, context })
+  }
+}
+
+export class QuotaExceededError extends BillingError {
+  readonly metric: string
+  readonly limit: number | string
+  readonly current: number
+
+  constructor(metric: string, limit: number | string, current: number, context?: Record<string, unknown>) {
+    super(`Quota exceeded: ${metric} (${current}/${limit})`, { ...context, metric, limit, current })
+    this.code = "QUOTA_EXCEEDED"
+    this.metric = metric
+    this.limit = limit
+    this.current = current
+  }
+}
+
+export class SeatLimitError extends BillingError {
+  readonly seatLimit: number
+  readonly currentSeats: number
+
+  constructor(seatLimit: number, currentSeats: number, context?: Record<string, unknown>) {
+    super(`Seat limit reached: ${currentSeats}/${seatLimit}`, { ...context, seatLimit, currentSeats })
+    this.code = "SEAT_LIMIT_EXCEEDED"
+    this.seatLimit = seatLimit
+    this.currentSeats = currentSeats
+  }
+}
+
+export class DowngradeError extends BillingError {
+  constructor(message: string, context?: Record<string, unknown>) {
+    super(message, context)
+    this.code = "DOWNGRADE_NOT_ALLOWED"
+  }
+}
+
+export class TierNotAllowedError extends BillingError {
+  readonly requiredTier: string
+
+  constructor(feature: string, requiredTier: string, context?: Record<string, unknown>) {
+    super(`"${feature}" requires ${requiredTier} tier or higher`, { ...context, feature, requiredTier })
+    this.code = "TIER_NOT_ALLOWED"
+    this.requiredTier = requiredTier
+  }
+}
