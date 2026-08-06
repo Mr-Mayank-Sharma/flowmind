@@ -52,6 +52,8 @@ const toolIcons: Record<string, any> = {
   todowrite: Braces,
 }
 
+const DESTRUCTIVE_TOOLS = new Set(["bash", "write", "edit", "apply_patch", "update_todos"])
+
 export default function ToolsV2Page() {
   const [tools, setTools] = useState<any[]>([])
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
@@ -94,9 +96,12 @@ export default function ToolsV2Page() {
 
   const executeTool = async () => {
     if (!selectedTool) return
+    const tool = tools.find((t: any) => t.id === selectedTool)
+    const destructive = tool?.id ? tool.id in DESTRUCTIVE_TOOLS : false
+    if (destructive && !confirm(`Executing "${selectedTool}" may modify files or run commands on the server. Continue?`)) return
     try {
       const args = JSON.parse(toolArgs)
-      const result = await api.toolsV2.executeTool({ toolId: selectedTool, args })
+      const result = await api.toolsV2.executeTool({ toolId: selectedTool, args, autoApprove: destructive })
       setToolResult(JSON.stringify(result, null, 2))
     } catch (e: any) {
       setToolResult(`Error: ${e.message}`)

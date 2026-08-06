@@ -142,9 +142,14 @@ export const jobsRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
+      const job = await ctx.prisma.cronJob.findFirst({
+        where: { id: input.id, userId: ctx.userId! },
+        select: { id: true },
+      });
+      if (!job) throw new TRPCError({ code: "NOT_FOUND" });
       unschedule(input.id);
-      await ctx.prisma.cronJob.deleteMany({
-        where: { id: input.id, userId: ctx.userId ?? undefined },
+      await ctx.prisma.cronJob.delete({
+        where: { id: input.id },
       });
       return { success: true };
     }),

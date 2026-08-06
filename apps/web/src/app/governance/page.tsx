@@ -71,6 +71,15 @@ export default function GovernancePage() {
       (e.userName || e.user?.name || "").toLowerCase().includes(auditSearch.toLowerCase()) ||
       (e.details || "").toLowerCase().includes(auditSearch.toLowerCase())
     )
+    .slice()
+    .sort((a: any, b: any) => {
+      const av = (a[sortField] ?? "") as string | number
+      const bv = (b[sortField] ?? "") as string | number
+      const cmp = typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv))
+      return sortDir === "desc" ? -cmp : cmp
+    })
 
   const filteredRBAC = orgMembers.filter((u: any) =>
     (u.user?.name || "").toLowerCase().includes(rbacSearch.toLowerCase()) ||

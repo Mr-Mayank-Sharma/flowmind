@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../middleware/trpc";
+import { prisma } from "@flowmind/db";
 import { toolRegistry } from "@flowmind/tool-system";
-import { fromConfig, evaluate, type Action } from "@flowmind/permission";
+import { evaluate, type Action } from "@flowmind/permission";
 import { lspManager } from "@flowmind/lsp";
 import { SnapshotManager } from "@flowmind/snapshot";
 import { SessionEngine } from "@flowmind/session-engine";
@@ -12,6 +13,9 @@ import { createReadTool, createWriteTool, createEditTool, createGrepTool, create
 
 const sessionEngines = new Map<string, SessionEngine>();
 const snapshotManagers = new Map<string, SnapshotManager>();
+const permissionRulesByUser = new Map<string, Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>>();
+
+const DESTRUCTIVE_TOOLS = new Set(["bash", "write", "edit", "apply_patch", "applypatch", "update_todos"]);
 
 function getSessionEngine(sessionId: string): SessionEngine {
   if (!sessionEngines.has(sessionId)) {
@@ -25,6 +29,12 @@ function getSnapshotManager(userId: string): SnapshotManager {
     snapshotManagers.set(userId, new SnapshotManager(process.cwd()));
   }
   return snapshotManagers.get(userId)!;
+}
+
+async function isAdmin(ctx: { userId: string | null }): Promise<boolean> {
+  if (!ctx.userId) return false
+  const user = await prisma.user.findUnique({ where: { id: ctx.userId }, select: { role: true } })
+  return user?.role === "SUPER_ADMIN" || user?.role === "ADMIN"
 }
 
 export const toolsV2Router = router({
@@ -58,10 +68,18 @@ export const toolsV2Router = router({
       toolId: z.string(),
       args: z.record(z.unknown()),
       sessionId: z.string().optional(),
+      autoApprove: z.boolean().default(false),
     }))
     .mutation(async ({ input, ctx }) => {
       const tool = toolRegistry.get(input.toolId);
       if (!tool) throw new TRPCError({ code: "NOT_FOUND", message: `Tool ${input.toolId} not found` });
+
+      if (DESTRUCTIVE_TOOLS.has(input.toolId) && !input.autoApprove) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Tool ${input.toolId} modifies the filesystem or runs commands. Confirm execution to continue.`,
+        });
+      }
 
       const sessionId = input.sessionId ?? `session_${ctx.userId}_${Date.now()}`;
       const sessionEngine = getSessionEngine(sessionId);
@@ -71,8 +89,11 @@ export const toolsV2Router = router({
         messageId: `msg_${Date.now()}`,
         agent: "user",
         async ask(permInput) {
-          // In auto mode, allow all tools
-          return;
+          if (DESTRUCTIVE_TOOLS.has(input.toolId) && input.autoApprove) return;
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Tool ${input.toolId} requires approval for: ${JSON.stringify(permInput)}`,
+          });
         },
         metadata(m) {},
       });
@@ -88,11 +109,9 @@ export const toolsV2Router = router({
 
   // --- Permission System ---
   getPermissionRules: protectedProcedure
-    .query(async () => {
-      return {
-        rules: [],
-        evaluated: fromConfig({}),
-      };
+    .query(async ({ ctx }) => {
+      const rules = permissionRulesByUser.get(ctx.userId!) ?? [];
+      return { rules, evaluated: rules };
     }),
 
   updatePermissionRules: protectedProcedure
@@ -103,7 +122,8 @@ export const toolsV2Router = router({
         action: z.enum(["allow", "deny", "ask"]),
       })),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      permissionRulesByUser.set(ctx.userId!, input.rules);
       return { success: true, rules: input.rules };
     }),
 
@@ -208,6 +228,7 @@ export const toolsV2Router = router({
     .mutation(async ({ input }) => {
       const engine = getSessionEngine(input.sessionId);
       engine.clear();
+      sessionEngines.delete(input.sessionId);
       return { success: true };
     }),
 
@@ -263,7 +284,10 @@ export const toolsV2Router = router({
 
   loadPluginDir: protectedProcedure
     .input(z.object({ dir: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (!(await isAdmin(ctx))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only admins can load plugins" });
+      }
       await pluginEngine.loadFromDir(input.dir);
       return { success: true };
     }),

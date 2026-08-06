@@ -7,16 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Activity, Cpu, Zap, GitBranch, Bot, AlertTriangle, Clock, ArrowUpRight, CheckCircle, XCircle, Loader2, RefreshCw } from "lucide-react"
+import { Activity, Cpu, Zap, GitBranch, Bot, AlertTriangle, Clock, CheckCircle, XCircle, Loader2, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api, Framework, SystemMetrics, ActivityEntry, GPUMetrics } from "@/lib/api"
-
-const metricSchema = [
-  { label: "Pipelines Running", key: "pipelines", icon: GitBranch, color: "text-blue-500 bg-blue-500/10", format: (v: number) => String(v) },
-  { label: "Agents Active", key: "agents", icon: Bot, color: "text-emerald-500 bg-emerald-500/10", format: (v: number) => String(v) },
-  { label: "Services Running", key: "services", icon: AlertTriangle, color: "text-amber-500 bg-amber-500/10", format: (v: number) => String(v) },
-  { label: "Avg Latency", key: "latency", icon: Clock, color: "text-purple-500 bg-purple-500/10", format: (v: number) => `${v}ms` },
-]
 
 const statusIcon = {
   success: CheckCircle,
@@ -299,12 +292,6 @@ export default function HomePage() {
                             </div>
                           )
                         })}
-                  </div>
-                  <div className="px-4 py-2.5 border-t border-border/50">
-                    <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                      <ArrowUpRight className="h-3 w-3" />
-                      View all activity
-                    </button>
                   </div>
                 </div>
               </div>

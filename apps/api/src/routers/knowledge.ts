@@ -121,17 +121,19 @@ export const knowledgeRouter = router({
           content: input.content,
           metadata: { name: input.name, type: input.type, kbId: input.kbId },
         }).then(() => {
-          ctx.prisma.knowledgeDocument.update({
-            where: { id: doc.id },
-            data: { status: "INDEXED" },
-          })
-          ctx.prisma.knowledgeBase.update({
-            where: { id: input.kbId },
-            data: { status: "READY" },
-          })
+          return Promise.all([
+            ctx.prisma.knowledgeDocument.update({
+              where: { id: doc.id },
+              data: { status: "INDEXED" },
+            }),
+            ctx.prisma.knowledgeBase.update({
+              where: { id: input.kbId },
+              data: { status: "READY" },
+            }),
+          ])
         }).catch((err) => {
           ctx.req.log.error({ err }, "Embedding indexing failed")
-          ctx.prisma.knowledgeDocument.update({
+          return ctx.prisma.knowledgeDocument.update({
             where: { id: doc.id },
             data: { status: "ERROR" },
           })

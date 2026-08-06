@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
-import { api, clearAuth, setToken, setRefreshToken, setUserCookie, type User } from "@/lib/api"
+import { api, clearAuth, getRefreshToken, setToken, setRefreshToken, setUserCookie, type User } from "@/lib/api"
 
 interface AuthContextValue {
   user: User | null
@@ -31,19 +31,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const stored = localStorage.getItem("flowmind_user")
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored))
-        setIsLoading(false)
-        refreshUser()
-      } catch {
-        setIsLoading(false)
+    let cancelled = false
+    const init = async () => {
+      const stored = localStorage.getItem("flowmind_user")
+      if (stored) {
+        try {
+          if (!cancelled) setUser(JSON.parse(stored))
+        } catch {
+          /* ignore corrupted cache */
+        }
       }
-    } else {
-      setIsLoading(false)
+      if (!cancelled) {
+        try {
+          const u = await api.auth.me()
+          if (!cancelled) {
+            setUser(u)
+            setUserCookie(u)
+          }
+        } catch {
+          if (!cancelled) {
+            clearAuth()
+            setUser(null)
+          }
+        } finally {
+          if (!cancelled) setIsLoading(false)
+        }
+      }
     }
-  }, [refreshUser])
+    init()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (getRefreshToken()) {
+        api.auth.refresh().catch(() => {})
+      }
+    }, 10 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.auth.login({ email, password })

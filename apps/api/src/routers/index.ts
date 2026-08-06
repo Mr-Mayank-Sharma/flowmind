@@ -10,7 +10,6 @@ import { modelsRouter } from "./models";
 import { jobsRouter } from "./jobs";
 import { toolsRouter } from "./tools";
 import { mcpRouter } from "./mcp";
-import { playgroundRouter } from "./playground";
 import { filesRouter } from "./files";
 import { knowledgeRouter } from "./knowledge";
 import { agentsRouter } from "./agents";
@@ -34,7 +33,6 @@ export const appRouter = router({
   jobs: jobsRouter,
   tools: toolsRouter,
   mcp: mcpRouter,
-  playground: playgroundRouter,
   files: filesRouter,
   knowledge: knowledgeRouter,
   agents: agentsRouter,

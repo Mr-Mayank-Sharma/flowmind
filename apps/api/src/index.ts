@@ -132,7 +132,7 @@ async function main() {
 
   server.get<{ Params: { sessionId: string } }>("/api/chat/stream/:sessionId", async (req, reply) => {
     const { sessionId } = req.params
-    const token = (req.query as any)?.token || req.headers.authorization?.replace("Bearer ", "")
+    const token = req.headers.authorization?.replace("Bearer ", "")
 
     if (!token) {
       return reply.status(401).send({ error: "Authentication required" })
@@ -160,36 +160,57 @@ async function main() {
     })
 
     const emitter = getSessionEmitter(sessionId)
-    const heartbeat = setInterval(() => {
-      reply.raw.write(": heartbeat\n\n")
+    let heartbeat: NodeJS.Timeout
+    let idleTimeout: NodeJS.Timeout
+    let closed = false
+
+    const safeWrite = (chunk: string) => {
+      if (closed || reply.raw.destroyed || reply.raw.writableEnded) return false
+      try {
+        reply.raw.write(chunk)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    heartbeat = setInterval(() => {
+      if (!safeWrite(": heartbeat\n\n")) cleanup()
     }, 15000)
+
+    idleTimeout = setTimeout(() => cleanup(), 120_000)
 
     const onStep = (step: AgentLoopStep) => {
       const data = JSON.stringify(step)
-      reply.raw.write(`data: ${data}\n\n`)
+      safeWrite(`data: ${data}\n\n`)
     }
 
     const onDone = (result: { reply: string; steps: AgentLoopStep[]; iterations: number }) => {
       const data = JSON.stringify({ type: "done", ...result })
-      reply.raw.write(`data: ${data}\n\n`)
-      reply.raw.write("data: [DONE]\n\n")
+      safeWrite(`data: ${data}\n\n`)
+      safeWrite("data: [DONE]\n\n")
       cleanup()
     }
 
     const onError = (error: Error) => {
       const data = JSON.stringify({ type: "error", message: error.message })
-      reply.raw.write(`data: ${data}\n\n`)
-      reply.raw.write("data: [DONE]\n\n")
+      safeWrite(`data: ${data}\n\n`)
+      safeWrite("data: [DONE]\n\n")
       cleanup()
     }
 
     function cleanup() {
+      if (closed) return
+      closed = true
       clearInterval(heartbeat)
+      clearTimeout(idleTimeout)
       emitter.off("step", onStep)
       emitter.off("done", onDone)
       emitter.off("error", onError)
       emitter.off("close", cleanup)
-      reply.raw.end()
+      try {
+        reply.raw.end()
+      } catch {}
     }
 
     emitter.on("step", onStep)
@@ -198,11 +219,17 @@ async function main() {
     emitter.on("close", cleanup)
 
     req.raw.on("close", cleanup)
+
+    for (const { event, data } of emitter.buffer) {
+      if (event === "step") onStep(data as AgentLoopStep)
+      else if (event === "done") onDone(data as { reply: string; steps: AgentLoopStep[]; iterations: number })
+      else if (event === "error") onError(data as Error)
+    }
   })
 
   server.get<{ Params: { runId: string } }>("/api/pipeline/stream/:runId", async (req, reply) => {
     const { runId } = req.params
-    const token = (req.query as any)?.token || req.headers.authorization?.replace("Bearer ", "")
+    const token = req.headers.authorization?.replace("Bearer ", "")
 
     if (!token) {
       return reply.status(401).send({ error: "Authentication required" })
@@ -230,33 +257,54 @@ async function main() {
     })
 
     const emitter = getRunEmitter(runId)
-    const heartbeat = setInterval(() => {
-      reply.raw.write(": heartbeat\n\n")
+    let heartbeat: NodeJS.Timeout
+    let idleTimeout: NodeJS.Timeout
+    let closed = false
+
+    const safeWrite = (chunk: string) => {
+      if (closed || reply.raw.destroyed || reply.raw.writableEnded) return false
+      try {
+        reply.raw.write(chunk)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    heartbeat = setInterval(() => {
+      if (!safeWrite(": heartbeat\n\n")) cleanup()
     }, 15000)
 
+    idleTimeout = setTimeout(() => cleanup(), 120_000)
+
     const onNode = (data: Record<string, unknown>) => {
-      reply.raw.write(`data: ${JSON.stringify({ type: "node", ...data })}\n\n`)
+      safeWrite(`data: ${JSON.stringify({ type: "node", ...data })}\n\n`)
     }
 
     const onDone = (data: Record<string, unknown>) => {
-      reply.raw.write(`data: ${JSON.stringify({ type: "done", ...data })}\n\n`)
-      reply.raw.write("data: [DONE]\n\n")
+      safeWrite(`data: ${JSON.stringify({ type: "done", ...data })}\n\n`)
+      safeWrite("data: [DONE]\n\n")
       cleanup()
     }
 
     const onError = (data: unknown) => {
       const msg = data && typeof data === "object" && "message" in data ? (data as { message: string }).message : "Unknown error"
-      reply.raw.write(`data: ${JSON.stringify({ type: "error", message: msg })}\n\n`)
-      reply.raw.write("data: [DONE]\n\n")
+      safeWrite(`data: ${JSON.stringify({ type: "error", message: msg })}\n\n`)
+      safeWrite("data: [DONE]\n\n")
       cleanup()
     }
 
     function cleanup() {
+      if (closed) return
+      closed = true
       clearInterval(heartbeat)
+      clearTimeout(idleTimeout)
       emitter.off("node", onNode)
       emitter.off("done", onDone)
       emitter.off("error", onError)
-      reply.raw.end()
+      try {
+        reply.raw.end()
+      } catch {}
     }
 
     emitter.on("node", onNode)
@@ -264,9 +312,24 @@ async function main() {
     emitter.on("error", onError)
 
     req.raw.on("close", cleanup)
+
+    for (const { event, data } of emitter.buffer) {
+      if (event === "node") onNode(data as Record<string, unknown>)
+      else if (event === "done") onDone(data as Record<string, unknown>)
+      else if (event === "error") onError(data)
+    }
   })
 
+  const INTERNAL_TOKEN = process.env.AGENT_API_KEY || process.env.INTERNAL_API_KEY
+  const requireInternalAuth = (req: { headers: Record<string, string | string[] | undefined> }): boolean => {
+    if (!INTERNAL_TOKEN) return false
+    const provided = req.headers["x-internal-token"] ?? req.headers.authorization
+    if (Array.isArray(provided)) return provided.includes(INTERNAL_TOKEN)
+    return typeof provided === "string" && (provided === INTERNAL_TOKEN || provided.replace("Bearer ", "") === INTERNAL_TOKEN)
+  }
+
   server.post<{ Body: { name: string; description: string; userId: string } }>("/api/internal/create-pipeline", async (req, reply) => {
+    if (!requireInternalAuth(req)) return reply.status(401).send({ error: "Unauthorized" });
     const { name, description, userId } = req.body;
     if (!name || !userId) return reply.status(400).send({ error: "name and userId required" });
 
@@ -306,6 +369,7 @@ async function main() {
   server.post<{ Body: { toolId: string; args: Record<string, unknown> } }>(
     "/api/internal/execute-tool",
     async (req, reply) => {
+      if (!requireInternalAuth(req)) return reply.status(401).send({ error: "Unauthorized" });
       const { toolId, args } = req.body;
       if (!toolId) return reply.status(400).send({ error: "toolId required" });
       const tool = toolRegistry.get(toolId);
@@ -320,7 +384,7 @@ async function main() {
         });
         return reply.send(result);
       } catch (err: any) {
-        return reply.status(500).send({ error: err.message });
+        return reply.status(500).send({ error: "Tool execution failed" });
       }
     },
   );
@@ -349,14 +413,36 @@ async function main() {
 
   const cronScheduler = getCronScheduler();
 
-  const shutdown = async () => {
-    server.log.info("Shutting down...");
+  const shutdown = async (signal: string) => {
+    server.log.info(`Received ${signal}, shutting down...`);
     cronScheduler.stop();
-    await server.close();
-    process.exit(0);
+    const forceExit = setTimeout(() => {
+      server.log.warn("Forced shutdown after timeout");
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+    try {
+      server.close();
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        setTimeout(resolve, 5_000);
+      });
+      await prisma.$disconnect();
+      process.exit(0);
+    } catch (err) {
+      server.log.error(err, "Error during shutdown");
+      process.exit(1);
+    }
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+  process.on("unhandledRejection", (reason) => {
+    server.log.error({ reason }, "Unhandled promise rejection");
+  });
+  process.on("uncaughtException", (err) => {
+    server.log.error({ err }, "Uncaught exception");
+  });
 
   try {
     await server.listen({ port: PORT, host: HOST });

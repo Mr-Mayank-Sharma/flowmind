@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Bell, CheckCheck, X, Info, AlertTriangle, CheckCircle, ExternalLink } from "lucide-react"
+import { Bell, CheckCheck, X, Info, AlertTriangle, CheckCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 
@@ -14,13 +14,23 @@ interface Notification {
   read: boolean
 }
 
+function formatTime(iso: string): string {
+  if (!iso) return ""
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60000) return "just now"
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  if (diff < 7 * 86400000) return `${Math.floor(diff / 86400000)}d ago`
+  return new Date(iso).toLocaleDateString()
+}
+
 function toClientNotif(raw: any): Notification {
   return {
     id: raw.id,
     title: raw.title,
     message: raw.body ?? raw.title,
     type: raw.type === "error" ? "error" : raw.type === "warning" ? "warning" : raw.type === "success" ? "success" : "info",
-    time: raw.createdAt ? new Date(raw.createdAt).toLocaleDateString() : "",
+    time: formatTime(raw.createdAt),
     read: raw.read ?? false,
   }
 }
@@ -102,6 +112,11 @@ export function NotificationCenter() {
                   return (
                     <div
                       key={notif.id}
+                      onClick={() => {
+                        if (notif.read) return
+                        api.settings.updateNotification({ id: notif.id, read: true }).catch(() => {})
+                        setNotifications((prev) => prev.map((n) => n.id === notif.id ? { ...n, read: true } : n))
+                      }}
                       className={cn(
                         "flex gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-accent/50 transition-colors cursor-pointer",
                         !notif.read && "bg-primary/[0.02]"
@@ -122,12 +137,6 @@ export function NotificationCenter() {
                   )
                 })
               )}
-            </div>
-            <div className="border-t border-border px-4 py-2">
-              <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full justify-center">
-                <ExternalLink className="h-3 w-3" />
-                View all notifications
-              </button>
             </div>
           </div>
         </>

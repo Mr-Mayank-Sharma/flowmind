@@ -1,4 +1,4 @@
-import { tRPCQuery, tRPCMutation, type AuthResponse, type User } from "./core"
+import { tRPCQuery, tRPCMutation, getRefreshToken, type AuthResponse, type User } from "./core"
 
 export const authApi = {
   login: (input: { email: string; password: string }) =>
@@ -6,7 +6,7 @@ export const authApi = {
   register: (input: { email: string; password: string; name?: string }) =>
     tRPCMutation<AuthResponse>("auth.register", input),
   me: () => tRPCQuery<User>("auth.me"),
-  refresh: () => tRPCMutation<{ token: string; refreshToken: string }>("auth.refresh", {}),
+  refresh: () => tRPCMutation<{ token: string; refreshToken: string; user: User }>("auth.refresh", { refreshToken: getRefreshToken() }),
   ssoUrl: (provider: string) =>
     tRPCQuery<{ url: string }>("auth.ssoUrl", { provider }),
   ssoCallback: (input: { provider: string; code: string; state: string }) =>

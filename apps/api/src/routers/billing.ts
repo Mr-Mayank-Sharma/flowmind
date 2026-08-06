@@ -20,6 +20,9 @@ export const billingRouter = router({
     .input(z.object({ tier: z.enum(["PRO", "TEAM"]) }))
     .mutation(async ({ input, ctx }) => {
       if (!process.env.STRIPE_SECRET_KEY) {
+        if (process.env.NODE_ENV === "production") {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing is not configured" });
+        }
         await ctx.prisma.subscription.upsert({
           where: { userId: ctx.userId ?? undefined },
           update: { tier: input.tier },
@@ -38,6 +41,9 @@ export const billingRouter = router({
   createPortalSession: protectedProcedure
     .mutation(async ({ ctx }) => {
       if (!process.env.STRIPE_SECRET_KEY) {
+        if (process.env.NODE_ENV === "production") {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing is not configured" });
+        }
         return { url: "/settings/billing" };
       }
 
@@ -58,6 +64,12 @@ export const billingRouter = router({
   getOrgSubscription: protectedProcedure
     .input(z.object({ orgId: z.string() }))
     .query(async ({ input, ctx }) => {
+      const membership = await ctx.prisma.orgMember.findUnique({
+        where: { orgId_userId: { orgId: input.orgId, userId: ctx.userId! } },
+      });
+      if (!membership) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You are not a member of this org" });
+      }
       const sub = await ctx.prisma.orgSubscription.findUnique({
         where: { orgId: input.orgId },
       });
@@ -80,6 +92,9 @@ export const billingRouter = router({
       const memberCount = await ctx.prisma.orgMember.count({ where: { orgId: input.orgId } });
 
       if (!process.env.STRIPE_SECRET_KEY) {
+        if (process.env.NODE_ENV === "production") {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing is not configured" });
+        }
         await ctx.prisma.orgSubscription.upsert({
           where: { orgId: input.orgId },
           update: { tier: input.tier, memberLimit: input.tier === "TEAM" ? 10 : 100, membersUsed: memberCount },

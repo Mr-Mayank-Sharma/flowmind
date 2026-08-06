@@ -1,9 +1,18 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../middleware/trpc";
 import fs from "fs";
 import path from "path";
 
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || process.cwd();
+const WORKSPACE_ROOT = path.resolve(process.env.WORKSPACE_ROOT || process.cwd());
+
+function safeResolve(relPath: string): string | null {
+  const resolved = path.resolve(WORKSPACE_ROOT, relPath);
+  if (resolved !== WORKSPACE_ROOT && !resolved.startsWith(WORKSPACE_ROOT + path.sep)) {
+    return null;
+  }
+  return resolved;
+}
 
 function buildTree(dirPath: string, depth: number = 0, maxDepth: number = 4): any[] {
   if (depth > maxDepth) return [{ name: "...", type: "more" as const }];
@@ -38,7 +47,10 @@ export const filesRouter = router({
   list: protectedProcedure
     .input(z.object({ dir: z.string().default("/") }))
     .query(async ({ input }) => {
-      const basePath = path.join(WORKSPACE_ROOT, input.dir);
+      const basePath = safeResolve(input.dir);
+      if (!basePath || !fs.existsSync(basePath) || !fs.statSync(basePath).isDirectory()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid directory" });
+      }
       const tree = buildTree(basePath);
       return { path: input.dir, children: tree };
     }),
@@ -46,25 +58,31 @@ export const filesRouter = router({
   read: protectedProcedure
     .input(z.object({ file: z.string() }))
     .query(async ({ input }) => {
+      const filePath = safeResolve(input.file);
+      if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "File not found" });
+      }
       try {
-        const filePath = path.join(WORKSPACE_ROOT, input.file);
         const content = fs.readFileSync(filePath, "utf-8");
         const stat = fs.statSync(filePath);
         return { content, size: stat.size, modifiedAt: stat.mtime.toISOString() };
-      } catch (e) {
-        throw new Error(`File not found: ${input.file}`);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to read file" });
       }
     }),
 
   delete: protectedProcedure
     .input(z.object({ file: z.string() }))
     .mutation(async ({ input }) => {
+      const filePath = safeResolve(input.file);
+      if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "File not found" });
+      }
       try {
-        const filePath = path.join(WORKSPACE_ROOT, input.file);
         fs.unlinkSync(filePath);
         return { success: true };
       } catch {
-        return { success: false };
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to delete file" });
       }
     }),
 });

@@ -32,6 +32,16 @@ const SSO_CLIENTS: Record<string, { authorizeUrl: string; tokenUrl: string; clie
 };
 
 const ssoStateStore = new Map<string, { provider: string; expiresAt: number }>();
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function recordFailedLogin(key: string) {
+  const attempt = loginAttempts.get(key);
+  if (!attempt) {
+    loginAttempts.set(key, { count: 1, resetAt: Date.now() + 15 * 60 * 1000 });
+  } else {
+    attempt.count++;
+  }
+}
 
 function generateState(provider: string): string {
   const state = crypto.randomBytes(32).toString("hex");
@@ -70,11 +80,29 @@ export const authRouter = router({
   login: publicProcedure
     .input(z.object({ email: z.string().email(), password: z.string() }))
     .mutation(async ({ input, ctx }) => {
+      const key = `${ctx.req.ip}:${input.email.toLowerCase()}`;
+      const now = Date.now();
+      const attempt = loginAttempts.get(key);
+      if (attempt && attempt.count >= 5 && attempt.resetAt > now) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many login attempts. Try again later." });
+      }
+      if (!attempt || attempt.resetAt < now) {
+        loginAttempts.set(key, { count: 0, resetAt: now + 15 * 60 * 1000 });
+      }
+
       const user = await ctx.prisma.user.findUnique({ where: { email: input.email } });
-      if (!user || !user.passwordHash) throw new TRPCError({ code: "UNAUTHORIZED" });
+      if (!user || !user.passwordHash) {
+        recordFailedLogin(key);
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
 
       const valid = await bcrypt.compare(input.password, user.passwordHash);
-      if (!valid) throw new TRPCError({ code: "UNAUTHORIZED" });
+      if (!valid) {
+        recordFailedLogin(key);
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      loginAttempts.delete(key);
 
       const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "15m" });
       const refreshToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });

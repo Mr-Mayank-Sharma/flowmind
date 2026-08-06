@@ -1,7 +1,7 @@
 import { tRPCQuery, tRPCMutation } from "./core"
 
 export const notificationsApi = {
-  sendEmail: (input: { to: string; subject: string; body: string }) =>
+  sendEmail: (input: { to: string; subject: string; text: string }) =>
     tRPCMutation<{ success: boolean }>("notifications.sendEmail", input),
   list: () => tRPCQuery<any[]>("notifications.list"),
   markRead: (id: string) => tRPCMutation<{ success: boolean }>("notifications.markRead", { id }),

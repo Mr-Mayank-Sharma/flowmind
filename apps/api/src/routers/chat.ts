@@ -28,6 +28,7 @@ export const chatRouter = router({
         })
 
       const emitter = getSessionEmitter(input.sessionId)
+      emitter.clearBuffer()
 
       const result = await chatService.sendMessageWithAgentLoop(
         { ...input, userId: ctx.userId },

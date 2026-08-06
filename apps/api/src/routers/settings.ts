@@ -258,8 +258,11 @@ export const settingsRouter = router({
     .mutation(async ({ input, ctx }) => {
       const user = await ctx.prisma.user.findUnique({ where: { id: ctx.userId! } })
       if (!user) throw new TRPCError({ code: "NOT_FOUND" })
+      if (!user.passwordHash) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Account was created via SSO. Password deletion is not supported." })
+      }
       const bcrypt = await import("bcryptjs")
-      const valid = await bcrypt.compare(input.password, user.passwordHash!)
+      const valid = await bcrypt.compare(input.password, user.passwordHash)
       if (!valid) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid password" })
       await Promise.all([
         ctx.prisma.pipeline.deleteMany({ where: { userId: ctx.userId! } }),

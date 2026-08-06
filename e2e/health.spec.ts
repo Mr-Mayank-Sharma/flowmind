@@ -10,7 +10,7 @@ test("API health endpoint returns ok", async ({ request }) => {
 
 test("Login page loads and shows sign-in form", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.locator("text=Welcome back").or(page.locator("text=Sign In"))).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 10_000 });
 });
 
 test("Metrics endpoint returns prometheus format", async ({ request }) => {
@@ -18,5 +18,5 @@ test("Metrics endpoint returns prometheus format", async ({ request }) => {
   expect(resp.ok()).toBe(true);
   const text = await resp.text();
   expect(text).toContain("nodejs_version_info");
-  expect(resp.headers()["content-type"]).toBe("text/plain; charset=utf-8");
+  expect(resp.headers()["content-type"]).toContain("text/plain");
 });

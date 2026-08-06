@@ -4,7 +4,7 @@ import { router, protectedProcedure, publicProcedure } from "../middleware/trpc"
 import { PipelineEngine } from "@flowmind/pipeline-engine";
 import type { PipelineGraph, WorkflowSettings, PipelineNode, LLMProvider } from "@flowmind/pipeline-engine";
 import { LLMEngine } from "@flowmind/llm-router";
-import { getRunEmitter } from "../services/run-emitters";
+import { getRunEmitter, cleanupRunEmitter } from "../services/run-emitters";
 
 function buildLLMProvider(): LLMProvider | undefined {
   const openaiKey = process.env.OPENAI_KEY;
@@ -288,6 +288,9 @@ export const pipelineRouter = router({
         },
       });
 
+      const runEmitter = getRunEmitter(run.id);
+      runEmitter.clearBuffer();
+
       const logBuffer: Array<{ runId: string; nodeId: string; nodeType: string; input: any; output: any; error?: string; duration: number }> = [];
 
       const engineWithStatus = new PipelineEngine({
@@ -358,7 +361,7 @@ export const pipelineRouter = router({
 
         const runEmitter = getRunEmitter(run.id);
         runEmitter.emit("done", { status: finalStatus, outputs: result.outputs, durationMs: result.durationMs });
-        setTimeout(() => runEmitter.removeAllListeners(), 5000);
+        setTimeout(() => cleanupRunEmitter(run.id), 60_000).unref?.();
 
         await ctx.prisma.pipeline.update({
           where: { id: input.id },
@@ -377,7 +380,7 @@ export const pipelineRouter = router({
         });
         const runEmitter = getRunEmitter(run.id);
         runEmitter.emit("error", { message: err.message });
-        setTimeout(() => runEmitter.removeAllListeners(), 5000);
+        setTimeout(() => cleanupRunEmitter(run.id), 60_000).unref?.();
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err.message ?? "Pipeline execution failed" });
       }
     }),
@@ -433,8 +436,13 @@ export const pipelineRouter = router({
     }),
 
   getRuns: protectedProcedure
-    .input(z.object({ pipelineId: z.string(), cursor: z.string().optional(), limit: z.number().default(20) }))
+    .input(z.object({ pipelineId: z.string(), cursor: z.string().optional(), limit: z.number().min(1).max(100).default(20) }))
     .query(async ({ input, ctx }) => {
+      const pipeline = await ctx.prisma.pipeline.findFirst({
+        where: { id: input.pipelineId, userId: ctx.userId },
+        select: { id: true },
+      });
+      if (!pipeline) throw new TRPCError({ code: "NOT_FOUND" });
       return ctx.prisma.pipelineRun.findMany({
         where: { pipelineId: input.pipelineId },
         orderBy: { createdAt: "desc" },
@@ -449,8 +457,9 @@ export const pipelineRouter = router({
     .mutation(async ({ input, ctx }) => {
       const run = await ctx.prisma.pipelineRun.findUnique({
         where: { id: input.runId },
+        include: { pipeline: { select: { userId: true } } },
       });
-      if (!run) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!run || run.pipeline.userId !== ctx.userId) throw new TRPCError({ code: "NOT_FOUND" });
       if (run.status !== "RUNNING" && run.status !== "PENDING") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Run is not active" });
       }
@@ -458,12 +467,19 @@ export const pipelineRouter = router({
         where: { id: input.runId },
         data: { status: "CANCELLED", completedAt: new Date() },
       });
+      const emitter = getRunEmitter(input.runId);
+      emitter.emit("error", { message: "Run cancelled" });
       return { success: true };
     }),
 
   getRunLogs: protectedProcedure
     .input(z.object({ runId: z.string() }))
     .query(async ({ input, ctx }) => {
+      const run = await ctx.prisma.pipelineRun.findUnique({
+        where: { id: input.runId },
+        include: { pipeline: { select: { userId: true } } },
+      });
+      if (!run || run.pipeline.userId !== ctx.userId) throw new TRPCError({ code: "NOT_FOUND" });
       return ctx.prisma.runLog.findMany({
         where: { runId: input.runId },
         orderBy: { createdAt: "asc" },
@@ -655,7 +671,7 @@ export const pipelineRouter = router({
   batchTrigger: protectedProcedure
     .input(z.object({
       id: z.string(),
-      inputs: z.array(z.record(z.unknown())),
+      inputs: z.array(z.record(z.unknown())).max(100),
       settings: workflowSettingsSchema,
     }))
     .mutation(async ({ input, ctx }) => {
@@ -667,20 +683,26 @@ export const pipelineRouter = router({
       }
 
       const results: Array<{ index: number; runId: string; status: string }> = [];
+      const MAX_CONCURRENT = 4;
+      let nextIndex = 0;
 
-      for (let i = 0; i < input.inputs.length; i++) {
-        const batchInput = input.inputs[i];
-        const run = await ctx.prisma.pipelineRun.create({
-          data: {
-            pipelineId: input.id,
-            status: "PENDING",
-            input: batchInput as any,
-          },
-        });
+      const worker = async (): Promise<void> => {
+        while (nextIndex < input.inputs.length) {
+          const i = nextIndex++;
+          const batchInput = input.inputs[i];
+          const run = await ctx.prisma.pipelineRun.create({
+            data: {
+              pipelineId: input.id,
+              status: "RUNNING",
+              input: batchInput as any,
+              startedAt: new Date(),
+            },
+          });
 
-        results.push({ index: i, runId: run.id, status: "PENDING" });
+          results.push({ index: i, runId: run.id, status: "RUNNING" });
+          const emitter = getRunEmitter(run.id);
+          emitter.clearBuffer();
 
-        setImmediate(async () => {
           try {
             const rawGraph = pipeline.graph as any;
             const graph = normalizeGraph(rawGraph);
@@ -695,14 +717,25 @@ export const pipelineRouter = router({
                 completedAt: new Date(),
               },
             });
+            emitter.emit("done", { status: result.status === "success" ? "SUCCESS" : "FAILED", outputs: result.outputs, durationMs: result.durationMs });
           } catch (err: any) {
-            await ctx.prisma.pipelineRun.update({
-              where: { id: run.id },
-              data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
-            });
+            try {
+              await ctx.prisma.pipelineRun.update({
+                where: { id: run.id },
+                data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
+              });
+            } catch (updateErr) {
+              console.error("Failed to mark batch run failed:", updateErr);
+            }
+            emitter.emit("error", { message: err.message });
+          } finally {
+            setTimeout(() => cleanupRunEmitter(run.id), 60_000).unref?.();
           }
-        });
-      }
+        }
+      };
+
+      const workers = Array.from({ length: Math.min(MAX_CONCURRENT, input.inputs.length) }, () => worker());
+      await Promise.allSettled(workers);
 
       return {
         batchId: `batch-${Date.now()}`,

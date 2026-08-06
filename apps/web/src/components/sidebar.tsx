@@ -37,7 +37,6 @@ import { useSidebarStore } from "@/hooks/sidebar-store"
 import { useAuth } from "@/hooks/use-auth"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { NotificationCenter } from "@/components/notification-center"
-import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 
 const navItems = [
   { href: "/home", label: "Control Center", icon: LayoutDashboard },
@@ -56,7 +55,6 @@ const navItems = [
   { href: "/system", label: "System Monitor", icon: Gauge },
   { href: "/processes", label: "Process Manager", icon: ListChecks },
   { href: "/files", label: "File Browser", icon: Folder },
-  { href: "/playground", label: "API Playground", icon: Terminal },
   { href: "/docs", label: "Documentation", icon: Book },
   { href: "/governance", label: "Governance", icon: Shield },
   { href: "/workspace", label: "Cloud Console", icon: Building2 },
@@ -72,22 +70,13 @@ export function Sidebar() {
   const { isOpen, isMobile, isMobileOpen, toggle, setMobileOpen } = useSidebarStore()
   const { user, logout } = useAuth()
 
-  const [showShortcuts, setShowShortcuts] = useState(false)
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
-        e.preventDefault()
-        setShowShortcuts((prev) => !prev)
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
-
   const handleSignOut = () => {
     logout()
     router.push("/login")
+  }
+
+  const openShortcuts = () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", ctrlKey: true }))
   }
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/")
@@ -186,7 +175,7 @@ export function Sidebar() {
         {showExpanded && <ThemeToggle />}
         {!showExpanded && (
           <button
-            onClick={() => setShowShortcuts(true)}
+            onClick={openShortcuts}
             className="flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
             title="Keyboard shortcuts"
           >
@@ -224,8 +213,6 @@ export function Sidebar() {
           {showExpanded && <span>Log Out</span>}
         </button>
       </div>
-
-      {showShortcuts && <KeyboardShortcuts />}
     </aside>
   )
 }

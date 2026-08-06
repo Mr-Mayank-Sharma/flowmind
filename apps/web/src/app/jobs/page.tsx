@@ -9,6 +9,25 @@ import { Search, Clock, Play, Square, Calendar, Plus, Trash2 } from "lucide-reac
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 
+interface Job {
+  id: string
+  name: string
+  expression: string
+  pipelineId: string
+  channel?: string | null
+  isActive: boolean
+  runCount: number
+  lastRunAt?: string | null
+  nextRunAt?: string | null
+  createdAt: string
+}
+
+interface Pipeline {
+  id: string
+  name: string
+  isActive: boolean
+}
+
 const cronPresets = [
   { label: "Every 15 min", value: "*/15 * * * *", desc: "Runs 96 times per day" },
   { label: "Every hour", value: "0 * * * *", desc: "Runs 24 times per day" },
@@ -20,11 +39,15 @@ const cronPresets = [
 ]
 
 export default function JobsPage() {
-  const [jobs, setJobs] = useState<any[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [search, setSearch] = useState("")
   const [selectedJob, setSelectedJob] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [newJobPreset, setNewJobPreset] = useState("0 0 * * *")
+  const [newJobName, setNewJobName] = useState("")
+  const [newJobPipeline, setNewJobPipeline] = useState("")
+  const [error, setError] = useState<string | null>(null)
 
   const fetchJobs = async () => {
     try {
@@ -33,7 +56,23 @@ export default function JobsPage() {
     } catch {}
   }
 
-  useEffect(() => { fetchJobs() }, [])
+  const fetchPipelines = async () => {
+    try {
+      const { pipelines } = await api.pipeline.list()
+      setPipelines((pipelines ?? []).filter((p) => p.isActive))
+    } catch {}
+  }
+
+  useEffect(() => {
+    fetchJobs()
+    fetchPipelines()
+  }, [])
+
+  useEffect(() => {
+    if (pipelines.length > 0 && !pipelines.some((p) => p.id === newJobPipeline)) {
+      setNewJobPipeline(pipelines[0]?.id ?? "")
+    }
+  }, [pipelines, newJobPipeline])
 
   const filtered = jobs.filter((j) => j.name.toLowerCase().includes(search.toLowerCase()))
   const currentJob = selectedJob ? jobs.find((j) => j.id === selectedJob) : null
@@ -54,11 +93,24 @@ export default function JobsPage() {
   }
 
   const handleCreate = async () => {
+    setError(null)
+    if (!newJobPipeline) {
+      setError("Select a pipeline to schedule.")
+      return
+    }
     try {
-      await api.jobs.create({ name: "New Job", expression: newJobPreset, pipelineId: "manual" })
+      await api.jobs.create({
+        name: newJobName.trim() || "Scheduled Job",
+        expression: newJobPreset,
+        pipelineId: newJobPipeline,
+      })
       setShowCreate(false)
+      setNewJobName("")
       fetchJobs()
-    } catch {}
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create job."
+      setError(message)
+    }
   }
 
   return (
@@ -93,6 +145,17 @@ export default function JobsPage() {
               <h3 className="text-sm font-semibold mb-3">Create Scheduled Job</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
+                  <label className="text-xs text-muted-foreground mb-1 block">Name</label>
+                  <Input value={newJobName} onChange={(e) => setNewJobName(e.target.value)} placeholder="My scheduled job" className="h-9 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-muted-foreground mb-1 block">Pipeline</label>
+                  <select value={newJobPipeline} onChange={(e) => setNewJobPipeline(e.target.value)} className="h-9 text-sm w-full rounded-md border border-input bg-surface px-3">
+                    {pipelines.length === 0 && <option value="">No active pipelines</option>}
+                    {pipelines.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                  </select>
+                </div>
+                <div className="col-span-2">
                   <label className="text-xs text-muted-foreground mb-1 block">Preset Schedule</label>
                   <select value={newJobPreset} onChange={(e) => setNewJobPreset(e.target.value)} className="h-9 text-sm w-full rounded-md border border-input bg-surface px-3">
                     {cronPresets.map((p) => (<option key={p.value} value={p.value}>{p.label} — {p.desc}</option>))}
@@ -103,14 +166,18 @@ export default function JobsPage() {
                   <Input value={newJobPreset} onChange={(e) => setNewJobPreset(e.target.value)} placeholder="*/15 * * * *" className="h-8 text-sm font-mono" />
                 </div>
               </div>
+              {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
               <div className="flex items-center gap-2 mt-4">
                 <Button size="sm" className="h-8 text-xs" onClick={handleCreate}>Create Job</Button>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowCreate(false)}>Cancel</Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { setShowCreate(false); setError(null) }}>Cancel</Button>
               </div>
             </Card>
           )}
 
           <div className="space-y-2">
+            {filtered.length === 0 && !showCreate && (
+              <p className="text-sm text-muted-foreground py-8 text-center">No scheduled jobs yet. Create one to automate a pipeline.</p>
+            )}
             {filtered.map((job) => (
               <div key={job.id}
                 className={cn("rounded-lg border border-border/50 bg-surface p-4 transition-all cursor-pointer card-hover", selectedJob === job.id && "ring-1 ring-primary/30")}
@@ -123,7 +190,7 @@ export default function JobsPage() {
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold">{job.name}</h3>
-                      <p className="text-xs text-muted-foreground">Cron: {job.expression}</p>
+                      <p className="text-xs text-muted-foreground">Pipeline: {pipelines.find((p) => p.id === job.pipelineId)?.name ?? job.pipelineId}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -157,7 +224,7 @@ export default function JobsPage() {
               <div className="space-y-2 text-sm">
                 {[
                   { label: "Expression", value: currentJob.expression },
-                  { label: "Pipeline ID", value: currentJob.pipelineId },
+                  { label: "Pipeline", value: pipelines.find((p) => p.id === currentJob.pipelineId)?.name ?? currentJob.pipelineId },
                   { label: "Channel", value: currentJob.channel ?? "N/A" },
                   { label: "Total Runs", value: String(currentJob.runCount ?? 0) },
                   { label: "Last Run", value: currentJob.lastRunAt ? new Date(currentJob.lastRunAt).toLocaleString() : "N/A" },

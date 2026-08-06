@@ -1,4 +1,4 @@
-export { API_URL, getToken, setToken, setRefreshToken, setUserCookie, clearAuth } from "./core"
+export { API_URL, getToken, getRefreshToken, setToken, setRefreshToken, setUserCookie, clearAuth } from "./core"
 export type { User, AuthResponse, Framework, SystemMetrics, ActivityEntry, GPUMetrics } from "./core"
 export type { OllamaModel } from "./models"
 
@@ -22,7 +22,6 @@ import { billingApi } from "./billing"
 import { webhooksApi } from "./webhooks"
 import { consoleApi } from "./console"
 import { contextApi } from "./context"
-import { playgroundApi } from "./playground"
 
 export const api = {
   auth: authApi,
@@ -46,5 +45,4 @@ export const api = {
   webhooks: webhooksApi,
   console: consoleApi,
   context: contextApi,
-  playground: playgroundApi,
 }

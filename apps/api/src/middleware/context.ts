@@ -22,6 +22,7 @@ export async function createContext({ req, res }: CreateFastifyContextOptions) {
       const token = authHeader.slice(7);
       const payload = jwt.verify(token, JWT_SECRET) as unknown as { userId: string };
       userId = payload.userId;
+      ;(req as any).userId = payload.userId;
     } catch {
     }
   }

@@ -50,21 +50,24 @@ function saveToStorage(sessions: Session[], messages: Record<string, Message[]>)
 }
 
 function apiSessionToLocal(apiSession: any): Session {
+  const createdAt = new Date(apiSession.createdAt || apiSession.created_at)
+  const updatedAt = new Date(apiSession.updatedAt || apiSession.updated_at)
   return {
     id: apiSession.id,
     title: apiSession.title || "New Chat",
-    createdAt: new Date(apiSession.createdAt || apiSession.created_at).getTime(),
-    updatedAt: new Date(apiSession.updatedAt || apiSession.updated_at).getTime(),
+    createdAt: isNaN(createdAt.getTime()) ? Date.now() : createdAt.getTime(),
+    updatedAt: isNaN(updatedAt.getTime()) ? Date.now() : updatedAt.getTime(),
   }
 }
 
 function apiMessageToLocal(apiMsg: any, sessionId: string): Message {
+  const ts = new Date(apiMsg.createdAt || apiMsg.created_at)
   return {
     id: apiMsg.id,
     sessionId,
     role: apiMsg.role as Role,
     content: apiMsg.content,
-    timestamp: new Date(apiMsg.createdAt || apiMsg.created_at || Date.now()).getTime(),
+    timestamp: isNaN(ts.getTime()) ? Date.now() : ts.getTime(),
   }
 }
 
@@ -85,6 +88,17 @@ interface ChatState {
   stopStreaming: () => void;
   appendToMessage: (sessionId: string, content: string) => void;
   setStreaming: (streaming: boolean) => void;
+}
+
+function parseSSEChunk(chunk: string, onData: (data: string) => void) {
+  const lines = chunk.split(/\r?\n/)
+  for (const line of lines) {
+    if (line.startsWith("data: ")) {
+      onData(line.slice(6))
+    } else if (line.startsWith("data:")) {
+      onData(line.slice(5))
+    }
+  }
 }
 
 const persisted = loadFromStorage()
@@ -110,12 +124,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const cached = loadFromStorage()
         const mergedMessages: Record<string, Message[]> = cached?.messages ? { ...cached.messages } : {}
 
+        const firstId = apiSessions[0]?.id ?? null
         set({
           sessions: apiSessions,
-          currentSessionId: apiSessions[0]?.id ?? null,
+          currentSessionId: firstId,
           messages: mergedMessages,
           loading: false,
         })
+        if (firstId) {
+          get().loadMessages(firstId)
+        }
         return
       }
     } catch {}
@@ -135,7 +153,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadMessages: async (sessionId) => {
     const { messages } = get()
-    if (messages[sessionId]) return
+    if (messages[sessionId]?.length) return
 
     try {
       const result = await api.chat.getSession(sessionId)
@@ -203,8 +221,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (content, model?, files?) => {
-    const state = get()
-    const { currentSessionId } = state
+    const { currentSessionId } = get()
     if (!currentSessionId) return
 
     const userMessage: Message = {
@@ -242,200 +259,172 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return next
     })
 
+    const abortController = new AbortController()
+    ;(get() as any)._abortController = abortController
+
+    let accumulatedContent = ""
+    let finalContent: string | null = null
+    const toolCalls: ToolCall[] = []
+    let toolCallId = 0
+    let finished = false
+
+    const finalize = (contentOverride?: string) => {
+      if (finished) return
+      finished = true
+      const content = contentOverride ?? ((finalContent ?? accumulatedContent) || "I processed your request.")
+      set((s) => {
+        const msgs = s.messages[currentSessionId] || []
+        const updatedMsgs = msgs.map((m) =>
+          m.id === assistantId
+            ? { ...m, content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined }
+            : m
+        )
+        const next = {
+          isStreaming: false,
+          streamingSteps: [],
+          messages: { ...s.messages, [currentSessionId]: updatedMsgs },
+        }
+        saveToStorage(s.sessions, next.messages)
+        return next
+      })
+    }
+
+    const handleSseData = (data: string) => {
+      if (data === "[DONE]") {
+        finalize()
+        return
+      }
+
+      let parsed: any
+      try {
+        parsed = JSON.parse(data)
+      } catch {
+        return
+      }
+
+      if (parsed.type === "error") {
+        finalize(parsed.message || "An error occurred.")
+        return
+      }
+
+      if (parsed.type === "done") {
+        finalContent = parsed.reply || accumulatedContent
+        finalize()
+        return
+      }
+
+      if (parsed.type === "thought") {
+        accumulatedContent = parsed.content
+        set((s) => {
+          const msgs = s.messages[currentSessionId!] || []
+          const updatedMsgs = msgs.map((m) =>
+            m.id === assistantId ? { ...m, content: accumulatedContent } : m
+          )
+          return { messages: { ...s.messages, [currentSessionId!]: updatedMsgs } }
+        })
+        return
+      }
+
+      if (parsed.type === "tool_call") {
+        toolCallId++
+        toolCalls.push({
+          id: `tc_${toolCallId}`,
+          name: parsed.toolName || "unknown",
+          arguments: parsed.content || "",
+        })
+        set((s) => {
+          const msgs = s.messages[currentSessionId!] || []
+          const updatedMsgs = msgs.map((m) =>
+            m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
+          )
+          return {
+            streamingSteps: [...s.streamingSteps, { type: "tool_call", content: parsed.content, toolName: parsed.toolName }],
+            messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+          }
+        })
+        return
+      }
+
+      if (parsed.type === "tool_result") {
+        const lastTc = toolCalls[toolCalls.length - 1]
+        if (lastTc) lastTc.result = parsed.content
+        set((s) => {
+          const msgs = s.messages[currentSessionId!] || []
+          const updatedMsgs = msgs.map((m) =>
+            m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
+          )
+          return {
+            streamingSteps: [...s.streamingSteps, { type: "tool_result", content: parsed.content }],
+            messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+          }
+        })
+        return
+      }
+    }
+
     try {
       const token = getToken()
-      const eventSourceUrl = `${API_URL}/api/chat/stream/${currentSessionId}${token ? `?token=${encodeURIComponent(token)}` : ""}`
+      const streamUrl = `${API_URL}/api/chat/stream/${currentSessionId}`
 
-      const eventSource = new EventSource(eventSourceUrl)
-      ;(get() as any)._eventSource = eventSource
+      let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
-      let accumulatedContent = ""
-      const toolCalls: ToolCall[] = []
-      let toolCallId = 0
-
-      eventSource.onmessage = (event) => {
-        if (event.data === "[DONE]") {
-          eventSource.close()
-          ;(get() as any)._eventSource = null
-
-          set((s) => {
-            const msgs = s.messages[currentSessionId!] || []
-            const updatedMsgs = msgs.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: accumulatedContent || "I processed your request.", toolCalls: toolCalls.length > 0 ? toolCalls : undefined }
-                : m
-            )
-            const next = {
-              isStreaming: false,
-              streamingSteps: [],
-              messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
-            }
-            saveToStorage(state.sessions, next.messages)
-            return next
-          })
-          return
-        }
-
+      const openStream = async () => {
         try {
-          const data = JSON.parse(event.data)
-
-          if (data.type === "error") {
-            set((s) => {
-              const msgs = s.messages[currentSessionId!] || []
-              const updatedMsgs = msgs.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: data.message || "An error occurred." }
-                  : m
-              )
-              return {
-                isStreaming: false,
-                streamingSteps: [],
-                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
-              }
-            })
-            eventSource.close()
-            return
-          }
-
-          if (data.type === "done") {
-            eventSource.close()
-            ;(get() as any)._eventSource = null
-
-            const finalContent = data.reply || accumulatedContent
-            set((s) => {
-              const msgs = s.messages[currentSessionId!] || []
-              const updatedMsgs = msgs.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: finalContent || "I processed your request.", toolCalls: toolCalls.length > 0 ? toolCalls : undefined }
-                  : m
-              )
-              const next = {
-                isStreaming: false,
-                streamingSteps: [],
-                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
-              }
-              saveToStorage(state.sessions, next.messages)
-              return next
-            })
-            return
-          }
-
-          if (data.type === "thought") {
-            accumulatedContent = data.content
-            set((s) => {
-              const msgs = s.messages[currentSessionId!] || []
-              const updatedMsgs = msgs.map((m) =>
-                m.id === assistantId ? { ...m, content: accumulatedContent } : m
-              )
-              return { messages: { ...s.messages, [currentSessionId!]: updatedMsgs } }
-            })
-          }
-
-          if (data.type === "tool_call") {
-            toolCallId++
-            toolCalls.push({
-              id: `tc_${toolCallId}`,
-              name: data.toolName || "unknown",
-              arguments: data.content || "",
-            })
-            set((s) => {
-              const msgs = s.messages[currentSessionId!] || []
-              const updatedMsgs = msgs.map((m) =>
-                m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
-              )
-              return {
-                streamingSteps: [...s.streamingSteps, { type: "tool_call", content: data.content, toolName: data.toolName }],
-                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
-              }
-            })
-          }
-
-          if (data.type === "tool_result") {
-            const lastTc = toolCalls[toolCalls.length - 1]
-            if (lastTc) lastTc.result = data.content
-            set((s) => {
-              const msgs = s.messages[currentSessionId!] || []
-              const updatedMsgs = msgs.map((m) =>
-                m.id === assistantId ? { ...m, toolCalls: [...toolCalls] } : m
-              )
-              return {
-                streamingSteps: [...s.streamingSteps, { type: "tool_result", content: data.content }],
-                messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
-              }
-            })
-          }
-        } catch {}
-      }
-
-      eventSource.onerror = () => {
-        eventSource.close()
-        ;(get() as any)._eventSource = null
-
-        if (!accumulatedContent) {
-          set((s) => {
-            const msgs = s.messages[currentSessionId!] || []
-            const updatedMsgs = msgs.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: "Connection lost. Please try again." }
-                : m
-            )
-            return {
-              isStreaming: false,
-              streamingSteps: [],
-              messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
-            }
+          const res = await fetch(streamUrl, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: abortController.signal,
           })
-        } else {
-          set((s) => {
-            const msgs = s.messages[currentSessionId!] || []
-            const updatedMsgs = msgs.map((m) =>
-              m.id === assistantId ? { ...m, content: accumulatedContent } : m
-            )
-            return {
-              isStreaming: false,
-              streamingSteps: [],
-              messages: { ...s.messages, [currentSessionId!]: updatedMsgs },
+          if (!res.ok || !res.body) throw new Error(`Stream failed (HTTP ${res.status})`)
+          streamReader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ""
+          while (true) {
+            const { done, value } = await streamReader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const newlineIdx = buffer.lastIndexOf("\n\n")
+            if (newlineIdx >= 0) {
+              const chunk = buffer.slice(0, newlineIdx)
+              buffer = buffer.slice(newlineIdx + 2)
+              parseSSEChunk(chunk, (d) => handleSseData(d))
             }
-          })
+          }
+        } catch (err) {
+          if ((err as any)?.name === "AbortError") return
+          if (!finished) {
+            finalize("Connection lost. Please try again.")
+          }
         }
       }
 
-      await api.chat.sendMessage({
+      const streamPromise = openStream()
+
+      const mutationPromise = api.chat.sendMessage({
         sessionId: currentSessionId,
         content,
         model: model || undefined,
         files: files?.map(f => ({ url: f.name, type: f.type })) || undefined,
       })
-    } catch (err) {
-      const errorMsg: Message = {
-        id: String(Date.now() + 1),
-        sessionId: currentSessionId,
-        role: "assistant",
-        content: "I encountered an error processing your request. Please try again.",
-        timestamp: Date.now(),
+
+      const [mutationResult] = await Promise.allSettled([mutationPromise, streamPromise])
+
+      if (mutationResult.status === "rejected") {
+        const err = mutationResult.reason
+        const isUnauthorized = (err as any)?.code === "UNAUTHORIZED"
+        finalize(isUnauthorized ? "Your session expired. Please sign in again." : "I encountered an error processing your request. Please try again.")
+      } else if (!finished) {
+        finalize()
       }
-      set((s) => {
-        const msgs = s.messages[currentSessionId] || []
-        const next = {
-          isStreaming: false,
-          streamingSteps: [],
-          messages: {
-            ...s.messages,
-            [currentSessionId]: [...msgs, errorMsg],
-          },
-        }
-        saveToStorage(state.sessions, next.messages)
-        return next
-      })
+    } catch (err) {
+      finalize("I encountered an error processing your request. Please try again.")
+    } finally {
+      ;(get() as any)._abortController = null
     }
   },
 
   stopStreaming: () => {
-    const es = (get() as any)._eventSource as EventSource | null
-    if (es) {
-      es.close()
-      ;(get() as any)._eventSource = null
-    }
+    const ac = (get() as any)._abortController as AbortController | null
+    if (ac) ac.abort()
     set({ isStreaming: false, streamingSteps: [] })
   },
 

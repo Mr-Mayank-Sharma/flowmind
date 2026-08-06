@@ -134,7 +134,7 @@ export const consoleRouter = router({
     .mutation(async ({ input, ctx }) => {
       const raw = `fm_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`
       const lastFour = raw.slice(-4)
-      return ctx.prisma.apiKey.create({
+      const created = await ctx.prisma.apiKey.create({
         data: {
           userId: ctx.userId!,
           name: input.name,
@@ -144,6 +144,7 @@ export const consoleRouter = router({
         },
         select: { id: true, name: true, provider: true, lastFour: true, createdAt: true },
       })
+      return { ...created, key: raw }
     }),
 
   deleteApiKey: protectedProcedure

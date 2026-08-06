@@ -1,15 +1,26 @@
 import { tRPCQuery, tRPCMutation } from "./core"
 
+export interface WorkflowSettings {
+  timezone?: string
+  executionOrder?: "sequential" | "parallel"
+  errorWorkflowId?: string
+  saveDataOnError?: "all" | "none"
+  saveManualExecutions?: boolean
+  retryOnFail?: boolean
+  maxRetries?: number
+  timeout?: number
+}
+
 export const pipelineApi = {
   list: () => tRPCQuery<{ pipelines: any[]; nextCursor?: string }>("pipeline.list"),
-  create: (input: { name: string; description?: string; graph: { nodes: any[]; edges: any[] } }) =>
-    tRPCMutation<any>("pipeline.create", input),
+  create: (input: { name: string; description?: string; graph: { nodes: any[]; edges: any[] }; settings?: WorkflowSettings }) =>
+    tRPCMutation<any>("pipeline.create", { ...input, settings: input.settings ?? {} }),
   update: (input: { id: string; name?: string; description?: string; graph?: any; isActive?: boolean }) =>
     tRPCMutation<any>("pipeline.update", input),
   delete: (id: string) => tRPCMutation<{ success: boolean }>("pipeline.delete", { id }),
   getById: (id: string) => tRPCQuery<any>("pipeline.getById", { id }),
-  trigger: (id: string, input?: Record<string, unknown>) =>
-    tRPCMutation<{ runId: string; status: "SUCCESS" | "FAILED" | "CANCELLED"; outputs: any[]; durationMs: number }>("pipeline.trigger", { id, input }),
+  trigger: (id: string, input?: Record<string, unknown>, settings?: WorkflowSettings) =>
+    tRPCMutation<{ runId: string; status: "SUCCESS" | "FAILED" | "CANCELLED"; outputs: any[]; durationMs: number }>("pipeline.trigger", { id, input, settings: settings ?? {} }),
   executeNode: (pipelineId: string, nodeId: string, input?: Record<string, unknown>) =>
     tRPCMutation<any>("pipeline.executeNode", { pipelineId, nodeId, input }),
   validate: (graph: { nodes: any[]; edges: any[] }) =>

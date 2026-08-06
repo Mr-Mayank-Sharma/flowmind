@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Search, Folder, File, FileCode, FileText, ChevronRight, Trash2, Plus, Download, ExternalLink, Terminal, FileJson, Table2, Lock, FileType, Terminal as TerminalIcon, Brush } from "lucide-react"
+import { Search, Folder, File, FileCode, FileText, ChevronRight, Trash2, FileJson, Table2, Lock, FileType, Terminal as TerminalIcon, Brush } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 
@@ -105,14 +105,7 @@ export default function FilesPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                <Plus className="h-3 w-3" />
-                New File
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                <Download className="h-3 w-3" />
-                Upload
-              </Button>
+              <Badge variant="secondary" className="text-xs">{files.length} items</Badge>
             </div>
           </div>
         </div>
@@ -202,8 +195,10 @@ export default function FilesPage() {
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button className="p-1 text-muted-foreground hover:text-red-400" title="Delete" onClick={async (e) => {
                         e.stopPropagation()
+                        if (!confirm(`Delete "${file.name}"? This cannot be undone.`)) return
                         try {
                           await api.files.delete(`${currentPath}/${file.name}`)
+                          if (selectedFile === file.name) setSelectedFile(null)
                           fetchDir(currentPath)
                         } catch {}
                       }}>
@@ -224,14 +219,6 @@ export default function FilesPage() {
               <div className="flex items-center gap-2 text-xs font-medium">
                 <FileCode className="h-3.5 w-3.5" />
                 {selectedFile}
-              </div>
-              <div className="flex items-center gap-1">
-                <button className="p-1 text-muted-foreground hover:text-foreground" title="Open in terminal">
-                  <Terminal className="h-3.5 w-3.5" />
-                </button>
-                <button className="p-1 text-muted-foreground hover:text-foreground" title="Open externally">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </button>
               </div>
             </div>
             <pre className="p-4 text-xs font-mono leading-5 text-foreground/80 overflow-x-auto">

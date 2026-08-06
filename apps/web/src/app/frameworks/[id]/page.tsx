@@ -3,19 +3,15 @@
 import { useParams } from "next/navigation"
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, LayoutDashboard, Cuboid, Terminal, Settings, BarChart3 } from "lucide-react"
+import { ArrowLeft, LayoutDashboard, Cuboid, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { OverviewPanel } from "@/components/framework/overview-panel"
 import { ModelManager } from "@/components/framework/model-manager"
-import { LogViewer } from "@/components/framework/log-viewer"
-import { ConfigEditor } from "@/components/framework/config-editor"
 import { MetricsPanel } from "@/components/framework/metrics-panel"
 
 const tabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "models", label: "Models", icon: Cuboid },
-  { id: "logs", label: "Logs", icon: Terminal },
-  { id: "config", label: "Config", icon: Settings },
   { id: "metrics", label: "Metrics", icon: BarChart3 },
 ] as const
 
@@ -63,8 +59,6 @@ export default function FrameworkDetailPage() {
       <div className="px-6 py-6">
         {activeTab === "overview" && <OverviewPanel frameworkId={frameworkId} />}
         {activeTab === "models" && <ModelManager frameworkId={frameworkId} />}
-        {activeTab === "logs" && <LogViewer frameworkId={frameworkId} />}
-        {activeTab === "config" && <ConfigEditor frameworkId={frameworkId} />}
         {activeTab === "metrics" && <MetricsPanel frameworkId={frameworkId} />}
       </div>
     </div>

@@ -16,22 +16,47 @@ const isAuthed = t.middleware(({ ctx, next }) => {
   return next({ ctx: { ...ctx, userId: ctx.userId } });
 });
 
+async function resolveEffectiveTier(userId: string): Promise<Tier> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tier: true, orgId: true },
+  });
+  if (!user) return Tier.FREE;
+
+  let effectiveTier = user.tier as unknown as Tier;
+  if (user.orgId) {
+    const orgSub = await prisma.orgSubscription.findUnique({
+      where: { orgId: user.orgId },
+    });
+    if (orgSub && orgSub.tier !== "FREE") {
+      const tierOrder: Tier[] = [Tier.FREE, Tier.PRO, Tier.TEAM, Tier.ENTERPRISE];
+      const orgIndex = tierOrder.indexOf(orgSub.tier as unknown as Tier);
+      const userIndex = tierOrder.indexOf(effectiveTier);
+      if (orgIndex > userIndex) effectiveTier = orgSub.tier as unknown as Tier;
+    }
+  }
+  return effectiveTier;
+}
+
+function pruneStaleEntries(now: number) {
+  for (const [key, entry] of requestCounts) {
+    if (entry.resetAt < now) requestCounts.delete(key);
+  }
+}
+
 const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
   if (!ctx.userId) return next({ ctx });
 
-  const user = await prisma.user.findUnique({
-    where: { id: ctx.userId },
-    select: { tier: true },
-  });
-
-  if (!user) return next({ ctx });
-
-  const tierConfig = getTierConfig(user.tier as unknown as Tier);
+  const tier = await resolveEffectiveTier(ctx.userId);
+  const tierConfig = getTierConfig(tier);
   const now = Date.now();
   const windowMs = 60_000;
-  const maxRequests = user.tier === Tier.FREE ? 60 : user.tier === Tier.PRO ? 200 : 500;
+  const maxRequests = tier === Tier.FREE ? 60 : tier === Tier.PRO ? 200 : 500;
+  void tierConfig;
 
-  const key = `${ctx.userId}`;
+  pruneStaleEntries(now);
+
+  const key = ctx.userId;
   const entry = requestCounts.get(key);
 
   if (!entry || entry.resetAt < now) {
@@ -43,7 +68,7 @@ const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
   if (entry.count > maxRequests) {
     throw new TRPCError({
       code: "TOO_MANY_REQUESTS",
-      message: `Rate limit exceeded. ${tierConfig.name} tier allows ${maxRequests} requests/minute.`,
+      message: `Rate limit exceeded. ${tier} tier allows ${maxRequests} requests/minute.`,
     });
   }
 
@@ -53,41 +78,10 @@ const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
 const enforceUsageLimits = t.middleware(async ({ ctx, next }) => {
   if (!ctx.userId) return next({ ctx });
 
-  const user = await prisma.user.findUnique({
-    where: { id: ctx.userId },
-    select: { tier: true, orgId: true },
-  });
+  const isMutation = ctx.req.method === "POST";
+  if (!isMutation) return next({ ctx });
 
-  if (!user) return next({ ctx });
-
-  const effectiveTier = user.tier as unknown as Tier;
-
-  if (user.orgId) {
-    const orgSub = await prisma.orgSubscription.findUnique({
-      where: { orgId: user.orgId },
-    });
-    if (orgSub && orgSub.tier !== "FREE") {
-      const tierOrder: Tier[] = [Tier.FREE, Tier.PRO, Tier.TEAM, Tier.ENTERPRISE];
-      const orgTierIndex = tierOrder.indexOf(orgSub.tier as unknown as Tier);
-      const userTierIndex = tierOrder.indexOf(effectiveTier);
-      if (orgTierIndex > userTierIndex) {
-        const tierConfig = getTierConfig(orgSub.tier as unknown as Tier);
-        if (tierConfig.features.chatsPerMonth !== "unlimited") {
-          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-          const sessionCount = await prisma.session.count({
-            where: { userId: ctx.userId, createdAt: { gte: thirtyDaysAgo } },
-          });
-          if (sessionCount >= tierConfig.features.chatsPerMonth) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message: `Chat limit reached. Upgrade your org plan.`,
-            });
-          }
-        }
-      }
-    }
-  }
-
+  const effectiveTier = await resolveEffectiveTier(ctx.userId);
   const tierConfig = getTierConfig(effectiveTier);
 
   if (tierConfig.features.chatsPerMonth !== "unlimited") {
@@ -106,10 +100,11 @@ const enforceUsageLimits = t.middleware(async ({ ctx, next }) => {
 
   if (tierConfig.features.pipelineNodes !== "unlimited") {
     const pipelineCount = await prisma.pipeline.count({ where: { userId: ctx.userId } });
-    if (pipelineCount >= 100) {
+    const limit = tierConfig.features.pipelineNodes as number;
+    if (pipelineCount >= limit) {
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: `Pipeline limit reached. Upgrade for more.`,
+        message: `Pipeline limit reached (${limit}). Upgrade your plan for more.`,
       });
     }
   }

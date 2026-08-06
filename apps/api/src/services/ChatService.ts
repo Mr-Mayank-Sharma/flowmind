@@ -26,8 +26,10 @@ function buildLLMEngine(): LLMEngine {
   })
 }
 
+const NON_DESTRUCTIVE_TOOLS = new Set(["read", "grep", "glob", "web_fetch", "web_search", "todo_write"])
+
 function buildChatTools(sessionId: string, userId: string): AgentTool[] {
-  const defs = toolRegistry.all()
+  const defs = toolRegistry.all().filter((def) => NON_DESTRUCTIVE_TOOLS.has(def.id))
   const noopCtx = {
     sessionId,
     messageId: `chat_${Date.now()}`,
@@ -238,10 +240,10 @@ export class ChatService {
         const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
         callbacks?.onDone({ reply, steps: [], iterations: 0 })
         return { message: assistantMessage, reply, steps: [], iterations: 0 }
-      } catch {
+      } catch (innerErr) {
         const reply = "I encountered an error processing your request. Please try again."
         const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
-        callbacks?.onError(err instanceof Error ? err : new Error(String(err)))
+        callbacks?.onError(innerErr instanceof Error ? innerErr : new Error(String(innerErr)))
         return { message: assistantMessage, reply, steps: [], iterations: 0 }
       }
     }

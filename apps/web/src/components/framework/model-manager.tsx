@@ -41,20 +41,11 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
     if (!modelName.trim()) return
     setPulling(modelName.trim())
     setPullProgress(0)
-    setPullStatus("Starting download...")
+    setPullStatus("Pulling model...")
     setError(null)
 
     try {
-      const progressInterval = setInterval(() => {
-        setPullProgress((prev) => {
-          if (prev >= 90) return prev
-          return prev + Math.random() * 8
-        })
-      }, 2000)
-
       await api.models.pullModel(modelName.trim())
-
-      clearInterval(progressInterval)
       setPullProgress(100)
       setPullStatus("Complete")
       await fetchModels()
@@ -249,9 +240,11 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
           <div className="flex items-center gap-2 text-sm">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             <span>Pulling {pulling}...</span>
-            <span className="text-xs text-muted-foreground ml-auto">{Math.round(pullProgress)}%</span>
+            <span className="text-xs text-muted-foreground ml-auto">
+              {pullProgress > 0 ? `${Math.round(pullProgress)}%` : "working"}
+            </span>
           </div>
-          <Progress value={pullProgress} variant="default" className="h-1.5" />
+          <Progress value={pullProgress > 0 ? pullProgress : 100} variant="default" className={cn("h-1.5", pullProgress === 0 && "animate-pulse")} />
           {pullStatus && pullStatus !== "Complete" && pullStatus !== "Failed" && (
             <p className="text-[11px] text-muted-foreground">{pullStatus}</p>
           )}

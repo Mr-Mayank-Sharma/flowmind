@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
+import { GlobalSearch } from "@/components/global-search"
 import { Button } from "@/components/ui/button"
 import { useSidebarStore } from "@/hooks/sidebar-store"
 
@@ -51,6 +52,7 @@ export function LayoutWithSidebar({ children }: { children: ReactNode }) {
     return (
       <>
         {children}
+        <GlobalSearch />
         <KeyboardShortcuts />
       </>
     )
@@ -107,6 +109,7 @@ export function LayoutWithSidebar({ children }: { children: ReactNode }) {
       >
         {children}
       </main>
+      <GlobalSearch />
     </div>
   )
 }

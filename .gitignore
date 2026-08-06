@@ -10,6 +10,9 @@ __pycache__/
 .DS_Store
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
+blob-report/
 *.tsbuildinfo
 .pnpm-store/
 Refrences/

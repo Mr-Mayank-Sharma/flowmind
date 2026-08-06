@@ -132,9 +132,8 @@ export default function ModelsPage() {
   }
 
   const saveApiKey = (providerId: string, key: string) => {
-    setApiKeys(prev => ({ ...prev, [providerId]: { key, visible: false } }))
     setShowKeyInput(null)
-    toast({ title: `API key saved for ${providerId}`, variant: "success" })
+    toast({ title: "API keys are set server-side", description: "Configure this provider via environment variables on the API server.", variant: "info" })
   }
 
   const copyToClipboard = (text: string, id: string) => {

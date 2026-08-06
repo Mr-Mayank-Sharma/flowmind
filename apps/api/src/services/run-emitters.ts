@@ -1,11 +1,34 @@
 import EventEmitter from "events"
 
-const runEmitters = new Map<string, EventEmitter>()
+const MAX_BUFFER = 1000
 
-export function getRunEmitter(runId: string): EventEmitter {
+export interface BufferedEvent {
+  event: string
+  data: unknown
+}
+
+export class BufferedEmitter extends EventEmitter {
+  readonly buffer: BufferedEvent[] = []
+
+  emit(event: string | symbol, ...args: unknown[]): boolean {
+    if (typeof event === "string") {
+      this.buffer.push({ event, data: args[0] })
+      if (this.buffer.length > MAX_BUFFER) this.buffer.shift()
+    }
+    return super.emit(event, ...args)
+  }
+
+  clearBuffer(): void {
+    this.buffer.length = 0
+  }
+}
+
+const runEmitters = new Map<string, BufferedEmitter>()
+
+export function getRunEmitter(runId: string): BufferedEmitter {
   let emitter = runEmitters.get(runId)
   if (!emitter) {
-    emitter = new EventEmitter()
+    emitter = new BufferedEmitter()
     emitter.setMaxListeners(50)
     runEmitters.set(runId, emitter)
   }

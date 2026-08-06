@@ -10,6 +10,12 @@ export function setToken(token: string) {
   document.cookie = `flowmind_token=${encodeURIComponent(token)};path=/;max-age=900;SameSite=Lax`
 }
 
+export function getRefreshToken(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.match(/(?:^|;\s*)flowmind_refresh=([^;]*)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : null
+}
+
 export function setRefreshToken(token: string) {
   document.cookie = `flowmind_refresh=${encodeURIComponent(token)};path=/;max-age=604800;SameSite=Lax`
 }
@@ -93,27 +99,115 @@ export interface GPUMetrics {
   vramUsed: string
 }
 
-export async function tRPCMutation<T>(procedure: string, input: unknown): Promise<T> {
+interface TrpcJsonError {
+  message?: string
+  code?: string
+  data?: { code?: string; httpStatus?: number }
+}
+
+interface TrpcErrorEnvelope {
+  error?: TrpcJsonError | string
+}
+
+function extractErrorMessage(json: TrpcErrorEnvelope): string {
+  const err = json?.error
+  if (!err) return "Request failed"
+  if (typeof err === "string") return err
+  const nested = (err as any)?.json as TrpcJsonError | undefined
+  const target = nested ?? err
+  if (target?.message) return target.message
+  if (target?.data?.code) return target.data.code
+  if (target?.code) return target.code
+  return "Request failed"
+}
+
+export class ApiError extends Error {
+  readonly code: string
+  readonly httpStatus: number
+
+  constructor(message: string, code = "UNKNOWN", httpStatus = 0) {
+    super(message)
+    this.name = "ApiError"
+    this.code = code
+    this.httpStatus = httpStatus
+  }
+}
+
+async function parseResponse(res: Response): Promise<unknown> {
+  const text = await res.text()
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new ApiError(`Unexpected response from server (HTTP ${res.status})`, "PARSE_ERROR", res.status)
+  }
+}
+
+interface CallOptions {
+  retry?: boolean
+}
+
+async function trpcCall<T>(method: "GET" | "POST", procedure: string, body?: unknown, opts?: CallOptions): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" }
   const token = getToken()
   if (token) headers["Authorization"] = `Bearer ${token}`
-  const res = await fetch(`${API_URL}/trpc/${procedure}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(input ?? {}),
-  })
-  const json = await res.json()
-  if (json.error) throw new Error(json.error.message || json.error.code || "Request failed")
+
+  const url = method === "GET" ? `${API_URL}/trpc/${procedure}?input=${encodeURIComponent(JSON.stringify(body ?? {}))}` : `${API_URL}/trpc/${procedure}`
+
+  let res: Response
+  try {
+    res = await fetch(url, { method, headers, body: method === "POST" ? JSON.stringify(body ?? {}) : undefined })
+  } catch {
+    throw new ApiError("Network error — cannot reach server", "NETWORK_ERROR", 0)
+  }
+
+  if (res.status === 401 && opts?.retry !== false) {
+    const refreshed = await tryRefresh()
+    if (refreshed) {
+      return trpcCall<T>(method, procedure, body, { retry: false })
+    }
+    throw new ApiError("Session expired — please sign in again", "UNAUTHORIZED", 401)
+  }
+
+  const json = (await parseResponse(res)) as TrpcErrorEnvelope & { result?: { data?: T } }
+  if (!res.ok || json.error) {
+    const message = extractErrorMessage(json)
+    const nested = typeof json.error === "object" ? ((json.error as any)?.json ?? json.error) : undefined
+    const code = typeof nested === "object" ? nested.code ?? "ERROR" : "ERROR"
+    throw new ApiError(message, code, res.status)
+  }
   return json.result?.data as T
 }
 
+async function tryRefresh(): Promise<boolean> {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) {
+    clearAuth()
+    return false
+  }
+  try {
+    const res = await fetch(`${API_URL}/trpc/auth.refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    })
+    const json = (await parseResponse(res)) as TrpcErrorEnvelope & { result?: { data?: AuthResponse } }
+    if (!res.ok || json.error || !json.result?.data) return false
+    const data = json.result.data
+    setToken(data.token)
+    setRefreshToken(data.refreshToken)
+    setUserCookie(data.user)
+    localStorage.setItem("flowmind_user", JSON.stringify(data.user))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function tRPCMutation<T>(procedure: string, input: unknown): Promise<T> {
+  return trpcCall<T>("POST", procedure, input)
+}
+
 export async function tRPCQuery<T>(procedure: string, input?: unknown): Promise<T> {
-  const headers: Record<string, string> = {}
-  const token = getToken()
-  if (token) headers["Authorization"] = `Bearer ${token}`
-  const query = input ? `?input=${encodeURIComponent(JSON.stringify(input))}` : "?input={}"
-  const res = await fetch(`${API_URL}/trpc/${procedure}${query}`, { headers })
-  const json = await res.json()
-  if (json.error) throw new Error(json.error.message || json.error.code || "Request failed")
-  return json.result?.data as T
+  return trpcCall<T>("GET", procedure, input ?? {})
 }

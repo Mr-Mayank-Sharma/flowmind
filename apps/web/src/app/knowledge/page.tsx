@@ -1,12 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
-import { Search, Book, Upload, FileText, Trash2, ExternalLink, Database, Search as SearchIcon, Loader2, CheckCircle, XCircle, Download, File, FileJson, Table2, FileSpreadsheet, Plus } from "lucide-react"
+import { Search, Upload, FileText, Trash2, Database, Search as SearchIcon, Loader2, File, FileJson, Table2, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
@@ -19,13 +18,17 @@ export default function KnowledgePage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showCreate, setShowCreate] = useState(false)
   const [newKB, setNewKB] = useState({ name: "", description: "" })
+  const [uploadTarget, setUploadTarget] = useState("")
+  const [uploadFiles, setUploadFiles] = useState<File[]>([])
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data: kbs = [], loading: kbsLoading, refetch: refetchKBs } = useQuery(
     "knowledge:list",
     () => api.knowledge.list(),
   )
 
-  const { data: currentKB, loading: kbLoading } = useQuery(
+  const { data: currentKB, refetch: refetchKB } = useQuery(
     selectedKB ? `knowledge:getById:${selectedKB}` : null,
     () => api.knowledge.getById(selectedKB!),
     { enabled: !!selectedKB },
@@ -54,8 +57,45 @@ export default function KnowledgePage() {
 
   const { mutate: deleteDoc } = useMutation(
     (id: string) => api.knowledge.deleteDocument(id),
-    { onSuccess: refetchKBs },
+    { onSuccess: () => { refetchKBs(); refetchKB() } },
   )
+
+  const { mutate: uploadDocs, loading: uploading } = useMutation(
+    (input: { kbId: string; name: string; type: "PDF" | "TXT" | "MD" | "CSV" | "JSON"; content: string }) =>
+      api.knowledge.uploadDocument(input),
+    { onSuccess: () => { refetchKBs(); refetchKB(); setUploadFiles([]); setUploadError(null) } },
+  )
+
+  const detectType = (name: string): "PDF" | "TXT" | "MD" | "CSV" | "JSON" => {
+    const ext = name.split(".").pop()?.toLowerCase()
+    if (ext === "pdf") return "PDF"
+    if (ext === "md" || ext === "markdown") return "MD"
+    if (ext === "csv") return "CSV"
+    if (ext === "json") return "JSON"
+    return "TXT"
+  }
+
+  const handleUpload = async () => {
+    setUploadError(null)
+    if (!uploadTarget) {
+      setUploadError("Select a knowledge base to upload to.")
+      return
+    }
+    if (uploadFiles.length === 0) {
+      setUploadError("Choose at least one file.")
+      return
+    }
+    for (const file of uploadFiles) {
+      const content = await file.text()
+      uploadDocs({ kbId: uploadTarget, name: file.name, type: detectType(file.name), content })
+    }
+  }
+
+  const handleUploadFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const accepted = Array.from(files).filter((f) => f.size <= 50 * 1024 * 1024)
+    setUploadFiles(accepted)
+  }
 
   const docs = currentKB?.documents ?? []
 
@@ -239,12 +279,50 @@ export default function KnowledgePage() {
                 <p className="text-sm text-muted-foreground text-center max-w-sm">
                   Drag and drop files here, or click to browse. Supports PDF, TXT, MD, CSV, JSON.
                 </p>
-                <div className="w-full border-2 border-dashed border-border/50 rounded-lg p-8 text-center hover:border-primary/30 transition-colors cursor-pointer">
-                  <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">Drop files here</p>
+                <div className="w-full space-y-2">
+                  <label className="text-xs text-muted-foreground mb-1 block">Knowledge base</label>
+                  <select
+                    value={uploadTarget}
+                    onChange={(e) => setUploadTarget(e.target.value)}
+                    className="h-9 text-sm w-full rounded-md border border-input bg-surface px-3"
+                  >
+                    <option value="">{kbs.length === 0 ? "No knowledge bases" : "Select a knowledge base..."}</option>
+                    {kbs.map((kb: any) => (<option key={kb.id} value={kb.id}>{kb.name}</option>))}
+                  </select>
                 </div>
-                <Button className="w-full gap-2">
-                  <Upload className="h-4 w-4" /> Upload & Index
+                <div
+                  className="w-full border-2 border-dashed border-border/50 rounded-lg p-8 text-center hover:border-primary/30 transition-colors cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.txt,.md,.markdown,.csv,.json"
+                    className="hidden"
+                    onChange={(e) => { handleUploadFiles(e.target.files); e.target.value = "" }}
+                  />
+                  <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">Drop files here or click to browse</p>
+                  {uploadFiles.length > 0 && (
+                    <div className="mt-3 space-y-1 text-left">
+                      {uploadFiles.map((f) => (
+                        <div key={f.name} className="flex items-center gap-2 text-xs">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="flex-1 truncate">{f.name}</span>
+                          <span className="text-muted-foreground shrink-0">{(f.size / 1024).toFixed(1)} KB</span>
+                          <button onClick={(e) => { e.stopPropagation(); setUploadFiles((prev) => prev.filter((x) => x.name !== f.name)) }} className="p-0.5 text-muted-foreground hover:text-red-400">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+                <Button className="w-full gap-2" onClick={handleUpload} disabled={uploading || uploadFiles.length === 0}>
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {uploading ? "Indexing..." : "Upload & Index"}
                 </Button>
                 <p className="text-[10px] text-muted-foreground">Max file size: 50 MB per file</p>
               </div>
