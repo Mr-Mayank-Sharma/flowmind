@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
 import { Store, Download, Star, Tag, Search, ArrowLeft, Puzzle, Box, MessageSquare, Bot, Plug, Package } from "lucide-react"
@@ -31,7 +31,7 @@ export default function MarketplacePage() {
   const [searchQuery, setSearchQuery] = useState("")
   const { toast } = useToast()
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoaded(false)
     setError(null)
     try {
@@ -49,11 +49,14 @@ export default function MarketplacePage() {
     } finally {
       setLoaded(true)
     }
-  }
+  }, [tab, selectedCategory, searchQuery])
 
   useEffect(() => {
-    loadData()
-  }, [tab, selectedCategory])
+    const t = setTimeout(() => {
+      loadData()
+    }, searchQuery ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [loadData, searchQuery])
 
   const handleClone = async (id: string) => {
     try {

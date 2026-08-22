@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import {
   Search, Wrench, Code, FileCode, Globe, Database, GitBranch, Mail, MessageSquare, Image,
-  Terminal, Webhook, Link, Lock, Unlock, Play, CheckCircle, XCircle, ExternalLink, Sliders
+  Terminal, Webhook, Link, Lock, Unlock, Play, CheckCircle, XCircle, ExternalLink, Sliders, Loader2
 } from "lucide-react"
 import { api } from "@/lib/api"
 
@@ -22,6 +22,9 @@ export default function ToolsPage() {
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState<string>("All")
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
+  const [testInput, setTestInput] = useState("")
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
 
   const categories = ["All", "filesystem", "code", "web", "database", "communication", "ai", "integration"] as const
 
@@ -45,6 +48,18 @@ export default function ToolsPage() {
       await api.tools.toggle(id)
       fetchTools()
     } catch {}
+  }
+
+  const runTest = async () => {
+    if (!selectedTool) return
+    setTesting(true)
+    try {
+      const result = await api.tools.test({ toolId: selectedTool, input: testInput })
+      setTestResult(typeof result === "string" ? result : JSON.stringify(result, null, 2))
+    } catch (e: any) {
+      setTestResult(`Error: ${e.message}`)
+    }
+    setTesting(false)
   }
 
   const currentTool = selectedTool ? tools.find((t) => t.id === selectedTool) : null
@@ -159,10 +174,10 @@ export default function ToolsPage() {
                   {currentTool.enabled ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
                   {currentTool.enabled ? "Disable" : "Enable"}
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
-                  <Play className="h-3 w-3" /> Test
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={runTest} disabled={testing}>
+                  {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Test
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={() => { window.location.href = "/tools-v2" }}>
                   <Sliders className="h-3 w-3" /> Configure
                 </Button>
               </div>
@@ -172,10 +187,13 @@ export default function ToolsPage() {
               <h3 className="text-sm font-semibold mb-3">Quick Test</h3>
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground block">Input Parameters (JSON)</label>
-                <textarea className="w-full h-24 text-xs font-mono p-3 rounded-lg border border-border/50 bg-background/50 resize-none" placeholder='{"path": "/home/flowmind/test.txt"}' />
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 w-full">
-                  <Play className="h-3 w-3" /> Execute Test
+                <textarea value={testInput} onChange={(e) => setTestInput(e.target.value)} className="w-full h-24 text-xs font-mono p-3 rounded-lg border border-border/50 bg-background/50 resize-none" placeholder='{"path": "/home/flowmind/test.txt"}' />
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1 w-full" onClick={runTest} disabled={testing}>
+                  {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Execute Test
                 </Button>
+                {testResult && (
+                  <pre className="w-full text-xs font-mono p-3 rounded-lg border border-border/50 bg-background/50 overflow-auto max-h-48 whitespace-pre-wrap">{testResult}</pre>
+                )}
               </div>
             </Card>
           </div>

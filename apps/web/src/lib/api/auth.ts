@@ -15,4 +15,16 @@ export const authApi = {
     tRPCQuery<Array<{ id: string; name: string; icon: string }>>("auth.ssoProviders"),
   requestPasswordReset: (input: { email: string }) =>
     tRPCMutation<{ success: boolean; message: string }>("auth.requestPasswordReset", input),
+  resetPassword: (input: { token: string; newPassword: string }) =>
+    tRPCMutation<{ success: boolean }>("auth.resetPassword", input),
+  changePassword: (input: { currentPassword: string; newPassword: string }) =>
+    tRPCMutation<{ success: boolean }>("auth.changePassword", input),
+  getMfaStatus: () =>
+    tRPCQuery<{ enabled: boolean }>("auth.getMfaStatus"),
+  setupMfa: () =>
+    tRPCMutation<{ secret: string; qrCodeUrl: string }>("auth.setupMfa", {}),
+  confirmMfa: (token: string) =>
+    tRPCMutation<boolean>("auth.confirmMfa", { token }),
+  disableMfa: () =>
+    tRPCMutation<{ success: boolean }>("auth.disableMfa", {}),
 }

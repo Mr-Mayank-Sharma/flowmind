@@ -10,7 +10,7 @@ const toolRouter = new McpToolRouter();
 const tokenStore = {
   getToken: async (userId: string, provider: string) => {
     const { prisma } = await import("@flowmind/db");
-    const rec = await prisma.mcpToken.findFirst({ where: { userId, provider } });
+    const rec = await prisma.mcpToken.findFirst({ where: { userId, provider, isActive: true } });
     if (!rec) return null;
     return {
       accessToken: rec.accessToken,
@@ -77,10 +77,20 @@ const executor = new McpExecutor(registry, connectionPool, toolRouter, tokenStor
 export const mcpRouter = router({
   list: protectedProcedure
     .query(async ({ ctx }) => {
-      return ctx.prisma.mcpToken.findMany({
+      const tokens = await ctx.prisma.mcpToken.findMany({
         where: { userId: ctx.userId },
         orderBy: { createdAt: "desc" },
       });
+      return tokens.map((t) => ({
+        id: t.id,
+        orgId: t.orgId,
+        provider: t.provider,
+        scope: t.scope,
+        expiresAt: t.expiresAt,
+        isActive: t.isActive,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+      }));
     }),
 
   create: protectedProcedure
@@ -118,17 +128,30 @@ export const mcpRouter = router({
     .mutation(async ({ input, ctx }) => {
       const token = await ctx.prisma.mcpToken.findUnique({ where: { id: input.id } });
       if (!token || token.userId !== ctx.userId) throw new TRPCError({ code: "NOT_FOUND" });
-      return token;
+      const updated = await ctx.prisma.mcpToken.update({
+        where: { id: input.id },
+        data: { isActive: !token.isActive },
+      });
+      return { success: true, isActive: updated.isActive };
     }),
 
   providers: publicProcedure
     .query(async () => {
-      const providers: Array<{ id: string; authUrl: string; scopes: string[]; supportsPkce: boolean }> = [];
+      const providers: Array<{ id: string; name: string; authUrl: string; scopes: string[]; supportsPkce: boolean }> = [];
       for (const id of Object.keys(OAUTH_PROVIDERS)) {
         const cfg = OAUTH_PROVIDERS[id]!;
-        providers.push({ id, authUrl: cfg.authUrl, scopes: cfg.scopes, supportsPkce: cfg.pkce });
+        providers.push({ id, name: id.charAt(0).toUpperCase() + id.slice(1), authUrl: cfg.authUrl, scopes: cfg.scopes, supportsPkce: cfg.pkce });
       }
       return providers;
+    }),
+
+  tools: protectedProcedure
+    .query(async () => {
+      return registry.listBuiltInTools().map((t) => ({
+        name: t.name,
+        category: t.category,
+        description: t.description,
+      }));
     }),
 
   oauthInitiate: protectedProcedure

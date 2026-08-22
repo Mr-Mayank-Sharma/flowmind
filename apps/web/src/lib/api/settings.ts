@@ -1,7 +1,7 @@
 import { tRPCQuery, tRPCMutation } from "./core"
 
 export const settingsApi = {
-  updateProfile: (input: { name?: string; timezone?: string; language?: string }) =>
+  updateProfile: (input: { name?: string; timezone?: string; language?: string; defaultModel?: string | null }) =>
     tRPCMutation<any>("settings.updateProfile", input),
   getApiKeys: () => tRPCQuery<any[]>("settings.getApiKeys"),
   createApiKey: (input: { name: string; provider: string; key: string }) =>

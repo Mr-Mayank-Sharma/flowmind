@@ -1,11 +1,10 @@
-import { z } from "zod";
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { Context } from "../middleware/context";
 import { prisma } from "@flowmind/db";
 import { getTierConfig } from "@flowmind/billing/tiers";
 import { Tier } from "@flowmind/shared";
 
-const t = initTRPC.context<Context>().create();
+export const t = initTRPC.context<Context>().create();
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
@@ -115,3 +114,19 @@ const enforceUsageLimits = t.middleware(async ({ ctx, next }) => {
 export const router = t.router;
 export const publicProcedure = t.procedure;
 export const protectedProcedure = t.procedure.use(isAuthed).use(enforceRateLimit).use(enforceUsageLimits);
+
+const isAdmin = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.userId) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: ctx.userId },
+    select: { role: true },
+  });
+  if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+  }
+  return next({ ctx: { ...ctx, userId: ctx.userId } });
+});
+
+export const adminProcedure = t.procedure.use(isAdmin).use(enforceRateLimit);

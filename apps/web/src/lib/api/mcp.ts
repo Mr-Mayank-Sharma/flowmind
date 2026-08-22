@@ -6,7 +6,8 @@ export const mcpApi = {
     tRPCMutation<any>("mcp.create", input),
   delete: (id: string) => tRPCMutation<{ success: boolean }>("mcp.delete", { id }),
   toggle: (id: string) => tRPCMutation<any>("mcp.toggle", { id }),
-  providers: () => tRPCQuery<Array<{ id: string; name: string; icon: string }>>("mcp.providers"),
+  providers: () => tRPCQuery<Array<{ id: string; name: string; authUrl: string; scopes: string[]; supportsPkce: boolean }>>("mcp.providers"),
+  tools: () => tRPCQuery<Array<{ name: string; category: string; description: string }>>("mcp.tools"),
   oauthInitiate: (input: { provider: string }) =>
     tRPCMutation<{ url: string; state: string }>("mcp.oauthInitiate", input),
   oauthCallback: (input: { provider: string; code: string; state: string }) =>

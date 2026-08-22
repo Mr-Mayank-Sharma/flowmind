@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server"
 import { router, protectedProcedure } from "../middleware/trpc"
 import { chatService } from "../services"
 import { MessageRole } from "@flowmind/shared"
-import { getSessionEmitter } from "../services/session-emitters"
+import { getSessionEmitter, cleanupSessionEmitter } from "../services/session-emitters"
 
 export const chatRouter = router({
   sendMessage: protectedProcedure
@@ -100,6 +100,7 @@ export const chatRouter = router({
       await ctx.prisma.session.deleteMany({
         where: { id: input.id, userId: ctx.userId ?? undefined },
       })
+      cleanupSessionEmitter(input.id)
       return { success: true }
     }),
 

@@ -1,11 +1,13 @@
 export type NodeType =
   | "cronTrigger" | "webhookTrigger" | "channelTrigger" | "manualTrigger" | "pollingTrigger"
   | "aiAgent" | "contentWriter" | "dataExtractor" | "classifier" | "summarizer" | "webResearcher" | "imageGenerator"
+  | "ragRetrieve"
   | "httpRequest" | "databaseQuery" | "sendEmail" | "sendMessage" | "codeExecute"
   | "condition" | "switch" | "parallelFork" | "merge" | "loop" | "wait"
   | "subPipeline"
   | "integrationNode"
   | "openhumanMessage"
+  | "humanApproval"
 
 export type NodeKind = "trigger" | "ai" | "action" | "flow" | "integration"
 
@@ -68,6 +70,22 @@ export interface LLMProvider {
   complete(req: { model: string; messages: Array<{ role: string; content: string }>; temperature?: number; maxTokens?: number }): Promise<{ content: string; model: string }>
 }
 
+export interface RAGChunk {
+  id: string
+  content: string
+  score: number
+  metadata: Record<string, unknown>
+}
+
+export type RAGSearchFn = (query: { text: string; topK?: number; filters?: Record<string, unknown> }) => Promise<RAGChunk[]>
+
+export interface ApprovalDecision {
+  approved: boolean
+  note?: string
+}
+
+export type ApprovalRequester = (nodeId: string, request: Record<string, unknown>) => Promise<ApprovalDecision>
+
 export interface ExecutionContext {
   runId: string
   pipelineId: string
@@ -83,6 +101,9 @@ export interface ExecutionContext {
   credentialResolver?: CredentialResolver
   subPipelineRunner?: SubPipelineRunner
   llm?: LLMProvider
+  ragSearch?: RAGSearchFn
+  requestApproval?: ApprovalRequester
+  approvalOverrides?: Record<string, ApprovalDecision>
 }
 
 export interface CredentialResolver {
@@ -101,6 +122,7 @@ export type NodeStatusCallback = (event: {
   status: "running" | "completed" | "failed"
   error?: string
   durationMs?: number
+  output?: unknown
 }) => void
 
 export interface NodeRunner {
@@ -116,7 +138,7 @@ export interface ExecutionPlan {
 
 export interface RunResult {
   runId: string
-  status: "success" | "error" | "cancelled"
+  status: "success" | "error" | "cancelled" | "awaiting_approval"
   outputs: NodeOutput[]
   error?: string
   startedAt: number
@@ -148,9 +170,9 @@ export interface CredentialStore {
 
 export function kindForNodeType(type: NodeType): NodeKind {
   if (["cronTrigger", "webhookTrigger", "channelTrigger", "manualTrigger", "pollingTrigger"].includes(type)) return "trigger"
-  if (["aiAgent", "contentWriter", "dataExtractor", "classifier", "summarizer", "webResearcher", "imageGenerator"].includes(type)) return "ai"
+  if (["aiAgent", "contentWriter", "dataExtractor", "classifier", "summarizer", "webResearcher", "imageGenerator", "ragRetrieve"].includes(type)) return "ai"
   if (["httpRequest", "databaseQuery", "sendEmail", "sendMessage", "codeExecute", "subPipeline", "openhumanMessage"].includes(type)) return "action"
-  if (["condition", "switch", "parallelFork", "merge", "loop", "wait"].includes(type)) return "flow"
+  if (["condition", "switch", "parallelFork", "merge", "loop", "wait", "humanApproval"].includes(type)) return "flow"
   return "integration"
 }
 

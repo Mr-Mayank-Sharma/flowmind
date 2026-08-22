@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 
 export function DangerZoneTab() {
   const [exporting, setExporting] = useState(false)
+  const [exportingAudit, setExportingAudit] = useState(false)
   const [password, setPassword] = useState("")
   const [confirmText, setConfirmText] = useState("")
   const [deleting, setDeleting] = useState(false)
@@ -31,6 +32,25 @@ export function DangerZoneTab() {
       toast({ title: "Export failed", variant: "error" })
     } finally {
       setExporting(false)
+    }
+  }
+
+  const handleExportAudit = async () => {
+    setExportingAudit(true)
+    try {
+      const data = await api.settings.getAuditLog()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `flowmind-audit-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast({ title: "Audit log exported", variant: "success" })
+    } catch {
+      toast({ title: "Export failed", variant: "error" })
+    } finally {
+      setExportingAudit(false)
     }
   }
 
@@ -78,9 +98,9 @@ export function DangerZoneTab() {
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {exporting ? "Exporting..." : "Export My Data"}
             </Button>
-            <Button variant="outline" size="sm" className="gap-2">
-              <FileText className="h-3.5 w-3.5" />
-              Export Audit Log
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleExportAudit} disabled={exportingAudit}>
+              {exportingAudit ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+              {exportingAudit ? "Exporting..." : "Export Audit Log"}
             </Button>
           </div>
         </CardContent>

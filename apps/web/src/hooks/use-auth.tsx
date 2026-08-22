@@ -24,9 +24,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = await api.auth.me()
       setUser(u)
       setUserCookie(u)
-    } catch {
-      clearAuth()
-      setUser(null)
+    } catch (err) {
+      if ((err as { code?: string })?.code === "UNAUTHORIZED") {
+        clearAuth()
+        setUser(null)
+      }
     }
   }, [])
 
@@ -48,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(u)
             setUserCookie(u)
           }
-        } catch {
-          if (!cancelled) {
+        } catch (err) {
+          if (!cancelled && (err as { code?: string })?.code === "UNAUTHORIZED") {
             clearAuth()
             setUser(null)
           }

@@ -1,6 +1,24 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../middleware/trpc";
 
+const CHANNEL_SECRET_ENV: Record<string, string | undefined> = {
+  telegram: process.env.TELEGRAM_WEBHOOK_SECRET,
+  slack: process.env.SLACK_WEBHOOK_SECRET,
+  discord: process.env.DISCORD_WEBHOOK_SECRET,
+  whatsapp: process.env.WHATSAPP_WEBHOOK_SECRET,
+};
+
+function verifyChannelSecret(channel: string, provided: string | undefined): boolean {
+  const expected = CHANNEL_SECRET_ENV[channel] || process.env.WEBHOOK_SECRET;
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(`webhooks.${channel}: no webhook secret configured; request accepted unverified`);
+    }
+    return true;
+  }
+  return provided === expected;
+}
+
 function extractText(channel: string, body: any): { text: string; userId: string; channelId: string; media?: { id: string; type: string; mimeType: string; filename: string } } {
   switch (channel) {
     case "telegram":
@@ -50,8 +68,11 @@ function extractText(channel: string, body: any): { text: string; userId: string
 
 export const webhooksRouter = router({
   whatsapp: publicProcedure
-    .input(z.object({ body: z.any() }))
+    .input(z.object({ body: z.any(), secret: z.string().optional() }))
     .mutation(async ({ input }) => {
+      if (!verifyChannelSecret("whatsapp", input.secret)) {
+        return { received: false, error: "invalid secret" };
+      }
       const extracted = extractText("whatsapp", input.body);
       const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
       await fetch(`${agentUrl}/webhook/ingest`, {
@@ -88,8 +109,11 @@ export const webhooksRouter = router({
     }),
 
   telegram: publicProcedure
-    .input(z.object({ body: z.any() }))
+    .input(z.object({ body: z.any(), secret: z.string().optional() }))
     .mutation(async ({ input }) => {
+      if (!verifyChannelSecret("telegram", input.secret)) {
+        return { received: false, error: "invalid secret" };
+      }
       const { text, userId, channelId } = extractText("telegram", input.body);
 
       const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
@@ -104,10 +128,13 @@ export const webhooksRouter = router({
     }),
 
   slack: publicProcedure
-    .input(z.object({ body: z.any() }))
+    .input(z.object({ body: z.any(), secret: z.string().optional() }))
     .mutation(async ({ input }) => {
       const body = input.body as any;
       if (body?.challenge) return { challenge: body.challenge };
+      if (!verifyChannelSecret("slack", input.secret)) {
+        return { received: false, error: "invalid secret" };
+      }
 
       const { text, userId, channelId } = extractText("slack", body);
 
@@ -123,8 +150,11 @@ export const webhooksRouter = router({
     }),
 
   discord: publicProcedure
-    .input(z.object({ body: z.any() }))
+    .input(z.object({ body: z.any(), secret: z.string().optional() }))
     .mutation(async ({ input }) => {
+      if (!verifyChannelSecret("discord", input.secret)) {
+        return { received: false, error: "invalid secret" };
+      }
       const { text, userId, channelId } = extractText("discord", input.body);
 
       const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";

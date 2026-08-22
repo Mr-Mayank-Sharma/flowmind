@@ -20,6 +20,7 @@ import { webhooksRouter } from "./webhooks";
 import { contextRouter } from "./context";
 import { skillsRouter } from "./skills";
 import { runtimeRouter } from "./runtime";
+import { hostRouter } from "./host";
 
 export const appRouter = router({
   chat: chatRouter,
@@ -43,6 +44,7 @@ export const appRouter = router({
   context: contextRouter,
   skills: skillsRouter,
   runtime: runtimeRouter,
+  host: hostRouter,
 });
 
 export type AppRouter = typeof appRouter;

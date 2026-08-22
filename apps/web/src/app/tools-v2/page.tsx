@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
   Wand2,
   FileCode,
@@ -86,6 +87,7 @@ export default function ToolsV2Page() {
   const [pluginDir, setPluginDir] = useState("")
 
   const [activeTab, setActiveTab] = useState("tools")
+  const [pendingDestructiveTool, setPendingDestructiveTool] = useState(false)
 
   useEffect(() => {
     api.toolsV2.listTools().then(setTools).catch(() => {})
@@ -97,11 +99,25 @@ export default function ToolsV2Page() {
   const executeTool = async () => {
     if (!selectedTool) return
     const tool = tools.find((t: any) => t.id === selectedTool)
-    const destructive = tool?.id ? tool.id in DESTRUCTIVE_TOOLS : false
-    if (destructive && !confirm(`Executing "${selectedTool}" may modify files or run commands on the server. Continue?`)) return
+    const destructive = tool?.id ? DESTRUCTIVE_TOOLS.has(tool.id) : false
+    if (destructive) {
+      setPendingDestructiveTool(true)
+      return
+    }
     try {
       const args = JSON.parse(toolArgs)
       const result = await api.toolsV2.executeTool({ toolId: selectedTool, args, autoApprove: destructive })
+      setToolResult(JSON.stringify(result, null, 2))
+    } catch (e: any) {
+      setToolResult(`Error: ${e.message}`)
+    }
+  }
+
+  const runDestructiveTool = async () => {
+    setPendingDestructiveTool(false)
+    try {
+      const args = JSON.parse(toolArgs)
+      const result = await api.toolsV2.executeTool({ toolId: selectedTool!, args, autoApprove: true })
       setToolResult(JSON.stringify(result, null, 2))
     } catch (e: any) {
       setToolResult(`Error: ${e.message}`)
@@ -724,6 +740,15 @@ export default function ToolsV2Page() {
           </TabsContent>
         </Tabs>
       </div>
+      <ConfirmDialog
+        open={pendingDestructiveTool}
+        title={`Execute "${selectedTool}"?`}
+        description="This tool may modify files or run commands on the server. Continue?"
+        confirmLabel="Execute"
+        destructive
+        onConfirm={runDestructiveTool}
+        onCancel={() => setPendingDestructiveTool(false)}
+      />
     </div>
   )
 }

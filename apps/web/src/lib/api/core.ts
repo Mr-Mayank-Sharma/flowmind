@@ -145,14 +145,16 @@ async function parseResponse(res: Response): Promise<unknown> {
 
 interface CallOptions {
   retry?: boolean
+  token?: string
 }
 
-async function trpcCall<T>(method: "GET" | "POST", procedure: string, body?: unknown, opts?: CallOptions): Promise<T> {
+async function trpcCall<T>(method: "GET" | "POST", procedure: string, body?: unknown, opts?: CallOptions, baseUrl?: string): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" }
-  const token = getToken()
+  const token = opts?.token ?? getToken()
   if (token) headers["Authorization"] = `Bearer ${token}`
 
-  const url = method === "GET" ? `${API_URL}/trpc/${procedure}?input=${encodeURIComponent(JSON.stringify(body ?? {}))}` : `${API_URL}/trpc/${procedure}`
+  const apiUrl = baseUrl?.trim() ? baseUrl.trim().replace(/\/+$/, "") : API_URL
+  const url = method === "GET" ? `${apiUrl}/trpc/${procedure}?input=${encodeURIComponent(JSON.stringify(body ?? {}))}` : `${apiUrl}/trpc/${procedure}`
 
   let res: Response
   try {
@@ -164,7 +166,7 @@ async function trpcCall<T>(method: "GET" | "POST", procedure: string, body?: unk
   if (res.status === 401 && opts?.retry !== false) {
     const refreshed = await tryRefresh()
     if (refreshed) {
-      return trpcCall<T>(method, procedure, body, { retry: false })
+      return trpcCall<T>(method, procedure, body, { retry: false }, baseUrl)
     }
     throw new ApiError("Session expired — please sign in again", "UNAUTHORIZED", 401)
   }
@@ -210,4 +212,20 @@ export async function tRPCMutation<T>(procedure: string, input: unknown): Promis
 
 export async function tRPCQuery<T>(procedure: string, input?: unknown): Promise<T> {
   return trpcCall<T>("GET", procedure, input ?? {})
+}
+
+export async function tRPCQueryAs<T>(procedure: string, token: string, input?: unknown): Promise<T> {
+  return trpcCall<T>("GET", procedure, input ?? {}, { token, retry: false })
+}
+
+export async function tRPCMutationAs<T>(procedure: string, token: string, input: unknown): Promise<T> {
+  return trpcCall<T>("POST", procedure, input, { token, retry: false })
+}
+
+export async function tRPCQueryAsHost<T>(procedure: string, hostUrl: string, token: string, input?: unknown): Promise<T> {
+  return trpcCall<T>("GET", procedure, input ?? {}, { token, retry: false }, hostUrl)
+}
+
+export async function tRPCMutationAsHost<T>(procedure: string, hostUrl: string, token: string, input: unknown): Promise<T> {
+  return trpcCall<T>("POST", procedure, input, { token, retry: false }, hostUrl)
 }

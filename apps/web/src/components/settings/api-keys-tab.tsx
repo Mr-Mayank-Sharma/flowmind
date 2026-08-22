@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Eye, EyeOff } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -77,14 +77,7 @@ export function ApiKeysTab({ showKey, setShowKey }: { showKey: string | null; se
                   <Badge variant="outline" className="text-xs">{ak.provider}</Badge>
                 </div>
                 <div className="flex items-center gap-3 mt-1">
-                  <div className="flex items-center gap-1.5">
-                    <code className="text-xs text-muted-foreground font-mono">
-                      {showKey === ak.id ? ak.keyHash?.slice(0, 16) + "..." : "••••" + ak.lastFour}
-                    </code>
-                    <button onClick={() => setShowKey(showKey === ak.id ? null : ak.id)} className="text-muted-foreground hover:text-foreground">
-                      {showKey === ak.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
+                  <code className="text-xs text-muted-foreground font-mono">••••{ak.lastFour}</code>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Created {new Date(ak.createdAt).toLocaleDateString()} &middot; Last used {ak.lastUsedAt ? new Date(ak.lastUsedAt).toLocaleDateString() : "Never"}</p>
               </div>

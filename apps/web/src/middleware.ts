@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const publicRoutes = ["/login", "/forgot-password", "/install", "/docs"];
+const publicRoutes = ["/login", "/forgot-password", "/reset-password", "/install", "/docs"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -11,7 +11,6 @@ export function middleware(request: NextRequest) {
   const isPublic =
     publicRoutes.some((route) => pathname === route || pathname.startsWith(route)) ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/api/") ||
     pathname.startsWith("/static/") ||
     pathname === "/favicon.ico" ||
     pathname === "/favicon.svg" ||

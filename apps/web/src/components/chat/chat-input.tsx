@@ -5,13 +5,11 @@ import { Send, Terminal, Square } from "lucide-react";
 import { Button } from "@flowmind/ui";
 import { useChatStore } from "@/hooks/chat-store";
 import { ModelSelector } from "./model-selector";
-import { FileUpload, type UploadedFile } from "./file-upload";
 
 export function ChatInput() {
   const [input, setInput] = useState("");
   const [model, setModel] = useState("");
   const [showTools, setShowTools] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { currentSessionId, sendMessage, isStreaming, stopStreaming } = useChatStore();
 
@@ -30,10 +28,9 @@ export function ChatInput() {
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed || !currentSessionId || isStreaming) return;
-    sendMessage(trimmed, model || undefined, uploadedFiles.length > 0 ? uploadedFiles.map(f => ({ name: f.name, type: f.type, size: f.size })) : undefined);
+    sendMessage(trimmed, model || undefined);
     setInput("");
-    setUploadedFiles([]);
-  }, [input, currentSessionId, isStreaming, sendMessage, model, uploadedFiles]);
+  }, [input, currentSessionId, isStreaming, sendMessage, model]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -42,31 +39,10 @@ export function ChatInput() {
     }
   };
 
-  const handleFilesSelected = useCallback((files: UploadedFile[]) => {
-    setUploadedFiles(prev => [...prev, ...files])
-  }, [])
-
   return (
     <div className="border-t border-border bg-surface">
       <div className="mx-auto max-w-3xl px-4 py-3">
-        {uploadedFiles.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {uploadedFiles.map((f) => (
-              <div key={f.name} className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent text-[10px] text-muted-foreground">
-                <span className="truncate max-w-[100px]">{f.name}</span>
-                <button
-                  onClick={() => setUploadedFiles(prev => prev.filter(x => x.name !== f.name))}
-                  className="hover:text-foreground"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
         <div className="flex items-end gap-2 rounded-xl border border-input bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-ring transition-shadow">
-          <FileUpload onFilesSelected={handleFilesSelected} disabled={!currentSessionId || isStreaming} />
-
           <textarea
             ref={textareaRef}
             value={input}

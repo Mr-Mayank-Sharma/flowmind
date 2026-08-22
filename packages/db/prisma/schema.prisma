@@ -46,6 +46,27 @@ enum RunStatus {
   SUCCESS
   FAILED
   CANCELLED
+  AWAITING_APPROVAL
+}
+
+enum GroupRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  MERGED
+}
+
+enum HostClientStatus {
+  PENDING
+  ACTIVE
+  REVOKED
 }
 
 enum FrameworkStatus {
@@ -82,9 +103,19 @@ model User {
   timezone     String    @default("UTC")
   language     String    @default("en")
   defaultModel String?
+  theme        String    @default("dark")
+  fontSize     String    @default("Medium")
+  chatDensity  String    @default("Comfortable")
   stripeId     String?
   orgId        String?
   org          Org?      @relation(fields: [orgId], references: [id])
+
+  mfaSecret             String?
+  mfaEnabled            Boolean   @default(false)
+  webauthnChallenge     String?
+  webauthnCredentials   Json?
+  passwordResetToken    String?
+  passwordResetExpiresAt DateTime?
 
   sessions     Session[]
   skills       Skill[]
@@ -100,6 +131,9 @@ model User {
   listings        MarketplaceListing[]
   listingReviews  MarketplaceReview[]
   listingForks    MarketplaceFork[]
+  hostGroupMembers HostGroupMember[]
+  hostConnections  HostConnection[]
+  knowledgeBases   KnowledgeBase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -121,6 +155,8 @@ model Org {
   users        User[]
   subscription OrgSubscription?
   listings     MarketplaceListing[]
+  groups       HostGroup[]
+  hostClients  HostClient[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -139,6 +175,86 @@ model OrgMember {
 
   @@unique([orgId, userId])
   @@map("org_members")
+}
+
+model HostGroup {
+  id          String  @id @default(cuid())
+  orgId       String?
+  name        String
+  slug        String
+  description String?
+  tier        Tier    @default(ENTERPRISE)
+
+  org     Org?              @relation(fields: [orgId], references: [id])
+  members HostGroupMember[]
+  pipelines Pipeline[]
+  skills Skill[]
+  knowledgeBases KnowledgeBase[]
+  proposals PipelineProposal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+  @@map("host_groups")
+}
+
+model HostGroupMember {
+  id      String    @id @default(cuid())
+  groupId String
+  userId  String
+  role    GroupRole @default(MEMBER)
+
+  group HostGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("host_group_members")
+}
+
+model HostClient {
+  id                    String           @id @default(cuid())
+  orgId                 String?
+  name                  String
+  url                   String?
+  status                HostClientStatus @default(ACTIVE)
+  connectTokenHash      String?
+  connectTokenExpiresAt DateTime?
+  connectTokenGroupId   String?
+  lastConnectedAt       DateTime?
+  lastSyncAt            DateTime?
+
+  org Org? @relation(fields: [orgId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("host_clients")
+}
+
+model HostConnection {
+  id             String   @id @default(cuid())
+  userId         String
+  hostUrl        String
+  hostName       String?
+  email          String
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  status         String   @default("connected")
+  groups         Json
+  lastConnectedAt DateTime?
+  lastSyncAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("host_connections")
 }
 
 model Account {
@@ -201,7 +317,8 @@ model Message {
 
 model Skill {
   id             String   @id @default(cuid())
-  userId         String
+  userId         String?
+  groupId        String?
   name           String
   description    String
   triggerPattern String?
@@ -211,13 +328,16 @@ model Skill {
   successCount   Int      @default(0)
   useCount       Int      @default(0)
   isActive       Boolean  @default(true)
+  hostGroupId    String?
 
-  user User @relation(fields: [userId], references: [id])
+  user  User?     @relation(fields: [userId], references: [id])
+  group HostGroup? @relation(fields: [groupId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([groupId])
   @@map("skills")
 }
 
@@ -319,6 +439,7 @@ model McpToken {
   refreshToken String?
   scope        String
   expiresAt    DateTime?
+  isActive     Boolean  @default(true)
 
   org Org? @relation(fields: [orgId], references: [id])
 
@@ -332,6 +453,7 @@ model Pipeline {
   id             String         @id @default(cuid())
   userId         String?
   orgId          String?
+  groupId        String?
   name           String
   description    String?
   graph          Json
@@ -346,9 +468,13 @@ model Pipeline {
   runCount       Int            @default(0)
   lastRunAt      DateTime?
   avgDurationMs  Int?
+  hostGroupId    String?
+  hostPipelineId String?
+  hostSource     Json?
 
-  user User? @relation(fields: [userId], references: [id])
-  org  Org?  @relation(fields: [orgId], references: [id])
+  user  User?     @relation(fields: [userId], references: [id])
+  org   Org?      @relation(fields: [orgId], references: [id])
+  group HostGroup? @relation(fields: [groupId], references: [id])
 
   runs         PipelineRun[]
   marketplace  MarketplaceFlow?
@@ -358,7 +484,57 @@ model Pipeline {
 
   @@index([userId])
   @@index([orgId])
+  @@index([groupId])
+  @@index([hostPipelineId])
   @@map("pipelines")
+}
+
+model PipelineProposal {
+  id                String         @id @default(cuid())
+  groupId           String
+  proposedByUserId  String?
+  proposedByClient  String?
+  proposedByName    String?
+  name              String
+  description       String?
+  basePipelineId    String?
+  baseVersion       Int            @default(0)
+  baseGraph         Json?
+  proposedGraph     Json
+  diff              Json?
+  message           String?
+  status            ProposalStatus @default(PROPOSED)
+  mergedByUserId    String?
+  mergedAt          DateTime?
+  rejectedByUserId  String?
+  rejectedReason    String?
+  rejectedAt        DateTime?
+
+  group HostGroup? @relation(fields: [groupId], references: [id])
+
+  comments PipelineProposalComment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([status])
+  @@map("pipeline_proposals")
+}
+
+model PipelineProposalComment {
+  id         String   @id @default(cuid())
+  proposalId String
+  authorId   String?
+  authorName String?
+  body       String
+
+  proposal PipelineProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([proposalId])
+  @@map("pipeline_proposal_comments")
 }
 
 model PipelineRun {
@@ -776,7 +952,8 @@ enum AgentStatus {
 
 model KnowledgeBase {
   id          String               @id @default(cuid())
-  userId      String
+  userId      String?
+  groupId     String?
   name        String
   description String?
   model       String               @default("nomic-embed-text")
@@ -784,6 +961,10 @@ model KnowledgeBase {
   totalDocs   Int                  @default(0)
   totalChunks Int                  @default(0)
   totalSize   BigInt               @default(0)
+  hostGroupId String?
+
+  user  User?     @relation(fields: [userId], references: [id])
+  group HostGroup? @relation(fields: [groupId], references: [id])
 
   documents KnowledgeDocument[]
 
@@ -791,6 +972,7 @@ model KnowledgeBase {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([groupId])
   @@map("knowledge_bases")
 }
 

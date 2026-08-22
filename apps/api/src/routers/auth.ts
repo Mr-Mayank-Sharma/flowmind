@@ -4,11 +4,8 @@ import { router, protectedProcedure, publicProcedure } from "../middleware/trpc"
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-
-const JWT_SECRET: string = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
-if (!process.env.JWT_SECRET) {
-  console.warn("WARNING: JWT_SECRET not set, using insecure fallback for development only");
-}
+import { JWT_SECRET } from "../lib/jwt-secret";
+import { sendMail, smtpConfigured } from "../lib/mailer";
 
 const APP_URL = process.env.APP_URL || "http://localhost:4000";
 
@@ -264,14 +261,80 @@ export const authRouter = router({
       return [
         { id: "google", name: "Google", configured: !!SSO_CLIENTS.google?.clientId },
         { id: "github", name: "GitHub", configured: !!SSO_CLIENTS.github?.clientId },
-        { id: "saml", name: "SAML SSO", configured: true },
+        { id: "saml", name: "SAML SSO", configured: !!process.env.SAML_ENTRY_POINT && !!process.env.SAML_CERT },
       ];
     }),
 
   requestPasswordReset: publicProcedure
     .input(z.object({ email: z.string().email() }))
-    .mutation(async ({ input }) => {
-      return { success: true, message: "If an account exists, a reset link has been sent" }
+    .mutation(async ({ input, ctx }) => {
+      const user = await ctx.prisma.user.findUnique({ where: { email: input.email } });
+      if (!user || !user.passwordHash) {
+        return { success: true, message: "If an account exists, a reset link has been sent" };
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+      await ctx.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordResetToken: tokenHash, passwordResetExpiresAt: expiresAt },
+      });
+
+      const resetUrl = `${process.env.APP_URL ?? "http://localhost:3000"}/reset-password?token=${token}`;
+
+      const sent = await sendMail({
+        to: user.email,
+        subject: "FlowMind password reset",
+        text: `Reset your FlowMind password:\n${resetUrl}\n\nThis link expires in 1 hour.`,
+      });
+
+      if (!sent) {
+        ctx.req.log.info?.(
+          { email: user.email, smtpConfigured },
+          "Password reset requested but email could not be delivered",
+        );
+      }
+
+      return { success: true, message: "If an account exists, a reset link has been sent" };
+    }),
+
+  resetPassword: publicProcedure
+    .input(z.object({ token: z.string(), newPassword: z.string().min(8) }))
+    .mutation(async ({ input, ctx }) => {
+      const tokenHash = crypto.createHash("sha256").update(input.token).digest("hex");
+      const user = await ctx.prisma.user.findFirst({
+        where: { passwordResetToken: tokenHash, passwordResetExpiresAt: { gt: new Date() } },
+      });
+
+      if (!user) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired reset token" });
+      }
+
+      const passwordHash = await bcrypt.hash(input.newPassword, 12);
+      await ctx.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash, passwordResetToken: null, passwordResetExpiresAt: null },
+      });
+
+      return { success: true };
+    }),
+
+  changePassword: protectedProcedure
+    .input(z.object({ currentPassword: z.string(), newPassword: z.string().min(8) }))
+    .mutation(async ({ input, ctx }) => {
+      const user = await ctx.prisma.user.findUnique({ where: { id: ctx.userId! } });
+      if (!user || !user.passwordHash) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No password set for this account" });
+      }
+      const valid = await bcrypt.compare(input.currentPassword, user.passwordHash);
+      if (!valid) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Current password is incorrect" });
+      }
+      const passwordHash = await bcrypt.hash(input.newPassword, 12);
+      await ctx.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+      return { success: true };
     }),
 
   samlMetadata: publicProcedure
@@ -303,14 +366,14 @@ export const authRouter = router({
       if (!config) throw new TRPCError({ code: "BAD_REQUEST", message: "SAML not configured" });
 
       const { AuthService } = await import("@flowmind/auth");
-      const result = await AuthService.samlSSOLogin({
-        orgId: input.orgId,
-        email: `saml-${Date.now()}@placeholder.com`,
-        name: "SAML User",
-        nameId: `saml-${Date.now()}`,
-      });
+      const relayState = crypto.randomBytes(24).toString("hex");
 
-      return result;
+      try {
+        const url = await AuthService.samlBuildLoginUrl(input.orgId, config as never, relayState);
+        return { url, relayState };
+      } catch (err: any) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: err.message ?? "Failed to build SAML login request" });
+      }
     }),
 
   samlCallback: publicProcedure
@@ -328,17 +391,20 @@ export const authRouter = router({
 
       const { AuthService } = await import("@flowmind/auth");
 
+      let profile;
       try {
-        const nameId = `saml-${Date.now()}`;
-        const email = `user-${nameId}@saml.local`;
+        profile = await AuthService.samlValidateCallback(input.orgId, config as never, input.samlResponse, input.relayState);
+      } catch (err: any) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: err.message ?? "SAML authentication failed" });
+      }
 
+      try {
         const result = await AuthService.samlSSOLogin({
           orgId: input.orgId,
-          email,
-          name: "SAML User",
-          nameId,
+          email: profile.email,
+          name: profile.name,
+          nameId: profile.nameId,
         });
-
         return result;
       } catch (err: any) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: err.message ?? "SAML authentication failed" });
@@ -383,6 +449,15 @@ export const authRouter = router({
     .mutation(async ({ ctx }) => {
       const { AuthService } = await import("@flowmind/auth");
       return AuthService.setupMfaTOTP(ctx.userId!);
+    }),
+
+  getMfaStatus: protectedProcedure
+    .query(async ({ ctx }) => {
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.userId! },
+        select: { mfaEnabled: true, mfaSecret: true },
+      });
+      return { enabled: !!user?.mfaEnabled, pendingSetup: !!user?.mfaSecret };
     }),
 
   verifyMfa: protectedProcedure

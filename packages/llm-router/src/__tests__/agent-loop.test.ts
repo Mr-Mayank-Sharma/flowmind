@@ -1,16 +1,20 @@
 import { describe, it, expect, vi } from "vitest"
-import { runAgentLoop, type AgentTool, type ProviderFacade } from "../agent-loop"
-import type { CompletionRequest, CompletionResult } from "../types"
+import { runAgentLoop, type AgentTool } from "../agent-loop"
+import type { ProviderFacade, CompletionRequest, CompletionResult } from "../types"
 
 function createMockProvider(responses: CompletionResult[]): ProviderFacade {
   let callIndex = 0
   return {
     id: "mock",
+    baseUrl: "mock://",
     async complete(_req: CompletionRequest): Promise<CompletionResult> {
       if (callIndex >= responses.length) {
         throw new Error("Mock provider: no more responses configured")
       }
       return responses[callIndex++]!
+    },
+    async stream(_req: CompletionRequest): Promise<CompletionResult> {
+      throw new Error("stream not implemented in mock")
     },
   }
 }
@@ -105,19 +109,18 @@ describe("runAgentLoop", () => {
   it("returns error when LLM call throws", async () => {
     const provider: ProviderFacade = {
       id: "mock",
+      baseUrl: "mock://",
       complete: async () => { throw new Error("LLM is down") },
+      stream: async () => { throw new Error("stream not implemented in mock") },
     }
 
-    const result = await runAgentLoop({
+    await expect(runAgentLoop({
       provider,
       model: "mock-model",
       systemPrompt: "",
       userMessage: "hello",
       tools: [],
-    })
-
-    expect(result.response).toContain("[LLM error: LLM is down]")
-    expect(result.steps[0]!.type).toBe("error")
+    })).rejects.toThrow("[LLM error: LLM is down]")
   })
 
   it("stops at maxIterations", async () => {

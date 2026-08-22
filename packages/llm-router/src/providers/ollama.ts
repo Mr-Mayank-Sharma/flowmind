@@ -46,6 +46,7 @@ export function createOllamaProvider(baseUrl?: string): ProviderFacade {
     const ollamaReq: OllamaChatRequest = {
       model: req.model ?? "tinyllama",
       messages: convertMessages(req.messages),
+      stream: false,
       options: {
         temperature: req.temperature,
         top_p: req.topP,
@@ -58,6 +59,7 @@ export function createOllamaProvider(baseUrl?: string): ProviderFacade {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(ollamaReq),
+      signal: AbortSignal.timeout(120_000),
     })
 
     if (!res.ok) {
@@ -100,6 +102,7 @@ export function createOllamaProvider(baseUrl?: string): ProviderFacade {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(ollamaReq),
+      signal: AbortSignal.timeout(300_000),
     })
 
     if (!res.ok) {

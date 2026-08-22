@@ -3,12 +3,23 @@ import os from "os"
 import { cacheProvider, logger } from "../infrastructure"
 import { prisma } from "@flowmind/db"
 
+const IS_WIN = process.platform === "win32"
+
 function run(cmd: string, fallback = ""): string {
   try {
-    return execSync(cmd, { timeout: 3000, encoding: "utf-8" }).trim()
+    return execSync(cmd, { timeout: 4000, encoding: "utf-8", shell: IS_WIN ? "powershell.exe" : "/bin/sh" }).trim()
   } catch {
     return fallback
   }
+}
+
+let procCache: { at: number; value: RawProcess[] } | null = null
+
+function listRawProcesses(): RawProcess[] {
+  if (procCache && Date.now() - procCache.at < 5_000) return procCache.value
+  const value = listRawProcessesUncached()
+  procCache = { at: Date.now(), value }
+  return value
 }
 
 function getCPUPercent(): number {
@@ -26,51 +37,123 @@ function getCPUPercent(): number {
 }
 
 function getListeningPorts(): number[] {
-  const raw = run("ss -tlnp 2>/dev/null | awk '{print $4}' | grep -oP ':(\\d+)$' | sort -u", "")
-  if (!raw) return []
-  return raw.split("\n").map((s) => parseInt(s)).filter((n) => !isNaN(n))
+  const raw = IS_WIN
+    ? run("netstat -ano")
+    : run("netstat -tlnp 2>/dev/null || ss -tlnp 2>/dev/null")
+  const ports = new Set<number>()
+  for (const line of raw.split("\n")) {
+    const m = line.match(/:(\d+)\s+\S+\s+(LISTEN|LISTENING)/i)
+    if (m) {
+      const port = parseInt(m[1]!, 10)
+      if (!isNaN(port)) ports.add(port)
+    }
+  }
+  return Array.from(ports)
 }
 
-function getDiskUsage(): { percent: number; usedGb: string; totalGb: string } {
-  const raw = run("df -BG / 2>/dev/null | tail -1", "")
-  if (!raw) return { percent: 50, usedGb: "256", totalGb: "512" }
-  const parts = raw.split(/\s+/)
-  const used = parseInt(parts[2] ?? "") || 256
-  const total = parseInt(parts[1] ?? "") || 512
-  return {
-    percent: Math.round((used / total) * 100),
-    usedGb: String(used),
-    totalGb: String(total),
+interface DiskSample {
+  percent: number
+  usedGb: string
+  totalGb: string
+}
+
+function getDiskUsage(): DiskSample {
+  if (IS_WIN) {
+    const raw = run("Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Sort-Object Size -Descending | Select-Object -First 1 | ForEach-Object { \"$($_.FreeSpace)|$($_.Size)\" }")
+    const match = raw.match(/^(\d+)\|(\d+)$/)
+    if (match) {
+      const free = parseInt(match[1]!, 10)
+      const total = parseInt(match[2]!, 10)
+      if (total > 0) {
+        const used = total - free
+        return {
+          percent: Math.round((used / total) * 100),
+          usedGb: (used / 1024 / 1024 / 1024).toFixed(1),
+          totalGb: (total / 1024 / 1024 / 1024).toFixed(1),
+        }
+      }
+    }
+    return { percent: 0, usedGb: "0", totalGb: "0" }
   }
+
+  const raw = run("df -B1 / 2>/dev/null | tail -1")
+  const parts = raw.split(/\s+/)
+  const total = parseInt(parts[1] ?? "", 10)
+  const used = parseInt(parts[2] ?? "", 10)
+  if (total > 0) {
+    return {
+      percent: Math.round((used / total) * 100),
+      usedGb: (used / 1024 / 1024 / 1024).toFixed(1),
+      totalGb: (total / 1024 / 1024 / 1024).toFixed(1),
+    }
+  }
+  return { percent: 0, usedGb: "0", totalGb: "0" }
 }
 
 function getGPUInfo(): { index: number; name: string; utilization: number; memoryUtil: number; temperature: number; vramTotal: string; vramUsed: string }[] {
-  const raw = run("nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader 2>/dev/null", "")
+  const raw = run("nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader 2>/dev/null")
   if (!raw) return []
   return raw.split("\n").filter(Boolean).map((line) => {
     const parts = line.split(", ")
+    const vramUsedMiB = parseInt((parts[3] ?? "0").replace(" MiB", ""), 10) || 0
+    const vramTotalMiB = parseInt((parts[4] ?? "1").replace(" MiB", ""), 10) || 1
     return {
-      index: parseInt(parts[0] ?? "") || 0,
+      index: parseInt(parts[0] ?? "", 10) || 0,
       name: parts[1] || "Unknown GPU",
-      utilization: parseInt(parts[2] ?? "") || 0,
-      memoryUtil: parts[3] ? Math.round((parseInt(parts[3].replace(" MiB", "")) / (parseInt((parts[4] || "1").replace(" MiB", "")) || 1)) * 100) : 0,
-      temperature: parseInt(parts[5] ?? "") || 0,
+      utilization: parseInt(parts[2] ?? "", 10) || 0,
+      memoryUtil: Math.round((vramUsedMiB / vramTotalMiB) * 100),
+      temperature: parseInt(parts[5] ?? "", 10) || 0,
       vramTotal: parts[4] || "0 MiB",
       vramUsed: parts[3] || "0 MiB",
     }
   })
 }
 
-function getNetworkUsage(): { upMbps: string; downMbps: string } {
-  const raw = run("cat /proc/net/dev 2>/dev/null | grep -E 'eth0|wlan0|enp|wlp' | head -1", "")
-  if (!raw) return { upMbps: "0.0", downMbps: "0.0" }
-  const parts = raw.trim().split(/\s+/)
-  const rxBytes = parseInt(parts[1] ?? "") || 0
-  const txBytes = parseInt(parts[9] ?? "") || 0
-  return {
-    downMbps: (rxBytes / 1024 / 1024).toFixed(1),
-    upMbps: (txBytes / 1024 / 1024).toFixed(1),
+interface NetSample {
+  rxBytes: number
+  txBytes: number
+  timestamp: number
+}
+
+let lastNetSample: NetSample | null = null
+
+function getNetBytes(): NetSample {
+  if (IS_WIN) {
+    const raw = run("Get-NetAdapterStatistics | Measure-Object -Property ReceivedBytes -Sum -ErrorAction SilentlyContinue | Select-Object @{n='r';e={$_.Sum}} | ForEach-Object { $r=$_.r; $t=(Get-NetAdapterStatistics | Measure-Object -Property SentBytes -Sum -ErrorAction SilentlyContinue).Sum; \"$r|$t\" }")
+    const match = raw.match(/^(\d+)\|(\d+)$/)
+    if (match) {
+      return { rxBytes: parseInt(match[1]!, 10), txBytes: parseInt(match[2]!, 10), timestamp: Date.now() }
+    }
+    return { rxBytes: 0, txBytes: 0, timestamp: Date.now() }
   }
+
+  const raw = run("cat /proc/net/dev 2>/dev/null | grep -E 'eth0|wlan0|enp|wlp|ens|bond' | awk -F: '{print $2}'")
+  let rxBytes = 0
+  let txBytes = 0
+  for (const line of raw.split("\n")) {
+    const parts = line.trim().split(/\s+/)
+    rxBytes += parseInt(parts[0] ?? "", 10) || 0
+    txBytes += parseInt(parts[8] ?? "", 10) || 0
+  }
+  return { rxBytes, txBytes, timestamp: Date.now() }
+}
+
+function getNetworkUsage(): { upMbps: string; downMbps: string } {
+  const sample = getNetBytes()
+  if (lastNetSample && sample.timestamp > lastNetSample.timestamp) {
+    const seconds = (sample.timestamp - lastNetSample.timestamp) / 1000
+    if (seconds > 0) {
+      const down = ((sample.rxBytes - lastNetSample.rxBytes) * 8) / seconds / 1_000_000
+      const up = ((sample.txBytes - lastNetSample.txBytes) * 8) / seconds / 1_000_000
+      lastNetSample = sample
+      return {
+        downMbps: Math.max(0, down).toFixed(1),
+        upMbps: Math.max(0, up).toFixed(1),
+      }
+    }
+  }
+  lastNetSample = sample
+  return { upMbps: "0.0", downMbps: "0.0" }
 }
 
 export interface SystemMetrics {
@@ -81,7 +164,7 @@ export interface SystemMetrics {
   gpuPercent: number | null
   gpuTemp: number | null
   vramUsedGb: string | null
-  vramTotalGb: string
+  vramTotalGb: string | null
   diskPercent: number
   diskUsedGb: string
   diskTotalGb: string
@@ -120,6 +203,78 @@ export interface ProcessInfo {
   port: number | null
 }
 
+interface RawProcess {
+  pid: number
+  name: string
+  cpu: number
+  ramBytes: number
+  user: string
+  startMs: number
+  command: string
+}
+
+function listRawProcessesUncached(): RawProcess[] {
+  if (IS_WIN) {
+    let raw = ""
+    try {
+      raw = execSync("Get-Process | Select-Object Id,ProcessName,CPU,WorkingSet64,StartTime,Path | ConvertTo-Csv -NoTypeInformation", { timeout: 20000, encoding: "utf-8", shell: "powershell.exe" }).trim()
+    } catch {
+      return []
+    }
+    const rows = raw.split("\n").map((l) => l.trim()).filter((l) => l.length > 0)
+    const now = Date.now()
+    const out: RawProcess[] = []
+    for (let i = 1; i < rows.length; i++) {
+      const parts = rows[i]!.split(",").map((p) => p.replace(/"/g, "").trim())
+      const pid = parseInt(parts[0] ?? "", 10)
+      if (isNaN(pid)) continue
+      const cpu = parseFloat(parts[2] ?? "") || 0
+      const ramBytes = parseInt(parts[3] ?? "", 10) || 0
+      const startRaw = parts[4] ?? ""
+      const startMs = startRaw ? new Date(startRaw).getTime() : now
+      out.push({
+        pid,
+        name: parts[1] || "unknown",
+        cpu,
+        ramBytes,
+        user: os.userInfo().username,
+        startMs: isNaN(startMs) ? now : startMs,
+        command: parts[5] || parts[1] || "unknown",
+      })
+    }
+    return out
+  }
+
+  const raw = run("ps -eo pid,pcpu,rss,user,lstart,comm,args --no-headers 2>/dev/null", "")
+  const now = Date.now()
+  const out: RawProcess[] = []
+  for (const line of raw.split("\n")) {
+    const parts = line.trim().split(/\s+/)
+    const pid = parseInt(parts[0] ?? "", 10)
+    if (isNaN(pid)) continue
+    // lstart format: "Wed Jan  1 12:00:00 2025" -> 5 words; args begins after that
+    const lstart = parts.slice(4, 9).join(" ")
+    const startMs = Date.parse(lstart)
+    out.push({
+      pid,
+      name: (parts[9] ?? "unknown").split("/").pop() ?? "unknown",
+      cpu: parseFloat(parts[1] ?? "") || 0,
+      ramBytes: (parseInt(parts[2] ?? "", 10) || 0) * 1024,
+      user: parts[3] || "unknown",
+      startMs: isNaN(startMs) ? now : startMs,
+      command: parts.slice(9).join(" ") || "unknown",
+    })
+  }
+  return out
+}
+
+function formatUptime(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  return `${h}h ${m}m`
+}
+
 export class MetricsService {
   async getMetrics(): Promise<SystemMetrics> {
     const cached = cacheProvider.get<SystemMetrics>("system:metrics")
@@ -135,8 +290,7 @@ export class MetricsService {
     const gpus = getGPUInfo()
     const net = getNetworkUsage()
     const loadAvg = os.loadavg()
-
-    const procCount = parseInt(run("ps aux 2>/dev/null | wc -l", "200")) || 200
+    const processes = listRawProcesses()
     const uptime = os.uptime()
     const uptimeStr = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`
 
@@ -151,13 +305,13 @@ export class MetricsService {
       gpuPercent: gpus[0]?.utilization ?? null,
       gpuTemp: gpus[0]?.temperature ?? null,
       vramUsedGb: gpus[0] ? (parseInt(gpus[0].vramUsed) / 1024).toFixed(1) : null,
-      vramTotalGb: gpus[0] ? (parseInt(gpus[0].vramTotal) / 1024).toFixed(1) : "24",
+      vramTotalGb: gpus[0] ? (parseInt(gpus[0].vramTotal) / 1024).toFixed(1) : null,
       diskPercent: disk.percent,
       diskUsedGb: disk.usedGb,
       diskTotalGb: disk.totalGb,
       networkUpMbps: net.upMbps,
       networkDownMbps: net.downMbps,
-      processes: procCount,
+      processes: processes.length,
       loadAvg: `${(loadAvg[0] ?? 0).toFixed(2)}, ${(loadAvg[1] ?? 0).toFixed(2)}, ${(loadAvg[2] ?? 0).toFixed(2)}`,
       uptime: uptimeStr,
       servicesRunning,
@@ -171,10 +325,8 @@ export class MetricsService {
   async getFrameworks(): Promise<FrameworkInfo[]> {
     const cached = cacheProvider.get<FrameworkInfo[]>("system:frameworks")
     if (cached) return cached
-    const ports = getListeningPorts()
-    const portSet = new Set(ports)
-    const processes = run("ps aux 2>/dev/null", "")
-    const procLines = processes.split("\n")
+    const portSet = new Set(getListeningPorts())
+    const processes = listRawProcesses()
 
     const candidates: FrameworkInfo[] = [
       { id: "ollama", name: "Ollama", icon: "ollama", status: "stopped", port: 11434, version: "0.23.2", pid: null, models: 0, description: "Local LLM inference server", category: "LLM" },
@@ -187,13 +339,9 @@ export class MetricsService {
       { id: "localai", name: "LocalAI", icon: "localai", status: "stopped", port: 8080, version: "2.17.1", pid: null, models: 0, description: "OpenAI-compatible local API", category: "LLM" },
     ]
 
-    const processIndex = procLines.reduce((acc, line) => {
-      const parts = line.trim().split(/\s+/)
-      const pid = parseInt(parts[1] ?? "")
-      if (!isNaN(pid) && parts.length > 10) {
-        const cmd = parts.slice(10).join(" ").toLowerCase()
-        acc.push({ pid, cmd })
-      }
+    const cmdIndex = processes.reduce((acc, p) => {
+      const cmd = p.command.toLowerCase()
+      if (cmd) acc.push({ pid: p.pid, cmd })
       return acc
     }, [] as { pid: number; cmd: string }[])
 
@@ -201,8 +349,8 @@ export class MetricsService {
       if (portSet.has(fw.port)) {
         fw.status = "running"
       }
-      const match = processIndex.find((p) => p.cmd.includes(fw.id))
-      if (match) {
+      const match = cmdIndex.find((p) => p.cmd.includes(fw.id))
+      if (match && !fw.pid) {
         fw.status = "running"
         fw.pid = match.pid
       }
@@ -211,7 +359,8 @@ export class MetricsService {
     if (portSet.has(11434)) {
       const ollama = candidates.find((c) => c.id === "ollama")!
       ollama.status = "running"
-      ollama.pid = parseInt(run("pgrep -x ollama 2>/dev/null || echo 0", "0")) || null
+      const procMatch = processes.find((p) => p.name.toLowerCase().includes("ollama") || p.command.toLowerCase().includes("ollama"))
+      if (procMatch) ollama.pid = procMatch.pid
       try {
         const res = await fetch("http://localhost:11434/api/tags", { signal: AbortSignal.timeout(3000) })
         if (res.ok) {
@@ -219,7 +368,7 @@ export class MetricsService {
           ollama.models = data.models?.length ?? 0
         }
       } catch {}
-      ollama.version = run("ollama --version 2>/dev/null || echo '0.23.2'", "0.23.2")
+      ollama.version = run(IS_WIN ? "ollama --version" : "ollama --version 2>/dev/null || echo '0.23.2'", "0.23.2")
     }
 
     cacheProvider.set("system:frameworks", candidates, 10_000)
@@ -239,38 +388,40 @@ export class MetricsService {
   }
 
   listProcesses(): ProcessInfo[] {
-    const raw = run("ps aux 2>/dev/null", "")
-    if (!raw) return []
-    const lines = raw.split("\n").slice(1).filter(Boolean)
-    return lines.map((line) => {
-      const parts = line.trim().split(/\s+/)
-      const pid = parseInt(parts[1] ?? "") || 0
-      const cpu = parseFloat(parts[2] ?? "") || 0
-      const mem = parseFloat(parts[3] ?? "") || 0
-      const ramBytes = Math.round((parseFloat(parts[5] ?? "0") || 0) * 1024)
-      const user = parts[0] || "unknown"
-      const command = parts.slice(10).join(" ") || "unknown"
-      const stat = (parts[7] || "?") as string
-      const statusMap: Record<string, string> = { R: "running", S: "sleeping", D: "sleeping", Z: "zombie", T: "stopped" }
-      const status = statusMap[stat[0]!] || "sleeping"
+    const processes = listRawProcesses()
+    const pidToPort = new Map<number, number>()
+    if (IS_WIN) {
+      const raw = run("netstat -ano")
+      for (const line of raw.split("\n")) {
+        const m = line.match(/:(\d+)\s+\S+\s+LISTENING\s+(\d+)/i)
+        if (m) pidToPort.set(parseInt(m[2]!, 10), parseInt(m[1]!, 10))
+      }
+    }
+    return processes.map((p) => {
+      const upMs = Date.now() - p.startMs
       return {
-        pid,
-        name: command.split(" ")[0]?.split("/").pop() || "unknown",
-        status,
-        cpu: cpu.toFixed(1),
-        ram: `${((ramBytes || mem * 1024 * 1024) / 1_000_000_000).toFixed(1)} GB`,
-        ramBytes: ramBytes || Math.round(mem * 1024 * 1024),
-        user,
-        uptime: `${Math.floor(Math.random() * 24)}h ${Math.floor(Math.random() * 60)}m`,
-        command,
-        port: null as number | null,
+        pid: p.pid,
+        name: p.name,
+        status: "running",
+        cpu: p.cpu.toFixed(1),
+        ram: `${(p.ramBytes / 1_000_000_000).toFixed(1)} GB`,
+        ramBytes: p.ramBytes,
+        user: p.user,
+        uptime: formatUptime(upMs),
+        command: p.command,
+        port: pidToPort.get(p.pid) ?? null,
       }
     })
   }
 
   killProcess(pid: number, signal = "SIGTERM"): { success: boolean; message: string } {
     try {
-      run(`kill -${signal === "SIGKILL" ? 9 : 15} ${pid} 2>/dev/null`)
+      if (IS_WIN) {
+        run(`Stop-Process -Id ${pid} -Force -ErrorAction Stop`)
+      } else {
+        run(`kill -${signal === "SIGKILL" ? 9 : 15} ${pid} 2>/dev/null`)
+      }
+      logger.info(`Process ${pid} killed with ${signal}`)
       return { success: true, message: `Process ${pid} killed with ${signal}` }
     } catch {
       return { success: false, message: `Failed to kill process ${pid}` }
@@ -279,7 +430,7 @@ export class MetricsService {
 
   startFramework(id: string): { success: boolean; message: string } {
     const commands: Record<string, string> = {
-      ollama: "ollama serve > /dev/null 2>&1 &",
+      ollama: IS_WIN ? 'Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden' : "nohup ollama serve > /dev/null 2>&1 &",
     }
     const cmd = commands[id]
     if (!cmd) throw new Error(`No start command configured for ${id}`)
@@ -289,12 +440,21 @@ export class MetricsService {
   }
 
   stopFramework(id: string): { success: boolean; message: string } {
-    const pids: Record<string, string> = { ollama: "pgrep -x ollama" }
+    const pids: Record<string, string> = {
+      ollama: IS_WIN
+        ? "Get-Process | Where-Object { $_.ProcessName -like '*ollama*' } | ForEach-Object { $_.Id }"
+        : "pgrep -x ollama",
+    }
     const pidCmd = pids[id]
     if (!pidCmd) throw new Error(`No stop command configured for ${id}`)
     const pid = run(pidCmd, "")
     if (pid) {
-      run(`kill ${pid} 2>/dev/null`)
+      if (IS_WIN) {
+        const pidList = pid.split("\n").map((p) => p.trim()).filter(Boolean)
+        for (const p of pidList) run(`Stop-Process -Id ${p} -Force -ErrorAction SilentlyContinue`)
+      } else {
+        run(`kill ${pid} 2>/dev/null`)
+      }
       logger.info(`Framework stopped: ${id} (PID ${pid})`)
       return { success: true, message: `${id} (PID ${pid}) stopped` }
     }

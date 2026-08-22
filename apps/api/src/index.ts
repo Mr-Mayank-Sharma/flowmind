@@ -8,6 +8,7 @@ import { collectDefaultMetrics, register } from "prom-client";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { appRouter } from "./routers";
 import { createContext } from "./middleware/context";
+import { JWT_SECRET } from "./lib/jwt-secret";
 import { prisma } from "@flowmind/db";
 import { BillingService } from "@flowmind/billing";
 import {
@@ -24,7 +25,7 @@ import {
   createTodoWriteTool,
 } from "@flowmind/tool-system";
 import type { AgentLoopStep } from "@flowmind/llm-router";
-import { getSessionEmitter } from "./services/session-emitters";
+import { getSessionEmitter, cleanupSessionEmitter } from "./services/session-emitters";
 import { getRunEmitter } from "./services/run-emitters";
 import { getCronScheduler } from "./services/cron-scheduler";
 
@@ -132,7 +133,7 @@ async function main() {
 
   server.get<{ Params: { sessionId: string } }>("/api/chat/stream/:sessionId", async (req, reply) => {
     const { sessionId } = req.params
-    const token = req.headers.authorization?.replace("Bearer ", "")
+    const token = req.headers.authorization?.replace("Bearer ", "") || (req.query as { token?: string })?.token
 
     if (!token) {
       return reply.status(401).send({ error: "Authentication required" })
@@ -141,7 +142,7 @@ async function main() {
     let userId: string | null = null
     try {
       const jwt = await import("jsonwebtoken")
-      const payload = jwt.default.verify(token, process.env.JWT_SECRET || "dev-secret-change-in-production") as { userId: string }
+      const payload = jwt.default.verify(token, JWT_SECRET) as { userId: string }
       userId = payload.userId
     } catch {
       return reply.status(401).send({ error: "Invalid token" })
@@ -157,11 +158,13 @@ async function main() {
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
       "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": req.headers.origin || "*",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     })
+    reply.raw.write(": connected\n\n")
 
     const emitter = getSessionEmitter(sessionId)
-    let heartbeat: NodeJS.Timeout
-    let idleTimeout: NodeJS.Timeout
     let closed = false
 
     const safeWrite = (chunk: string) => {
@@ -174,11 +177,11 @@ async function main() {
       }
     }
 
-    heartbeat = setInterval(() => {
+    const heartbeat = setInterval(() => {
       if (!safeWrite(": heartbeat\n\n")) cleanup()
     }, 15000)
 
-    idleTimeout = setTimeout(() => cleanup(), 120_000)
+    const idleTimeout = setTimeout(() => cleanup(), 120_000)
 
     const onStep = (step: AgentLoopStep) => {
       const data = JSON.stringify(step)
@@ -208,6 +211,9 @@ async function main() {
       emitter.off("done", onDone)
       emitter.off("error", onError)
       emitter.off("close", cleanup)
+      if (emitter.listenerCount("step") === 0 && emitter.listenerCount("done") === 0 && emitter.listenerCount("error") === 0) {
+        setTimeout(() => cleanupSessionEmitter(sessionId), 30_000).unref?.()
+      }
       try {
         reply.raw.end()
       } catch {}
@@ -229,7 +235,7 @@ async function main() {
 
   server.get<{ Params: { runId: string } }>("/api/pipeline/stream/:runId", async (req, reply) => {
     const { runId } = req.params
-    const token = req.headers.authorization?.replace("Bearer ", "")
+    const token = req.headers.authorization?.replace("Bearer ", "") || (req.query as { token?: string })?.token
 
     if (!token) {
       return reply.status(401).send({ error: "Authentication required" })
@@ -238,7 +244,7 @@ async function main() {
     let userId: string | null = null
     try {
       const jwt = await import("jsonwebtoken")
-      const payload = jwt.default.verify(token, process.env.JWT_SECRET || "dev-secret-change-in-production") as { userId: string }
+      const payload = jwt.default.verify(token, JWT_SECRET) as { userId: string }
       userId = payload.userId
     } catch {
       return reply.status(401).send({ error: "Invalid token" })
@@ -254,11 +260,13 @@ async function main() {
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
       "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": req.headers.origin || "*",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     })
+    reply.raw.write(": connected\n\n")
 
     const emitter = getRunEmitter(runId)
-    let heartbeat: NodeJS.Timeout
-    let idleTimeout: NodeJS.Timeout
     let closed = false
 
     const safeWrite = (chunk: string) => {
@@ -271,11 +279,11 @@ async function main() {
       }
     }
 
-    heartbeat = setInterval(() => {
+    const heartbeat = setInterval(() => {
       if (!safeWrite(": heartbeat\n\n")) cleanup()
     }, 15000)
 
-    idleTimeout = setTimeout(() => cleanup(), 120_000)
+    const idleTimeout = setTimeout(() => cleanup(), 120_000)
 
     const onNode = (data: Record<string, unknown>) => {
       safeWrite(`data: ${JSON.stringify({ type: "node", ...data })}\n\n`)

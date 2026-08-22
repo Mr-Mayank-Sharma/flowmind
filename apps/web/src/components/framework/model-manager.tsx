@@ -5,17 +5,18 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-import { Trash2, Download, CheckCircle, Loader2, HardDrive, RefreshCw, Search, AlertCircle } from "lucide-react"
+import { Trash2, Download, Loader2, HardDrive, RefreshCw, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api, type OllamaModel } from "@/lib/api"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 export function ModelManager({ frameworkId }: { frameworkId: string }) {
   const [models, setModels] = useState<OllamaModel[]>([])
   const [loading, setLoading] = useState(true)
   const [pulling, setPulling] = useState<string | null>(null)
   const [pullProgress, setPullProgress] = useState(0)
-  const [pullStatus, setPullStatus] = useState("")
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pullInput, setPullInput] = useState("")
   const [showPullInput, setShowPullInput] = useState(false)
@@ -41,32 +42,28 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
     if (!modelName.trim()) return
     setPulling(modelName.trim())
     setPullProgress(0)
-    setPullStatus("Pulling model...")
     setError(null)
 
     try {
-      await api.models.pullModel(modelName.trim())
-      setPullProgress(100)
-      setPullStatus("Complete")
+      const res = await api.models.pullModel(modelName.trim())
+      setPullProgress(res.progress ?? 100)
       await fetchModels()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Pull failed")
-      setPullStatus("Failed")
     } finally {
       setTimeout(() => {
         setPulling(null)
         setPullProgress(0)
-        setPullStatus("")
       }, 1500)
     }
   }
 
   const handleDelete = async (name: string) => {
-    if (!confirm(`Delete model "${name}"? This cannot be undone.`)) return
     setDeleting(name)
     setError(null)
     try {
       await api.models.deleteModel(name)
+      setConfirmDelete(null)
       await fetchModels()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed")
@@ -201,9 +198,11 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate">{model.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-emerald-500/10 text-emerald-400">
-                    loaded
-                  </span>
+                  {model.parameterSize !== "unknown" && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-emerald-500/10 text-emerald-400">
+                      {model.parameterSize}
+                    </span>
+                  )}
                   {model.quantization !== "unknown" && (
                     <span className="text-[10px] text-muted-foreground font-mono">{model.quantization}</span>
                   )}
@@ -220,7 +219,7 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
-                  onClick={() => handleDelete(model.name)}
+                  onClick={() => setConfirmDelete(model.name)}
                   disabled={deleting === model.name}
                 >
                   {deleting === model.name ? (
@@ -245,18 +244,19 @@ export function ModelManager({ frameworkId }: { frameworkId: string }) {
             </span>
           </div>
           <Progress value={pullProgress > 0 ? pullProgress : 100} variant="default" className={cn("h-1.5", pullProgress === 0 && "animate-pulse")} />
-          {pullStatus && pullStatus !== "Complete" && pullStatus !== "Failed" && (
-            <p className="text-[11px] text-muted-foreground">{pullStatus}</p>
-          )}
         </div>
       )}
 
-      {pulling && pullProgress >= 100 && (
-        <div className="flex items-center gap-2 text-sm text-emerald-400">
-          <CheckCircle className="h-4 w-4" />
-          Model {pulling} pulled successfully
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Delete model"
+        description={`Delete "${confirmDelete}"? This cannot be undone. You can pull it again later.`}
+        confirmLabel="Delete"
+        destructive
+        busy={deleting !== null}
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   )
 }

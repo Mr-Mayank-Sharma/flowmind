@@ -67,6 +67,7 @@ export default function ModelsPage() {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
   const [apiKeys, setApiKeys] = useState<Record<string, { key: string; visible: boolean }>>({})
+  const [configuredKeys, setConfiguredKeys] = useState<Record<string, boolean>>({})
   const [showKeyInput, setShowKeyInput] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const { toast } = useToast()
@@ -74,14 +75,16 @@ export default function ModelsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [m, p, h] = await Promise.all([
+      const [m, p, h, keys] = await Promise.all([
         api.models.list().catch(() => [] as any[]),
         api.models.getProviders().catch(() => [] as any[]),
         api.models.getRuntimeHealth().catch(() => ({ online: false, status: "error" })),
+        api.models.getProviderKeys().catch(() => [] as { providerId: string; hasKey: boolean }[]),
       ])
       setModels(m)
       setProviders(p)
       setRuntimeOnline(h.online)
+      setConfiguredKeys(Object.fromEntries(keys.map((k) => [k.providerId, k.hasKey])))
     } finally {
       setLoading(false)
     }
@@ -131,9 +134,15 @@ export default function ModelsPage() {
     })
   }
 
-  const saveApiKey = (providerId: string, key: string) => {
-    setShowKeyInput(null)
-    toast({ title: "API keys are set server-side", description: "Configure this provider via environment variables on the API server.", variant: "info" })
+  const saveApiKey = async (providerId: string, key: string) => {
+    try {
+      await api.models.setProviderKey(providerId, key)
+      setConfiguredKeys(prev => ({ ...prev, [providerId]: true }))
+      setShowKeyInput(null)
+      toast({ title: "API key saved", description: `${providerId} is now configured.`, variant: "success" })
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Failed to save API key", variant: "error" })
+    }
   }
 
   const copyToClipboard = (text: string, id: string) => {
@@ -194,9 +203,9 @@ export default function ModelsPage() {
                       </CardContent>
                     </Card>
                   ))
-                : providers.map((provider: any) => {
+                  : providers.map((provider: any) => {
                     const providerModels = groupedByProvider[provider.id] || []
-                    const hasApiKey = providerModels.some((m: any) => m.available)
+                    const hasApiKey = configuredKeys[provider.id] || providerModels.some((m: any) => m.available)
                     const ProviderIcon = (providerIcons as Record<string, React.ElementType>)[provider.id] || Bot
                     const color = providerColors[provider.id] || "border-border"
 
@@ -289,7 +298,7 @@ export default function ModelsPage() {
                                     }}
                                     onKeyDown={e => {
                                       const key = apiKeys[provider.id]?.key
-                                      if (e.key === "Enter" && key) saveApiKey(provider.id, key)
+                                      if (e.key === "Enter" && key) void saveApiKey(provider.id, key)
                                     }}
                                   />
                                   <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => toggleKeyVisibility(provider.id)}>
@@ -297,7 +306,7 @@ export default function ModelsPage() {
                                   </Button>
                                   <Button variant="secondary" size="sm" className="h-7 text-xs shrink-0" onClick={() => {
                                     const key = apiKeys[provider.id]?.key
-                                    if (key) saveApiKey(provider.id, key)
+                                    if (key) void saveApiKey(provider.id, key)
                                   }}>
                                     Save
                                   </Button>
@@ -308,7 +317,7 @@ export default function ModelsPage() {
                                   className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
                                 >
                                   <Key className="h-3.5 w-3.5" />
-                                  {apiKeys[provider.id]?.key ? "Update API Key" : "Configure API Key"}
+                                  {configuredKeys[provider.id] ? "Update API Key" : "Configure API Key"}
                                 </button>
                               )}
                             </div>

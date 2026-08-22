@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
-  RefreshCw, Trash2, Eye, EyeOff,
+  Trash2, Eye, EyeOff, Loader2,
 } from "lucide-react"
 import { api } from "@/lib/api"
 import { useQuery } from "@/hooks/use-query"
+import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/ui/error-state"
 
@@ -34,6 +36,7 @@ export function ProfileTab() {
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const toast = useToast()
 
   const { data: user, loading, error, refetch } = useQuery(
     "settings:profile",
@@ -43,6 +46,15 @@ export function ProfileTab() {
   const [name, setName] = useState("")
   const [timezone, setTimezone] = useState("UTC")
   const [language, setLanguage] = useState("en")
+
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const [deletePassword, setDeletePassword] = useState("")
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -57,8 +69,46 @@ export function ProfileTab() {
     try {
       await api.settings.updateProfile({ name, timezone, language })
       refetch()
-    } catch {} finally {
+      toast.success("Profile updated")
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to update profile")
+    } finally {
       setSaving(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match")
+      return
+    }
+    if (newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters")
+      return
+    }
+    setChangingPassword(true)
+    try {
+      await api.auth.changePassword({ currentPassword, newPassword })
+      toast.success("Password updated")
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to update password")
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true)
+    try {
+      await api.settings.deleteAccount({ password: deletePassword })
+      toast.success("Account deleted")
+      setTimeout(() => { window.location.href = "/login" }, 1500)
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to delete account")
+      setDeleting(false)
     }
   }
 
@@ -86,14 +136,8 @@ export function ProfileTab() {
               <p className="font-medium">{user?.name ?? "User"}</p>
               <p className="text-sm text-muted-foreground capitalize">{user?.tier?.toLowerCase() ?? "Free"} plan</p>
             </div>
-            <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={() => {
-              const input = document.createElement("input")
-              input.type = "file"
-              input.accept = "image/*"
-              input.onchange = () => alert("Avatar upload requires server-side implementation")
-              input.click()
-            }}>
-              <RefreshCw className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" className="ml-auto gap-2" disabled title="Avatar upload is not available">
+              <Eye className="h-3.5 w-3.5" />
               Change Avatar
             </Button>
           </div>
@@ -147,7 +191,7 @@ export function ProfileTab() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Current Password</label>
             <div className="relative">
-              <Input type={showCurrent ? "text" : "password"} placeholder="Enter current password" />
+              <Input type={showCurrent ? "text" : "password"} placeholder="Enter current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
               <button
                 type="button"
                 onClick={() => setShowCurrent(!showCurrent)}
@@ -161,7 +205,7 @@ export function ProfileTab() {
             <div className="space-y-2">
               <label className="text-sm font-medium">New Password</label>
               <div className="relative">
-                <Input type={showNew ? "text" : "password"} placeholder="New password" />
+                <Input type={showNew ? "text" : "password"} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                 <button
                   type="button"
                   onClick={() => setShowNew(!showNew)}
@@ -174,7 +218,7 @@ export function ProfileTab() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Confirm Password</label>
               <div className="relative">
-                <Input type={showConfirm ? "text" : "password"} placeholder="Confirm new password" />
+                <Input type={showConfirm ? "text" : "password"} placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                 <button
                   type="button"
                   onClick={() => setShowConfirm(!showConfirm)}
@@ -186,7 +230,10 @@ export function ProfileTab() {
             </div>
           </div>
           <div>
-            <Button variant="outline" onClick={() => alert("Password change requires current password verification. This feature requires server-side implementation.")}>Update Password</Button>
+            <Button variant="outline" onClick={handleChangePassword} disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}>
+              {changingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Update Password
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -200,16 +247,26 @@ export function ProfileTab() {
           <p className="text-sm text-muted-foreground">
             This action cannot be undone. All your pipelines, flows, settings, and personal data will be permanently removed.
           </p>
-          <Button variant="destructive" className="gap-2" onClick={() => {
-            if (window.confirm("Are you sure you want to permanently delete your account? This cannot be undone.")) {
-              alert("Account deletion request submitted. This feature requires server-side implementation.")
-            }
-          }}>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Enter your password to confirm</label>
+            <Input type="password" placeholder="Enter your password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} />
+          </div>
+          <Button variant="destructive" className="gap-2" onClick={() => setConfirmDelete(true)} disabled={!deletePassword}>
             <Trash2 className="h-4 w-4" />
             Delete My Account
           </Button>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete account?"
+        description="This action cannot be undone. All your pipelines, flows, settings, and personal data will be permanently removed."
+        confirmLabel="Delete Account"
+        destructive
+        busy={deleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Search, Folder, File, FileCode, FileText, ChevronRight, Trash2, FileJson, Table2, Lock, FileType, Terminal as TerminalIcon, Brush } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 const fileIconMap: Record<string, React.ElementType> = {
   ts: FileCode,
@@ -54,6 +55,7 @@ export default function FilesPage() {
   const [fileContent, setFileContent] = useState<string>("")
   const [files, setFiles] = useState<FileEntry[]>([])
   const [directoryTree, setDirectoryTree] = useState<any[]>([])
+  const [pendingDelete, setPendingDelete] = useState<FileEntry | null>(null)
 
   const fetchDir = async (dir: string) => {
     try {
@@ -193,14 +195,9 @@ export default function FilesPage() {
                     {file.size != null && <span className="text-xs text-muted-foreground">{formatSize(file.size)}</span>}
                     {file.modifiedAt && <span className="text-xs text-muted-foreground w-20 text-right">{formatTime(file.modifiedAt)}</span>}
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-1 text-muted-foreground hover:text-red-400" title="Delete" onClick={async (e) => {
+                      <button className="p-1 text-muted-foreground hover:text-red-400" title="Delete" onClick={(e) => {
                         e.stopPropagation()
-                        if (!confirm(`Delete "${file.name}"? This cannot be undone.`)) return
-                        try {
-                          await api.files.delete(`${currentPath}/${file.name}`)
-                          if (selectedFile === file.name) setSelectedFile(null)
-                          fetchDir(currentPath)
-                        } catch {}
+                        setPendingDelete(file)
                       }}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -227,6 +224,23 @@ export default function FilesPage() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Delete "${pendingDelete?.name}"?`}
+        description="This file will be permanently removed from the filesystem."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          if (!pendingDelete) return
+          try {
+            await api.files.delete(`${currentPath}/${pendingDelete.name}`)
+            if (selectedFile === pendingDelete.name) setSelectedFile(null)
+            fetchDir(currentPath)
+          } catch {}
+          setPendingDelete(null)
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

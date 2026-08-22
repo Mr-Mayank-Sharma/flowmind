@@ -52,6 +52,7 @@ export function ModelSelector({ selectedModel, onModelChange, disabled }: ModelS
   const { toast } = useToast()
 
   useEffect(() => {
+    let cancelled = false
     async function load() {
       try {
         const [m, p] = await Promise.all([
@@ -67,34 +68,50 @@ export function ModelSelector({ selectedModel, onModelChange, disabled }: ModelS
               local: true,
             }))
           : []
-        setModels(mapped)
-        setProviders(Array.isArray(p) ? p : [])
+        if (!cancelled) {
+          setModels(mapped)
+          setProviders(Array.isArray(p) ? p : [])
+          try {
+            const keys = await api.models.getProviderKeys()
+            const keyMap: Record<string, string> = {}
+            for (const entry of Array.isArray(keys) ? keys : []) {
+              if (entry?.hasKey && entry.providerId) keyMap[entry.providerId] = "configured"
+            }
+            setApiKeys(keyMap)
+          } catch {}
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
+      if (typeof window === "undefined" || cancelled) return
+      try {
+        const raw = localStorage.getItem("flowmind_api_keys")
+        if (raw) setApiKeys(JSON.parse(raw))
+      } catch {}
     }
     load()
-    loadSavedKeys()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const loadSavedKeys = () => {
-    if (typeof window === "undefined") return
-    try {
-      const raw = localStorage.getItem("flowmind_api_keys")
-      if (raw) setApiKeys(JSON.parse(raw))
-    } catch {}
-  }
-
-  const saveKey = (providerId: string, key: string) => {
-    const updated = { ...apiKeys, [providerId]: key }
-    setApiKeys(updated)
-    if (typeof window !== "undefined") {
-      localStorage.setItem("flowmind_api_keys", JSON.stringify(updated))
+  useEffect(() => {
+    if (models.length > 0 && !selectedModel && onModelChange) {
+      onModelChange(models[0]!.id)
     }
-    setCredentialKey("")
-    setCredentialProvider(null)
-    setShowCredentialInput(false)
-    toast({ title: `API key saved for ${providerId}`, variant: "success" })
+  }, [models, selectedModel, onModelChange])
+
+  const saveKey = async (providerId: string, key: string) => {
+    try {
+      await api.models.setProviderKey(providerId, key)
+      setApiKeys((prev) => ({ ...prev, [providerId]: "configured" }))
+      setCredentialKey("")
+      setCredentialProvider(null)
+      setShowCredentialInput(false)
+      toast({ title: `API key saved for ${providerId}`, variant: "success" })
+    } catch (e: any) {
+      toast({ title: `Failed to save API key: ${e?.message ?? "unknown error"}`, variant: "error" })
+    }
   }
 
   const needsApiKey = useCallback((providerId: string) => {

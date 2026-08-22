@@ -22,6 +22,9 @@ import { billingApi } from "./billing"
 import { webhooksApi } from "./webhooks"
 import { consoleApi } from "./console"
 import { contextApi } from "./context"
+import { hostApi, hostClientApi } from "./host"
+export { hostClientApi }
+export type { HostGroup, HostClientInfo, ConnectToken, PipelineProposal, ProposalComment } from "./host"
 
 export const api = {
   auth: authApi,
@@ -45,4 +48,6 @@ export const api = {
   webhooks: webhooksApi,
   console: consoleApi,
   context: contextApi,
+  host: hostApi,
+  hostClient: hostClientApi,
 }

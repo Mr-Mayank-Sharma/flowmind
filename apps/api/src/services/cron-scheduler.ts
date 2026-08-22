@@ -2,7 +2,7 @@ import cron from "node-cron"
 import { prisma } from "@flowmind/db"
 import { PipelineEngine } from "@flowmind/pipeline-engine"
 import type { PipelineGraph, PipelineNode, LLMProvider } from "@flowmind/pipeline-engine"
-import { LLMEngine } from "@flowmind/llm-router"
+import { LLMEngine, resolveDefaultOllamaModel } from "@flowmind/llm-router"
 
 const log = {
   info: (...args: unknown[]) => console.log("[cron-scheduler]", ...args),
@@ -37,9 +37,10 @@ function buildLLMProvider(): LLMProvider | undefined {
   })
   return {
     complete: async (req) => {
+      const model = req.model || (await resolveDefaultOllamaModel()) || "tinyllama"
       const result = await llmEngine.complete({
         messages: req.messages as any,
-        model: req.model ?? "tinyllama",
+        model,
         maxTokens: req.maxTokens ?? 500,
         temperature: req.temperature,
       })
@@ -80,7 +81,7 @@ function computeNextRun(expression: string): Date | null {
     const now = new Date()
     const next = new Date(now)
 
-    const [minExpr, hourExpr, domExpr, monthExpr, dowExpr] = parts
+    const [minExpr, hourExpr] = parts
 
     if (minExpr && minExpr !== "*") {
       const min = parseInt(minExpr.replace("*/", ""), 10)
@@ -226,7 +227,7 @@ async function executeJob(jobId: string, pipelineId: string, llm: LLMProvider | 
 }
 
 function stop() {
-  for (const [id, task] of scheduledTasks) {
+  for (const [, task] of scheduledTasks) {
     task.stop()
   }
   scheduledTasks.clear()

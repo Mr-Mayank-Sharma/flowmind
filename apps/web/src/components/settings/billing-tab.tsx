@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Plus, Building2 } from "lucide-react"
+import { Building2, CreditCard } from "lucide-react"
 import { api } from "@/lib/api"
 import { useQuery } from "@/hooks/use-query"
+import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function BillingTab() {
@@ -21,6 +22,8 @@ export function BillingTab() {
   )
   const [orgSub, setOrgSub] = useState<any>(null)
   const [orgLoaded, setOrgLoaded] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     api.settings.getOrg().then((org: any) => {
@@ -39,6 +42,34 @@ export function BillingTab() {
   const getProgress = (used: number, limit: number | string) => {
     if (limit === "unlimited" || limit === 0) return 0
     return Math.min(Math.round((used / (limit as number)) * 100), 100)
+  }
+
+  const checkout = async (targetTier: string) => {
+    setBusy(true)
+    try {
+      const res = await api.billing.createCheckout({ tier: targetTier, orgId: orgSub?.id })
+      if (res.url) {
+        window.location.href = res.url
+      } else {
+        toast.success("Plan updated")
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Checkout failed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const openPortal = async () => {
+    setBusy(true)
+    try {
+      const res = await api.billing.createPortalSession()
+      if (res.url) window.location.href = res.url
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to open billing portal")
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -81,8 +112,8 @@ export function BillingTab() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button variant="outline">Downgrade</Button>
-                <Button>Upgrade</Button>
+                <Button variant="outline" disabled={busy || tier === "FREE"} onClick={() => checkout(tier === "TEAM" ? "PRO" : "FREE")}>Downgrade</Button>
+                <Button disabled={busy} onClick={() => checkout(tier === "FREE" ? "PRO" : tier === "PRO" ? "TEAM" : "ENTERPRISE")}>Upgrade</Button>
               </div>
             </>
           )}
@@ -167,7 +198,7 @@ export function BillingTab() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground text-center py-4">No payment method on file</p>
-            <Button variant="outline" size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" />Add Payment Method</Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={openPortal} disabled={busy}><CreditCard className="h-3.5 w-3.5" />Add Payment Method</Button>
           </CardContent>
         </Card>
 

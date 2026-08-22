@@ -88,7 +88,9 @@ export function LayoutWithSidebar({ children }: { children: ReactNode }) {
           <Sidebar />
         </div>
       ) : (
-        <Sidebar />
+        <div className="fixed left-0 top-0 z-40 h-full">
+          <Sidebar />
+        </div>
       )}
 
       {isMobile && !isMobileOpen && (

@@ -26,6 +26,7 @@ import {
   GripVertical,
   Puzzle,
   Search,
+  UserCheck,
   X,
 } from "lucide-react"
 
@@ -48,6 +49,7 @@ const paletteItems: PaletteItem[] = [
   { type: "summarizer", label: "Summarizer", icon: FileText, category: "AI Nodes" },
   { type: "webResearcher", label: "Web Researcher", icon: Globe, category: "AI Nodes" },
   { type: "imageGenerator", label: "Image Generator", icon: Image, category: "AI Nodes" },
+  { type: "ragRetrieve", label: "Retrieve Context", icon: Search, category: "AI Nodes" },
   { type: "httpRequest", label: "HTTP Request", icon: Globe, category: "Actions" },
   { type: "databaseQuery", label: "Database Query", icon: Database, category: "Actions" },
   { type: "sendEmail", label: "Send Email", icon: Mail, category: "Actions" },
@@ -60,6 +62,7 @@ const paletteItems: PaletteItem[] = [
   { type: "merge", label: "Merge", icon: Merge, category: "Flow Control" },
   { type: "loop", label: "Loop", icon: Repeat, category: "Flow Control" },
   { type: "wait", label: "Wait", icon: Clock, category: "Flow Control" },
+  { type: "humanApproval", label: "Human Approval", icon: UserCheck, category: "Flow Control" },
 ]
 
 const categories = ["Triggers", "AI Nodes", "Actions", "Flow Control", "Integrations", "Skills"]

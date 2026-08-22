@@ -81,7 +81,7 @@ export const skillsRouter = router({
 
   install: protectedProcedure
     .input(z.object({ skillId: z.string() }))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       const skill = await prisma.marketplaceSkill.findUnique({ where: { id: input.skillId } })
       if (!skill) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Skill not found" })

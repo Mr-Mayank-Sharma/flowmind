@@ -43,7 +43,6 @@ export const modelsRouter = router({
         parameterSize: m.details?.parameter_size ?? "unknown",
         quantization: m.details?.quantization_level ?? "unknown",
         family: m.details?.family ?? "unknown",
-        status: "loaded" as const,
       }))
     } catch {
       return []
@@ -78,11 +77,27 @@ export const modelsRouter = router({
         const res = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: input.name, stream: false }),
+          body: JSON.stringify({ name: input.name, stream: true }),
           signal: AbortSignal.timeout(600000),
         })
         if (!res.ok) throw new Error(`Pull failed: ${res.statusText}`)
-        return { status: "success", name: input.name }
+        if (!res.body) return { status: "success", name: input.name, progress: 100 }
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let progress = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value, { stream: true })
+          for (const line of chunk.split("\n")) {
+            if (!line.trim()) continue
+            try {
+              const msg = JSON.parse(line)
+              if (msg.total && msg.completed) progress = Math.round((msg.completed / msg.total) * 100)
+            } catch {}
+          }
+        }
+        return { status: "success", name: input.name, progress }
       } catch (e) {
         throw new Error(e instanceof Error ? e.message : "Pull failed")
       }

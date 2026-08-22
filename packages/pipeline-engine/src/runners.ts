@@ -2,7 +2,7 @@ import type { PipelineNode, ExecutionContext, NodeRunner, NodeOutput } from "./t
 import { resolveValue, buildExpressionContext } from "./expressions"
 import { kindForNodeType } from "./types"
 import { getDirectPredecessors } from "./graph"
-import { runAgentLoop, type AgentTool, type ProviderFacade, type CompletionRequest, type CompletionResult, type StreamCallbacks, type Message } from "@flowmind/llm-router"
+import { runAgentLoop, resolveDefaultOllamaModel, type AgentTool, type ProviderFacade, type CompletionRequest, type CompletionResult, type StreamCallbacks, type Message } from "@flowmind/llm-router"
 
 import nodemailer from "nodemailer"
 
@@ -86,12 +86,21 @@ const triggerRunners: Record<string, (node: PipelineNode, context: ExecutionCont
 }
 
 function modelFromNode(node: PipelineNode): string {
-  return (node.config.model as string) ?? "tinyllama"
+  return (node.config.model as string) ?? ""
+}
+
+async function resolveNodeModel(node: PipelineNode): Promise<string> {
+  const configured = modelFromNode(node)
+  if (configured) {
+    const resolved = await resolveDefaultOllamaModel(configured)
+    return resolved || configured
+  }
+  return (await resolveDefaultOllamaModel()) || "tinyllama"
 }
 
 const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {
   async aiAgent(node, context) {
-    const model = modelFromNode(node)
+    const model = await resolveNodeModel(node)
     const maxIterations = (node.config.maxIterations as number) ?? 5
     const systemPrompt = (node.config.systemPrompt as string) ?? ""
     const prompt = (node.config.prompt as string) ?? "Execute your task based on the input data."
@@ -103,7 +112,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     return reactAgentLoop(node, context, enrichedPrompt, resolvedSystem, model, maxIterations)
   },
   async contentWriter(node, context) {
-    const model = modelFromNode(node)
+    const model = await resolveNodeModel(node)
     const predecessorData = predecessorsInput(node, context)
     const exprCtx = buildExpressionContext(context)
     const topic = resolveValue(node.config.topic ?? "general", exprCtx) as string
@@ -116,7 +125,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     return { topic, tone, input: predecessorData, content: response, json: { content: response, input: predecessorData }, wordCount: response.split(/\s+/).length }
   },
   async dataExtractor(node, context) {
-    const model = modelFromNode(node)
+    const model = await resolveNodeModel(node)
     const predecessorData = predecessorsInput(node, context)
     const fields = ((node.config.fields as string) ?? "name,email").split(",").map((f) => f.trim())
     const text = JSON.stringify(predecessorData)
@@ -130,7 +139,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     return { fields, input: predecessorData, extracted, json: { extracted, fields } }
   },
   async classifier(node, context) {
-    const model = modelFromNode(node)
+    const model = await resolveNodeModel(node)
     const predecessorData = predecessorsInput(node, context)
     const categories = ((node.config.categories as string) ?? "positive,negative,neutral").split(",").map((c: string) => c.trim())
     const text = JSON.stringify(predecessorData)
@@ -144,7 +153,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     return { categories, input: predecessorData, category, confidence, json: { category, confidence } }
   },
   async summarizer(node, context) {
-    const model = modelFromNode(node)
+    const model = await resolveNodeModel(node)
     const predecessorData = predecessorsInput(node, context)
     const exprCtx = buildExpressionContext(context)
     const text = resolveValue(node.config.text ?? JSON.stringify(predecessorData), exprCtx) as string
@@ -156,7 +165,7 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
     return { inputLength: text.length, summary: response, json: { summary: response, originalLength: text.length } }
   },
   async webResearcher(node, context) {
-    const model = modelFromNode(node)
+    const model = await resolveNodeModel(node)
     const exprCtx = buildExpressionContext(context)
     const query = resolveValue(node.config.query ?? "", exprCtx) as string
     const predecessorData = predecessorsInput(node, context)
@@ -174,6 +183,25 @@ const aiRunners: Record<string, (node: PipelineNode, context: ExecutionContext) 
       model, context,
     )
     return { query, input: predecessorData, results: [response], json: { query, resultCount: 1, results: [response] } }
+  },
+  async ragRetrieve(node, context) {
+    const exprCtx = buildExpressionContext(context)
+    const text = resolveValue(node.config.query ?? node.config.text ?? "", exprCtx) as string
+    const topK = (node.config.topK as number) ?? 5
+    const filters = node.config.filters as Record<string, unknown> | undefined
+    if (!context.ragSearch) {
+      return { query: text, results: [], error: "No RAG search engine available", json: { query: text, resultCount: 0, results: [] } }
+    }
+    const results = await context.ragSearch({ text, topK, filters })
+    return {
+      query: text,
+      results,
+      json: {
+        query: text,
+        resultCount: results.length,
+        results: results.map((r) => ({ id: r.id, score: r.score, content: r.content })),
+      },
+    }
   },
   async imageGenerator(node, context) {
     const exprCtx = buildExpressionContext(context)
@@ -565,6 +593,38 @@ const flowRunners: Record<string, (node: PipelineNode, context: ExecutionContext
     const durationMs = (node.config.durationMs as number) ?? 1000
     await sleep(durationMs)
     return { waited: true, durationMs, json: { durationMs } }
+  },
+  async humanApproval(node, context) {
+    const exprCtx = buildExpressionContext(context)
+    const message = resolveValue(node.config.message ?? "Approve this step?", exprCtx) as string
+    const request = { message, nodeLabel: node.label, nodeId: node.id }
+    const override = context.approvalOverrides?.[node.id]
+    if (override) {
+      return {
+        status: override.approved ? "approved" : "rejected",
+        approved: override.approved,
+        note: override.note,
+        request,
+        overridden: true,
+        json: { status: override.approved ? "approved" : "rejected", approved: override.approved, note: override.note ?? null },
+      }
+    }
+    if (!context.requestApproval) {
+      return {
+        status: "awaiting_approval",
+        approved: false,
+        request,
+        json: { status: "awaiting_approval", message, nodeId: node.id },
+      }
+    }
+    const decision = await context.requestApproval(node.id, request)
+    return {
+      status: decision.approved ? "approved" : "rejected",
+      approved: decision.approved,
+      note: decision.note,
+      request,
+      json: { status: decision.approved ? "approved" : "rejected", approved: decision.approved, note: decision.note ?? null },
+    }
   },
 }
 

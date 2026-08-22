@@ -3,13 +3,13 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../middleware/trpc";
 import { prisma } from "@flowmind/db";
 import { toolRegistry } from "@flowmind/tool-system";
-import { evaluate, type Action } from "@flowmind/permission";
+import { evaluate } from "@flowmind/permission";
 import { lspManager } from "@flowmind/lsp";
 import { SnapshotManager } from "@flowmind/snapshot";
 import { SessionEngine } from "@flowmind/session-engine";
 import { providerRegistry } from "@flowmind/provider-registry";
 import { pluginEngine } from "@flowmind/plugin-engine";
-import { createReadTool, createWriteTool, createEditTool, createGrepTool, createGlobTool, createBashTool, createWebFetchTool, createWebSearchTool, createApplyPatchTool, createTodoWriteTool } from "@flowmind/tool-system";
+import { createTodoWriteTool } from "@flowmind/tool-system";
 
 const sessionEngines = new Map<string, SessionEngine>();
 const snapshotManagers = new Map<string, SnapshotManager>();
@@ -95,7 +95,7 @@ export const toolsV2Router = router({
             message: `Tool ${input.toolId} requires approval for: ${JSON.stringify(permInput)}`,
           });
         },
-        metadata(m) {},
+        metadata(_m) {},
       });
 
       sessionEngine.addMessage({
@@ -270,6 +270,14 @@ export const toolsV2Router = router({
     .mutation(async ({ input }) => {
       providerRegistry.setApiKey(input.providerId, input.apiKey);
       return { success: true };
+    }),
+
+  getProviderKeys: protectedProcedure
+    .query(async () => {
+      return providerRegistry.getProviders().map((p) => ({
+        providerId: p.id,
+        hasKey: Boolean(providerRegistry.getApiKey(p.id)),
+      }));
     }),
 
   // --- Plugin Engine ---

@@ -10,6 +10,7 @@ import {
   Globe,
   GitBranch,
   ArrowRight,
+  Shield,
 } from "lucide-react"
 import Link from "next/link"
 import type { LucideIcon } from "lucide-react"
@@ -20,7 +21,14 @@ interface Template {
   description: string
   icon: LucideIcon
   category: string
-  nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>
+  nodes: Array<{
+    id: string
+    type: string
+    position: { x: number; y: number }
+    label?: string
+    config?: Record<string, unknown>
+    data: Record<string, unknown>
+  }>
   edges: Array<{ id: string; source: string; target: string }>
 }
 
@@ -133,6 +141,62 @@ const templates: Template[] = [
       { id: "e2-3", source: "2", target: "3" },
       { id: "e2-4", source: "2", target: "4" },
       { id: "e3-5", source: "3", target: "5" },
+      { id: "e4-5", source: "4", target: "5" },
+    ],
+  },
+  {
+    id: "host-review-chain",
+    name: "Host Review Chain",
+    description:
+      "Flagship enterprise chain: retrieve group context, draft with the host model, pause for human approval, then finalize.",
+    icon: Shield,
+    category: "Enterprise",
+    nodes: [
+      {
+        id: "1",
+        type: "manualTrigger",
+        position: { x: 50, y: 200 },
+        label: "Start",
+        config: {},
+        data: { label: "Start" },
+      },
+      {
+        id: "2",
+        type: "ragRetrieve",
+        position: { x: 300, y: 200 },
+        label: "Retrieve Group Context",
+        config: { query: "{{$json.prompt}}", topK: 3 },
+        data: { label: "Retrieve Group Context" },
+      },
+      {
+        id: "3",
+        type: "aiAgent",
+        position: { x: 550, y: 200 },
+        label: "Draft Response",
+        config: { prompt: "Using the retrieved context, answer: {{$json.prompt}}", model: "llama3.1" },
+        data: { label: "Draft Response" },
+      },
+      {
+        id: "4",
+        type: "humanApproval",
+        position: { x: 800, y: 200 },
+        label: "Approve Release",
+        config: { message: "Approve the drafted response for release?" },
+        data: { label: "Approve Release" },
+      },
+      {
+        id: "5",
+        type: "summarizer",
+        position: { x: 1050, y: 200 },
+        label: "Finalize",
+        config: {},
+        data: { label: "Finalize" },
+      },
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+      { id: "e3-4", source: "3", target: "4" },
       { id: "e4-5", source: "4", target: "5" },
     ],
   },

@@ -7,10 +7,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import {
-  Shield, Smartphone, LogOut, Key, Plus, Trash2, Copy,
+  Shield, Smartphone, LogOut, Key, Plus, Trash2, Copy, Loader2,
 } from "lucide-react"
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
+import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function SecurityTab() {
@@ -18,9 +19,13 @@ export function SecurityTab() {
     "settings:apiTokens",
     () => api.settings.getApiTokens(),
   )
-  const { data: sessions = [], loading: sessionsLoading } = useQuery(
+  const { data: sessions = [], loading: sessionsLoading, refetch: refetchSessions } = useQuery(
     "settings:sessions",
     () => api.settings.getSessions(),
+  )
+  const { data: mfaStatus, refetch: refetchMfa } = useQuery(
+    "settings:mfaStatus",
+    () => api.auth.getMfaStatus(),
   )
 
   const { mutate: createToken } = useMutation(
@@ -33,9 +38,13 @@ export function SecurityTab() {
     { onSuccess: refetchTokens },
   )
 
+  const toast = useToast()
   const [tokenName, setTokenName] = useState("")
   const [showCreate, setShowCreate] = useState(false)
   const [newTokenValue, setNewTokenValue] = useState<string | null>(null)
+  const [mfaSetup, setMfaSetup] = useState<any>(null)
+  const [mfaCode, setMfaCode] = useState("")
+  const [mfaBusy, setMfaBusy] = useState(false)
 
   const handleCreate = async () => {
     if (!tokenName) return
@@ -43,6 +52,50 @@ export function SecurityTab() {
     if (result) {
       setNewTokenValue((result as any).token)
       setTokenName("")
+    }
+  }
+
+  const handleMfaToggle = async (enabled: boolean) => {
+    if (enabled) {
+      setMfaBusy(true)
+      try {
+        const setup = await api.auth.setupMfa()
+        setMfaSetup(setup)
+      } catch (e: any) {
+        toast.error(e?.message ?? "Failed to start MFA setup")
+      } finally {
+        setMfaBusy(false)
+      }
+    } else {
+      setMfaBusy(true)
+      try {
+        await api.auth.disableMfa()
+        refetchMfa()
+        toast.success("MFA disabled")
+      } catch (e: any) {
+        toast.error(e?.message ?? "Failed to disable MFA")
+      } finally {
+        setMfaBusy(false)
+      }
+    }
+  }
+
+  const confirmMfaSetup = async () => {
+    setMfaBusy(true)
+    try {
+      const ok = await api.auth.confirmMfa(mfaCode)
+      if (ok) {
+        setMfaSetup(null)
+        setMfaCode("")
+        refetchMfa()
+        toast.success("MFA enabled")
+      } else {
+        toast.error("Invalid verification code")
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to verify code")
+    } finally {
+      setMfaBusy(false)
     }
   }
 
@@ -64,7 +117,15 @@ export function SecurityTab() {
                 </div>
                 <p className="text-xs text-muted-foreground">Last active: {new Date(session.updatedAt).toLocaleString()}</p>
               </div>
-              <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-destructive">
+              <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-destructive" onClick={async () => {
+                try {
+                  await api.chat.deleteSession(session.id)
+                  refetchSessions()
+                  toast.success("Session revoked")
+                } catch (e: any) {
+                  toast.error(e?.message ?? "Failed to revoke session")
+                }
+              }}>
                 <LogOut className="h-3 w-3" />
                 Revoke
               </Button>
@@ -87,8 +148,32 @@ export function SecurityTab() {
                 <p className="text-xs text-muted-foreground">Use Google Authenticator, Authy, or similar</p>
               </div>
             </div>
-            <Switch defaultChecked />
+            <Switch checked={mfaStatus?.enabled ?? false} onCheckedChange={handleMfaToggle} disabled={mfaBusy} />
           </div>
+          {mfaSetup && (
+            <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/[0.02] p-4">
+              <p className="text-sm font-medium">Scan the QR code with your authenticator app</p>
+              <div className="flex flex-wrap items-center gap-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={mfaSetup.qrCodeUrl} alt="MFA QR code" className="h-40 w-40 rounded border bg-white" />
+                <div className="flex-1 space-y-2 min-w-0">
+                  <p className="text-xs text-muted-foreground">Or enter this secret manually:</p>
+                  <code className="block text-xs bg-muted px-2 py-1.5 rounded font-mono break-all">{mfaSetup.secret}</code>
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <label className="text-xs text-muted-foreground">Verification code</label>
+                  <Input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="6-digit code" className="h-8 text-sm font-mono" />
+                </div>
+                <Button size="sm" className="h-8 text-xs" onClick={confirmMfaSetup} disabled={mfaBusy || mfaCode.length < 6}>
+                  {mfaBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Verify & Enable
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setMfaSetup(null)}>Cancel</Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

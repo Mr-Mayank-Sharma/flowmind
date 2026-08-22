@@ -13,8 +13,15 @@ export interface ContextChunk {
 export interface ContextQuery {
   text: string
   userId: string
+  groupId?: string
   topK?: number
   filters?: Record<string, unknown>
+}
+
+interface MemoryPoint {
+  id: string
+  vector: number[]
+  payload: Record<string, unknown>
 }
 
 async function embed(text: string): Promise<number[]> {
@@ -46,13 +53,40 @@ function chunkText(text: string, maxLen = 512): string[] {
   return chunks
 }
 
+function cosine(a: number[], b: number[]): number {
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!
+    na += a[i]! * a[i]!
+    nb += b[i]! * b[i]!
+  }
+  if (na === 0 || nb === 0) return 0
+  return dot / (Math.sqrt(na) * Math.sqrt(nb))
+}
+
+function matchesFilter(payload: Record<string, unknown>, key: string, value: unknown): boolean {
+  const actual = payload[key]
+  if (actual === value) return true
+  if (actual === null || actual === undefined) return false
+  if (Array.isArray(actual)) return (actual as unknown[]).includes(value)
+  return false
+}
+
 export class ContextEngine {
   private client: QdrantClient
   private ready: Promise<void>
+  private memory: MemoryPoint[]
+  private memoryMode: boolean
 
   constructor() {
     this.client = new QdrantClient({ url: process.env.QDRANT_URL || "http://localhost:6333" })
-    this.ready = this.ensureCollection()
+    this.memory = []
+    this.memoryMode = false
+    this.ready = this.ensureCollection().catch(() => {
+      this.memoryMode = true
+    })
   }
 
   private async ensureCollection(): Promise<void> {
@@ -64,21 +98,25 @@ export class ContextEngine {
     }
   }
 
-  async search(query: ContextQuery): Promise<ContextChunk[]> {
-    await this.ready
-    const queryVec = await embed(query.text)
-    const filter: Record<string, unknown> = {
-      must: [{ key: "userId", match: { value: query.userId } } as any],
-    }
+  private buildFilter(query: ContextQuery): Record<string, unknown> {
+    const must: Record<string, unknown>[] = [{ key: "userId", match: { value: query.userId } }]
+    if (query.groupId) must.push({ key: "groupId", match: { value: query.groupId } })
     if (query.filters) {
       for (const [key, value] of Object.entries(query.filters)) {
-        (filter.must as any[]).push({ key, match: { value } } as any)
+        must.push({ key, match: { value } })
       }
     }
+    return { must }
+  }
+
+  async search(query: ContextQuery): Promise<ContextChunk[]> {
+    await this.ready
+    if (this.memoryMode) return this.searchMemory(query)
+    const queryVec = await embed(query.text)
     const result = await this.client.search(COLLECTION_NAME, {
       vector: queryVec,
       limit: query.topK ?? 5,
-      filter: filter as any,
+      filter: this.buildFilter(query) as any,
       with_payload: true,
     })
     return result.map((r) => {
@@ -92,9 +130,49 @@ export class ContextEngine {
     })
   }
 
-  async index(userId: string, docId: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
+  private async searchMemory(query: ContextQuery): Promise<ContextChunk[]> {
+    const queryVec = await embed(query.text)
+    const scored: ContextChunk[] = []
+    for (const point of this.memory) {
+      const payload = point.payload
+      if (payload["userId"] !== query.userId) continue
+      if (query.groupId && payload["groupId"] !== query.groupId) continue
+      if (query.filters) {
+        let ok = true
+        for (const [key, value] of Object.entries(query.filters)) {
+          if (!matchesFilter(payload, key, value)) {
+            ok = false
+            break
+          }
+        }
+        if (!ok) continue
+      }
+      scored.push({
+        id: point.id,
+        content: (payload["content"] as string) ?? "",
+        score: cosine(queryVec, point.vector),
+        metadata: (payload["metadata"] as Record<string, unknown>) ?? {},
+      })
+    }
+    scored.sort((a, b) => b.score - a.score)
+    return scored.slice(0, query.topK ?? 5)
+  }
+
+  async index(userId: string, docId: string, content: string, metadata?: Record<string, unknown>, groupId?: string): Promise<void> {
     await this.ready
     const chunks = chunkText(content)
+    if (this.memoryMode) {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i]!
+        const vector = await embed(chunk)
+        this.memory.push({
+          id: `${docId}_${i}`,
+          vector,
+          payload: { userId, groupId, docId, content: chunk, chunkIndex: i, metadata: metadata ?? {} },
+        })
+      }
+      return
+    }
     const points = []
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]!
@@ -102,7 +180,7 @@ export class ContextEngine {
       points.push({
         id: `${docId}_${i}`,
         vector: vec,
-        payload: { userId, docId, content: chunk, chunkIndex: i, metadata: metadata ?? {} },
+        payload: { userId, groupId, docId, content: chunk, chunkIndex: i, metadata: metadata ?? {} },
       })
     }
     for (let i = 0; i < points.length; i += 10) {
@@ -110,15 +188,25 @@ export class ContextEngine {
     }
   }
 
-  async delete(userId: string, docId: string): Promise<void> {
+  async delete(userId: string, docId: string, groupId?: string): Promise<void> {
     await this.ready
+    if (this.memoryMode) {
+      this.memory = this.memory.filter(
+        (point) => point.payload["docId"] !== docId || point.payload["userId"] !== userId || (groupId !== undefined && point.payload["groupId"] !== groupId),
+      )
+      return
+    }
+    const must: Record<string, unknown>[] = [
+      { key: "userId", match: { value: userId } },
+      { key: "docId", match: { value: docId } },
+    ]
+    if (groupId) must.push({ key: "groupId", match: { value: groupId } })
     await this.client.delete(COLLECTION_NAME, {
-      filter: {
-        must: [
-          { key: "userId", match: { value: userId } } as any,
-          { key: "docId", match: { value: docId } } as any,
-        ],
-      },
+      filter: { must } as any,
     })
+  }
+
+  get mode(): string {
+    return this.memoryMode ? "memory" : "qdrant"
   }
 }

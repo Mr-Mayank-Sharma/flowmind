@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { router, publicProcedure } from "../middleware/trpc"
+import { router, publicProcedure, adminProcedure } from "../middleware/trpc"
 import { runtimeRegistry, RuntimeManifestSchema } from "@flowmind/runtime-registry"
 
 export const runtimeRouter = router({
@@ -18,7 +18,7 @@ export const runtimeRouter = router({
     }))
   }),
 
-  register: publicProcedure
+  register: adminProcedure
     .input(RuntimeManifestSchema)
     .mutation(({ input }) => {
       const runtime = runtimeRegistry.register(input)
@@ -29,14 +29,14 @@ export const runtimeRouter = router({
       }
     }),
 
-  unregister: publicProcedure
+  unregister: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => {
       const success = runtimeRegistry.unregister(input.id)
       return { success }
     }),
 
-  dispatch: publicProcedure
+  dispatch: adminProcedure
     .input(z.object({ nodeType: z.string(), inputType: z.string().optional() }))
     .query(({ input }) => {
       const result = runtimeRegistry.dispatch(input)

@@ -1,7 +1,7 @@
 import { CircuitBreaker, withRetry, logger } from "../infrastructure"
 import { MessageRole } from "@flowmind/shared"
 import { ContextEngine, type ContextChunk } from "@flowmind/context-engine"
-import { LLMEngine, runAgentLoop, type AgentTool, type AgentLoopStep } from "@flowmind/llm-router"
+import { LLMEngine, runAgentLoop, resolveDefaultOllamaModel, type AgentTool, type AgentLoopStep } from "@flowmind/llm-router"
 import { toolRegistry } from "@flowmind/tool-system"
 
 let _contextEngine: ContextEngine | null = null
@@ -11,6 +11,17 @@ function getContextEngine(): ContextEngine {
 }
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
+
+const CLOUD_DEFAULT_MODELS: Record<string, string> = {
+  openai: "gpt-4o-mini",
+  anthropic: "claude-3-5-haiku-latest",
+  google: "gemini-2.0-flash",
+  groq: "llama-3.1-8b-instant",
+  deepseek: "deepseek-chat",
+  openrouter: "openai/gpt-4o-mini",
+  together: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  mistral: "mistral-small-latest",
+}
 
 function buildLLMEngine(): LLMEngine {
   return new LLMEngine({
@@ -26,9 +37,9 @@ function buildLLMEngine(): LLMEngine {
   })
 }
 
-const NON_DESTRUCTIVE_TOOLS = new Set(["read", "grep", "glob", "web_fetch", "web_search", "todo_write"])
+const NON_DESTRUCTIVE_TOOLS = new Set(["read", "grep", "glob", "webfetch", "websearch", "todowrite"])
 
-function buildChatTools(sessionId: string, userId: string): AgentTool[] {
+function buildChatTools(sessionId: string, _userId: string): AgentTool[] {
   const defs = toolRegistry.all().filter((def) => NON_DESTRUCTIVE_TOOLS.has(def.id))
   const noopCtx = {
     sessionId,
@@ -164,7 +175,7 @@ export class ChatService {
     callbacks?: StreamingCallbacks,
   ): Promise<{ message: any; reply: string; steps: AgentLoopStep[]; iterations: number }> {
     const startTime = Date.now()
-    const model = input.model || "tinyllama"
+    const requestedModel = input.model?.trim() || ""
 
     await saveMessage(MessageRole.USER, input.content)
 
@@ -193,6 +204,16 @@ export class ChatService {
       const reply = "No LLM provider is configured. Please add an API key in Settings."
       const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
       return { message: assistantMessage, reply, steps: [], iterations: 0 }
+    }
+
+    let model: string
+    if (requestedModel) {
+      const local = await resolveDefaultOllamaModel(requestedModel)
+      model = local || requestedModel
+    } else if (provider.id === "ollama" || provider.id === "local") {
+      model = (await resolveDefaultOllamaModel()) || "tinyllama"
+    } else {
+      model = CLOUD_DEFAULT_MODELS[provider.id] ?? "tinyllama"
     }
 
     const tools = buildChatTools(input.sessionId, input.userId)

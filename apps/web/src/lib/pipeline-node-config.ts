@@ -22,6 +22,8 @@ export const NODE_TYPE_MAP: Record<string, string> = {
   loop: "flowNode",
   wait: "flowNode",
   openhumanMessage: "actionNode",
+  ragRetrieve: "aiNode",
+  humanApproval: "flowNode",
 }
 
 export const NODE_ICON_MAP: Record<string, string> = {
@@ -48,6 +50,8 @@ export const NODE_ICON_MAP: Record<string, string> = {
   loop: "Repeat",
   wait: "Clock",
   openhumanMessage: "MessageSquare",
+  ragRetrieve: "Search",
+  humanApproval: "UserCheck",
 }
 
 export function getVisualType(engineType: string): string {

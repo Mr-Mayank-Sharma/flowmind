@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import bcrypt from "bcryptjs";
 import { router, protectedProcedure } from "../middleware/trpc";
 
 export const settingsRouter = router({
   updateProfile: protectedProcedure
-    .input(z.object({ name: z.string().optional(), timezone: z.string().optional(), language: z.string().optional() }))
+    .input(z.object({ name: z.string().optional(), timezone: z.string().optional(), language: z.string().optional(), defaultModel: z.string().optional().nullable() }))
     .mutation(async ({ input, ctx }) => {
       return ctx.prisma.user.update({
         where: { id: ctx.userId! },
@@ -92,6 +93,13 @@ export const settingsRouter = router({
         select: { orgId: true },
       });
       if (!user?.orgId) throw new TRPCError({ code: "NOT_FOUND", message: "No organization" });
+      const membership = await ctx.prisma.orgMember.findUnique({
+        where: { orgId_userId: { orgId: user.orgId, userId: ctx.userId! } },
+        select: { role: true },
+      });
+      if (!membership || (membership.role !== "OWNER" && membership.role !== "ADMIN")) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Org admin access required" });
+      }
       return ctx.prisma.org.update({
         where: { id: user.orgId },
         data: input,
@@ -174,7 +182,7 @@ export const settingsRouter = router({
         where: { id: ctx.userId! },
         select: {
           id: true, name: true, email: true, avatarUrl: true, role: true, tier: true,
-          timezone: true, language: true, defaultModel: true, createdAt: true,
+          timezone: true, language: true, defaultModel: true, theme: true, fontSize: true, chatDensity: true, createdAt: true,
         },
       });
     }),
@@ -261,18 +269,26 @@ export const settingsRouter = router({
       if (!user.passwordHash) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Account was created via SSO. Password deletion is not supported." })
       }
-      const bcrypt = await import("bcryptjs")
       const valid = await bcrypt.compare(input.password, user.passwordHash)
       if (!valid) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid password" })
-      await Promise.all([
-        ctx.prisma.pipeline.deleteMany({ where: { userId: ctx.userId! } }),
-        ctx.prisma.session.deleteMany({ where: { userId: ctx.userId! } }),
-        ctx.prisma.memory.deleteMany({ where: { userId: ctx.userId! } }),
-        ctx.prisma.apiKey.deleteMany({ where: { userId: ctx.userId! } }),
-        ctx.prisma.notification.deleteMany({ where: { userId: ctx.userId! } }),
-        ctx.prisma.mcpToken.deleteMany({ where: { userId: ctx.userId! } }),
-      ])
-      await ctx.prisma.user.delete({ where: { id: ctx.userId! } })
+      await ctx.prisma.$transaction(async (tx) => {
+        const pipelineIds = await tx.pipeline.findMany({
+          where: { userId: ctx.userId! },
+          select: { id: true },
+        })
+        await tx.pipelineRun.deleteMany({ where: { pipelineId: { in: pipelineIds.map((p) => p.id) } } })
+        await Promise.all([
+          tx.pipeline.deleteMany({ where: { userId: ctx.userId! } }),
+          tx.session.deleteMany({ where: { userId: ctx.userId! } }),
+          tx.memory.deleteMany({ where: { userId: ctx.userId! } }),
+          tx.apiKey.deleteMany({ where: { userId: ctx.userId! } }),
+          tx.notification.deleteMany({ where: { userId: ctx.userId! } }),
+          tx.mcpToken.deleteMany({ where: { userId: ctx.userId! } }),
+          tx.account.deleteMany({ where: { userId: ctx.userId! } }),
+          tx.frameworkConfig.deleteMany({ where: { userId: ctx.userId! } }),
+        ])
+        await tx.user.delete({ where: { id: ctx.userId! } })
+      })
       return { success: true }
     }),
 

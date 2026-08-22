@@ -232,7 +232,7 @@ function CanvasInner({
     } finally {
       setSaving(false)
     }
-  }, [pipelineId, pipelineName, nodes, edges, router])
+  }, [pipelineId, pipelineName, nodes, edges, router, toast])
 
   const onRun = useCallback(async () => {
     await onSave()
@@ -303,7 +303,7 @@ function CanvasInner({
       setRunning(false)
       setCurrentRunId(null)
     }
-  }, [pipelineId, onSave, setNodes])
+  }, [pipelineId, onSave, setNodes, toast])
 
   const onCancel = useCallback(async () => {
     if (!currentRunId) return
@@ -319,7 +319,7 @@ function CanvasInner({
     setNodes((nds) =>
       nds.map((n) => ({ ...n, data: { ...n.data, status: "cancelled" as string } }))
     )
-  }, [currentRunId, setNodes])
+  }, [currentRunId, setNodes, toast])
 
   useCanvasShortcuts({
     onSave,

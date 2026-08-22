@@ -29,6 +29,7 @@ import {
   Wrench,
   Terminal,
   Building2,
+  Link2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,7 @@ import { useSidebarStore } from "@/hooks/sidebar-store"
 import { useAuth } from "@/hooks/use-auth"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { NotificationCenter } from "@/components/notification-center"
+import { api } from "@/lib/api"
 
 const navItems = [
   { href: "/home", label: "Control Center", icon: LayoutDashboard },
@@ -58,6 +60,7 @@ const navItems = [
   { href: "/docs", label: "Documentation", icon: Book },
   { href: "/governance", label: "Governance", icon: Shield },
   { href: "/workspace", label: "Cloud Console", icon: Building2 },
+  { href: "/host-connect", label: "Host Connect", icon: Link2 },
 ]
 
 const bottomItems = [
@@ -69,6 +72,15 @@ export function Sidebar() {
   const router = useRouter()
   const { isOpen, isMobile, isMobileOpen, toggle, setMobileOpen } = useSidebarStore()
   const { user, logout } = useAuth()
+  const [orgName, setOrgName] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    api.settings.getOrg()
+      .then((org: any) => { if (!cancelled && org?.name) setOrgName(org.name) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const handleSignOut = () => {
     logout()
@@ -194,8 +206,11 @@ export function Sidebar() {
                 {user.role}
               </Badge>
             </div>
-            <button className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
-              <span className="truncate">FlowMind Inc.</span>
+            <button
+              onClick={() => { router.push("/settings"); handleCloseMobile() }}
+              className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <span className="truncate">{orgName ?? user.email}</span>
               <ChevronDown className="h-3 w-3 shrink-0 ml-auto" />
             </button>
           </div>

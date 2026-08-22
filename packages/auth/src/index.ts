@@ -8,10 +8,16 @@ import {
   verifyAuthenticationResponse,
 } from "@simplewebauthn/server";
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/types";
-import { prisma } from "@flowmind/db";
+import { prisma, Prisma } from "@flowmind/db";
 import { OrgRole, Tier, type User, type UserRole } from "@flowmind/shared";
 import { JwtPayload } from "./strategies/jwt";
 import { hasPermission, Permission } from "./rbac";
+import {
+  buildSamlLoginUrl,
+  validateSamlPostResponse,
+  type OrgSamlConfig,
+  type SamlUserProfile,
+} from "./strategies/saml";
 
 const RP_NAME = process.env.RP_NAME ?? "FlowMind";
 const RP_ID = process.env.RP_ID ?? "localhost";
@@ -275,6 +281,23 @@ export interface SamlSSOInput {
   nameId: string;
 }
 
+export async function samlBuildLoginUrl(
+  orgId: string,
+  config: OrgSamlConfig,
+  relayState: string,
+): Promise<string> {
+  return buildSamlLoginUrl(orgId, config, relayState);
+}
+
+export async function samlValidateCallback(
+  orgId: string,
+  config: OrgSamlConfig,
+  samlResponse: string,
+  relayState?: string,
+): Promise<SamlUserProfile> {
+  return validateSamlPostResponse(orgId, config, samlResponse, relayState);
+}
+
 async function samlSSOLogin(input: SamlSSOInput): Promise<AuthResult> {
   const org = await prisma.org.findUnique({ where: { id: input.orgId } });
   if (!org) {
@@ -402,7 +425,7 @@ async function setupMfaTOTP(userId: string): Promise<MfaTOTPSetup> {
 
   await prisma.user.update({
     where: { id: userId },
-    data: { defaultModel: `mfa_secret:${secret}` },
+    data: { mfaSecret: secret, mfaEnabled: false },
   });
 
   return { secret, qrCodeUrl };
@@ -410,16 +433,15 @@ async function setupMfaTOTP(userId: string): Promise<MfaTOTPSetup> {
 
 async function verifyMfaTOTP(userId: string, token: string): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || !user.defaultModel?.startsWith("mfa_secret:")) return false;
+  if (!user || !user.mfaSecret || !user.mfaEnabled) return false;
 
-  const secret = user.defaultModel.replace("mfa_secret:", "");
   const totp = new OTPAuth.TOTP({
     issuer: RP_NAME,
     label: user.email,
     algorithm: "SHA1",
     digits: 6,
     period: 30,
-    secret: OTPAuth.Secret.fromBase32(secret),
+    secret: OTPAuth.Secret.fromBase32(user.mfaSecret),
   });
 
   const delta = totp.validate({ token, window: 1 });
@@ -428,20 +450,24 @@ async function verifyMfaTOTP(userId: string, token: string): Promise<boolean> {
 
 async function confirmMfaTOTP(userId: string, token: string): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || !user.defaultModel?.startsWith("mfa_secret:")) return false;
+  if (!user || !user.mfaSecret) return false;
 
-  const secret = user.defaultModel.replace("mfa_secret:", "");
   const totp = new OTPAuth.TOTP({
     issuer: RP_NAME,
     label: user.email,
     algorithm: "SHA1",
     digits: 6,
     period: 30,
-    secret: OTPAuth.Secret.fromBase32(secret),
+    secret: OTPAuth.Secret.fromBase32(user.mfaSecret),
   });
 
   const delta = totp.validate({ token, window: 1 });
   if (delta === null) return false;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { mfaEnabled: true },
+  });
 
   return true;
 }
@@ -449,7 +475,7 @@ async function confirmMfaTOTP(userId: string, token: string): Promise<boolean> {
 async function disableMfaTOTP(userId: string): Promise<void> {
   await prisma.user.update({
     where: { id: userId },
-    data: { defaultModel: null },
+    data: { mfaSecret: null, mfaEnabled: false },
   });
 }
 
@@ -477,7 +503,7 @@ async function registerWebAuthn(userId: string): Promise<Record<string, unknown>
 
   await prisma.user.update({
     where: { id: userId },
-    data: { defaultModel: `webauthn_challenge:${options.challenge}` },
+    data: { webauthnChallenge: options.challenge },
   });
 
   return options as unknown as Record<string, unknown>;
@@ -485,9 +511,9 @@ async function registerWebAuthn(userId: string): Promise<Record<string, unknown>
 
 async function verifyWebAuthn(userId: string, credential: Record<string, unknown>): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || !user.defaultModel?.startsWith("webauthn_challenge:")) return false;
+  if (!user || !user.webauthnChallenge) return false;
 
-  const challenge = user.defaultModel.replace("webauthn_challenge:", "");
+  const challenge = user.webauthnChallenge;
 
   try {
     const verification = await verifyRegistrationResponse({
@@ -498,10 +524,24 @@ async function verifyWebAuthn(userId: string, credential: Record<string, unknown
     });
 
     if (verification.verified && verification.registrationInfo) {
-      const { credentialPublicKey, credentialID } = verification.registrationInfo;
+      const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
+      const credentialIdB64 = Buffer.from(credentialID).toString("base64url");
+      const existing = (user.webauthnCredentials as unknown as Array<Record<string, unknown>> | null) ?? [];
+      const nextCredentials = [
+        ...existing.filter((c) => c.id !== credentialIdB64),
+        {
+          id: credentialIdB64,
+          publicKey: Buffer.from(credentialPublicKey).toString("base64"),
+          counter,
+          transports: (credential.transports as unknown[] | undefined) ?? [],
+        },
+      ] as unknown as Prisma.InputJsonValue;
       await prisma.user.update({
         where: { id: userId },
-        data: { defaultModel: null },
+        data: {
+          webauthnChallenge: null,
+          webauthnCredentials: nextCredentials,
+        },
       });
       return true;
     }
@@ -547,6 +587,8 @@ export const AuthService = {
   revokeToken,
   oauth2Login,
   samlSSOLogin,
+  samlBuildLoginUrl,
+  samlValidateCallback,
   enforceRbac,
   setupMfaTOTP,
   verifyMfaTOTP,

@@ -185,6 +185,13 @@ export const consoleRouter = router({
   manageTeamSeats: protectedProcedure
     .input(z.object({ orgId: z.string(), quantity: z.number().min(1).max(100) }))
     .mutation(async ({ input, ctx }) => {
+      const membership = await ctx.prisma.orgMember.findUnique({
+        where: { orgId_userId: { orgId: input.orgId, userId: ctx.userId! } },
+        select: { role: true },
+      })
+      if (!membership || (membership.role !== "OWNER" && membership.role !== "ADMIN")) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Org admin access required" })
+      }
       try {
         await BillingService.manageTeamSeats({ orgId: input.orgId, quantity: input.quantity })
         return { success: true }

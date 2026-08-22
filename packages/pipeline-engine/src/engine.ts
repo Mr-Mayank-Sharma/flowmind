@@ -1,4 +1,4 @@
-import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry, NodeStatusCallback, LLMProvider } from "./types"
+import type { PipelineGraph, PipelineNode, ExecutionContext, RunResult, CredentialResolver, SubPipelineRunner, NodeOutput, WorkflowSettings, BinaryDataEntry, NodeStatusCallback, LLMProvider, RAGSearchFn, ApprovalRequester, ApprovalDecision } from "./types"
 import { buildExecutionPlan, getDirectPredecessors } from "./graph"
 import { executeNode, getRunner } from "./runners"
 import { validateGraph } from "./graph"
@@ -9,6 +9,9 @@ export interface EngineOptions {
   subPipelineRunner?: SubPipelineRunner
   onNodeStatus?: NodeStatusCallback
   llm?: LLMProvider
+  ragSearch?: RAGSearchFn
+  requestApproval?: ApprovalRequester
+  approvalOverrides?: Record<string, ApprovalDecision>
 }
 
 function sleep(ms: number): Promise<void> {
@@ -20,12 +23,18 @@ export class PipelineEngine {
   private subPipelineRunner?: SubPipelineRunner
   private onNodeStatus?: NodeStatusCallback
   private llm?: LLMProvider
+  private ragSearch?: RAGSearchFn
+  private requestApproval?: ApprovalRequester
+  private approvalOverrides?: Record<string, ApprovalDecision>
 
   constructor(options: EngineOptions = {}) {
     this.credentialResolver = options.credentialResolver
     this.subPipelineRunner = options.subPipelineRunner
     this.onNodeStatus = options.onNodeStatus
     this.llm = options.llm
+    this.ragSearch = options.ragSearch
+    this.requestApproval = options.requestApproval
+    this.approvalOverrides = options.approvalOverrides
   }
 
   async execute(
@@ -71,6 +80,9 @@ export class PipelineEngine {
       credentialResolver: this.credentialResolver,
       subPipelineRunner: this.subPipelineRunner,
       llm: this.llm,
+      ragSearch: this.ragSearch,
+      requestApproval: this.requestApproval,
+      approvalOverrides: this.approvalOverrides,
     }
 
     for (const nodeId of plan.executionOrder) {
@@ -108,11 +120,32 @@ export class PipelineEngine {
         status: nodeOutput.error ? "failed" : "completed",
         error: nodeOutput.error,
         durationMs: nodeOutput.durationMs,
+        output: nodeOutput.output,
       })
 
       if (nodeOutput.error && !node.continueOnFail) {
         runError = `Node "${node.label}" (${nodeId}) failed: ${nodeOutput.error}`
         break
+      }
+
+      if (
+        node.type === "humanApproval" &&
+        nodeOutput.output &&
+        typeof nodeOutput.output === "object" &&
+        ((nodeOutput.output as any).status === "awaiting_approval" || (nodeOutput.output as any).status === "rejected")
+      ) {
+        const denied = (nodeOutput.output as any).status === "rejected";
+        return {
+          runId,
+          status: "awaiting_approval",
+          outputs: Array.from(outputs.values()),
+          error: denied
+            ? `Approval denied at node "${node.label}" (${nodeId})`
+            : `Execution paused awaiting approval at node "${node.label}" (${nodeId})`,
+          startedAt: startTime,
+          completedAt: Date.now(),
+          durationMs: Date.now() - startTime,
+        };
       }
     }
 
@@ -239,6 +272,9 @@ export class PipelineEngine {
       credentialResolver: this.credentialResolver,
       subPipelineRunner: this.subPipelineRunner,
       llm: this.llm,
+      ragSearch: this.ragSearch,
+      requestApproval: this.requestApproval,
+      approvalOverrides: this.approvalOverrides,
     }
 
     return this.executeNodeWithRetry(node, context)

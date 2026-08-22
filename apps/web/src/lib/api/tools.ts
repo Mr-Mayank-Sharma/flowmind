@@ -5,6 +5,8 @@ export const toolsApi = {
   execute: (input: { id: string; args: Record<string, unknown> }) =>
     tRPCMutation<any>("tools.execute", input),
   toggle: (id: string) => tRPCMutation<any>("tools.toggle", { id }),
+  test: (input: { toolId: string; input: string }) =>
+    tRPCMutation<any>("tools.test", input),
 }
 
 export const toolsV2Api = {

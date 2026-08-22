@@ -97,9 +97,11 @@ export function ChatArea() {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const lastContent = msgs[msgs.length - 1]?.content;
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs.length, msgs[msgs.length - 1]?.content]);
+  }, [msgs.length, lastContent]);
 
   if (loading) return <LoadingIndicator />;
 

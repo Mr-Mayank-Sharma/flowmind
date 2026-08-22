@@ -110,7 +110,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       const errorMsg = `[LLM error: ${err instanceof Error ? err.message : String(err)}]`
       onStep?.({ type: "error", content: errorMsg })
       allSteps.push({ type: "error", content: errorMsg })
-      return buildResult(model, userMessage, systemPrompt, errorMsg, iteration + 1, allSteps, totalPromptTokens, totalCompletionTokens)
+      throw new Error(errorMsg)
     }
 
     const response = extractTextContent(result.message.content) || ""

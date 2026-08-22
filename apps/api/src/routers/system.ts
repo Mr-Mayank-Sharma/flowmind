@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { router, protectedProcedure, publicProcedure } from "../middleware/trpc"
+import { router, protectedProcedure, publicProcedure, adminProcedure } from "../middleware/trpc"
 import { metricsService } from "../services"
 
 export const systemRouter = router({
@@ -17,11 +17,11 @@ export const systemRouter = router({
   getGPUMetrics: protectedProcedure
     .query(async () => metricsService.getGPUInfo()),
 
-  startFramework: protectedProcedure
+  startFramework: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => metricsService.startFramework(input.id)),
 
-  stopFramework: protectedProcedure
+  stopFramework: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => metricsService.stopFramework(input.id)),
 
@@ -29,7 +29,7 @@ export const systemRouter = router({
     .input(z.object({}).optional())
     .query(async () => metricsService.listProcesses()),
 
-  killProcess: protectedProcedure
+  killProcess: adminProcedure
     .input(z.object({ pid: z.number(), signal: z.string().default("SIGTERM") }))
     .mutation(async ({ input }) => metricsService.killProcess(input.pid, input.signal)),
 })

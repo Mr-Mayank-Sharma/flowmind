@@ -3,13 +3,14 @@
 import { Suspense, useState, useCallback, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Mail, Lock, User, Eye, EyeOff, Github, Chrome, ArrowRight, Sparkles, Loader2 } from "lucide-react"
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Sparkles, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
+import { api } from "@/lib/api"
 
 type Mode = "signin" | "signup"
 
@@ -42,7 +43,25 @@ function LoginForm() {
   const [errors, setErrors] = useState<FormErrors>({})
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [ssoLoading, setSsoLoading] = useState<string | null>(null)
+  const [ssoProviders, setSsoProviders] = useState<{ id: string; name: string }[]>([])
   const [generalError, setGeneralError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.auth.ssoProviders().then(setSsoProviders).catch(() => {})
+  }, [])
+
+  const handleSso = async (provider: string) => {
+    setSsoLoading(provider)
+    setGeneralError(null)
+    try {
+      const { url } = await api.auth.ssoUrl(provider)
+      window.location.href = url
+    } catch (err: any) {
+      setGeneralError(err?.message || "SSO is not configured")
+      setSsoLoading(null)
+    }
+  }
 
   const handleChange = useCallback((field: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(prev => ({ ...prev, [field]: e.target.value }))
@@ -245,14 +264,28 @@ function LoginForm() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="gap-2" disabled={isLoading}>
-                <Chrome className="h-4 w-4" />
-                Google
-              </Button>
-              <Button variant="outline" className="gap-2" disabled={isLoading}>
-                <Github className="h-4 w-4" />
-                GitHub
-              </Button>
+              {ssoProviders.length === 0 ? (
+                <div className="col-span-2 text-center text-xs text-muted-foreground">
+                  No SSO providers configured
+                </div>
+              ) : (
+                ssoProviders.map((p) => (
+                  <Button
+                    key={p.id}
+                    variant="outline"
+                    className="gap-2"
+                    disabled={isLoading || ssoLoading !== null}
+                    onClick={() => handleSso(p.id)}
+                  >
+                    {ssoLoading === p.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <span className="text-sm font-semibold">{p.name.charAt(0).toUpperCase()}</span>
+                    )}
+                    {p.name}
+                  </Button>
+                ))
+              )}
             </div>
           </div>
 

@@ -35,22 +35,28 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false)
 
   const [runtimeStatus, setRuntimeStatus] = useState<{ online: boolean }>({ online: false })
+  const [pipelineCount, setPipelineCount] = useState(0)
+  const [agentCount, setAgentCount] = useState(0)
 
   const fetchData = useCallback(async () => {
     try {
       setError(null)
-      const [fw, m, g, a, rh] = await Promise.all([
+      const [fw, m, g, a, rh, pl, ag] = await Promise.all([
         api.system.getFrameworks(),
         api.system.getMetrics(),
         api.system.getGPUMetrics(),
         api.system.getRecentActivity(8),
         api.models.getRuntimeHealth().catch(() => ({ online: false, status: "error" })),
+        api.pipeline.list().catch(() => ({ pipelines: [] as any[] })),
+        api.agents.list().catch(() => [] as any[]),
       ])
       setRuntimeStatus(rh)
       setFrameworks(fw)
       setMetrics(m)
       setGPUs(g)
       setActivity(a)
+      setPipelineCount((pl.pipelines ?? []).filter((p: any) => p.status === "RUNNING" || p.isActive === true).length)
+      setAgentCount((ag as any[]).filter((x: any) => x.status === "RUNNING").length)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load dashboard data")
     } finally {
@@ -68,8 +74,8 @@ export default function HomePage() {
   const errorCount = frameworks.filter((f) => f.status === "error").length
 
   const derivedMetrics = [
-    { label: "Pipelines Running", value: `${runningCount}`, change: `+${runningCount}`, trend: "up" as const, icon: GitBranch, color: "text-blue-500 bg-blue-500/10" },
-    { label: "Agents Active", value: `${runningCount}`, change: `+${runningCount}`, trend: "up" as const, icon: Bot, color: "text-emerald-500 bg-emerald-500/10" },
+    { label: "Pipelines Running", value: `${pipelineCount}`, change: `+${pipelineCount}`, trend: "up" as const, icon: GitBranch, color: "text-blue-500 bg-blue-500/10" },
+    { label: "Agents Active", value: `${agentCount}`, change: `+${agentCount}`, trend: "up" as const, icon: Bot, color: "text-emerald-500 bg-emerald-500/10" },
     { label: "Errors Today", value: `${errorCount}`, change: `-${stoppedCount}`, trend: "down" as const, icon: AlertTriangle, color: "text-red-500 bg-red-500/10" },
     { label: "CPU Load", value: metrics ? `${metrics.cpuPercent}%` : "--", change: metrics ? `${metrics.cpuPercent > 60 ? "▲" : "▼"} ${metrics.cpuPercent}%` : "", trend: metrics && metrics.cpuPercent > 60 ? "up" as const : "down" as const, icon: Activity, color: "text-amber-500 bg-amber-500/10" },
   ]

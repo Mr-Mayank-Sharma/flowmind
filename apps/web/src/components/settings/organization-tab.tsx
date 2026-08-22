@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Plus } from "lucide-react"
+import { Plus, Loader2, X } from "lucide-react"
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
+import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/ui/error-state"
 
@@ -51,7 +52,7 @@ export function OrganizationTab() {
     "settings:org",
     () => api.settings.getOrg(),
   )
-  const { data: members = [], loading: membersLoading } = useQuery(
+  const { data: members = [], loading: membersLoading, refetch: refetchMembers } = useQuery(
     "settings:orgMembers",
     () => api.settings.getOrgMembers(),
   )
@@ -59,8 +60,16 @@ export function OrganizationTab() {
     (input: { name?: string; slug?: string }) => api.settings.updateOrg(input),
     { onSuccess: refetchOrg },
   )
+  const { mutate: inviteMember } = useMutation(
+    (input: { orgId: string; email: string; role: string }) => api.console.inviteMember(input),
+    { onSuccess: () => { refetchMembers(); setShowInvite(false); setInviteEmail(""); toast.success("Invitation sent") } },
+  )
+  const toast = useToast()
   const [orgName, setOrgName] = useState("")
   const [orgSlug, setOrgSlug] = useState("")
+  const [showInvite, setShowInvite] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState("MEMBER")
 
   useEffect(() => {
     if (org) {
@@ -122,10 +131,32 @@ export function OrganizationTab() {
               <CardTitle>Members</CardTitle>
               <CardDescription>{members.length} members in your organization</CardDescription>
             </div>
-            <Button size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" />Invite</Button>
+            <Button size="sm" className="gap-2" onClick={() => setShowInvite(!showInvite)}>
+              {showInvite ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+              {showInvite ? "Cancel" : "Invite"}
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {showInvite && org && (
+            <div className="flex items-end gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <div className="flex-1 space-y-1">
+                <label className="text-xs text-muted-foreground">Email</label>
+                <Input type="email" placeholder="teammate@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="w-32 space-y-1">
+                <label className="text-xs text-muted-foreground">Role</label>
+                <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} className="h-8 text-sm w-full rounded-md border border-input bg-surface px-2">
+                  <option value="MEMBER">Member</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="VIEWER">Viewer</option>
+                </select>
+              </div>
+              <Button size="sm" className="h-8 text-xs gap-1.5" disabled={!inviteEmail} onClick={() => inviteMember({ orgId: org.id, email: inviteEmail, role: inviteRole })}>
+                Send Invite
+              </Button>
+            </div>
+          )}
           {membersLoading ? (
             <div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="flex items-center gap-4 rounded-lg border bg-surface px-4 py-3"><Skeleton className="h-2.5 w-2.5 rounded-full shrink-0" /><div className="flex-1 space-y-1.5"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-48" /></div></div>))}</div>
           ) : members.length === 0 ? (

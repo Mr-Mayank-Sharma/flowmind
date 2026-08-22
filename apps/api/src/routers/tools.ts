@@ -80,4 +80,32 @@ export const toolsRouter = router({
         },
       });
     }),
+
+  test: protectedProcedure
+    .input(z.object({ toolId: z.string(), input: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const tool = builtinTools.find((t) => t.id === input.toolId);
+      if (!tool) throw new TRPCError({ code: "NOT_FOUND", message: "Tool not found" });
+
+      let skill = await ctx.prisma.skill.findFirst({
+        where: { userId: ctx.userId ?? undefined, name: tool.name },
+      });
+      if (!skill) {
+        skill = await ctx.prisma.skill.create({
+          data: {
+            userId: ctx.userId!,
+            name: tool.name,
+            description: tool.description,
+            code: tool.id,
+            isActive: false,
+          },
+        });
+      }
+
+      const result = await skillEngine.execute(skill.id, {
+        userId: ctx.userId!,
+        input: input.input,
+      })
+      return result
+    }),
 });

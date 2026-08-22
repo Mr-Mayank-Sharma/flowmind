@@ -1,14 +1,6 @@
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../middleware/trpc";
-
-const SMTP_HOST = process.env.SMTP_HOST || "";
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
-const SMTP_USER = process.env.SMTP_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || "";
-const SMTP_FROM = process.env.SMTP_FROM || "noreply@flowmind.ai";
-
-const smtpConfigured = !!(SMTP_HOST && SMTP_USER && SMTP_PASS);
+import { sendMail, smtpConfigured } from "../lib/mailer";
 
 export const notificationsRouter = router({
   sendEmail: protectedProcedure
@@ -32,19 +24,12 @@ export const notificationsRouter = router({
         return { queued: true, note: "SMTP not configured. Notification stored for later delivery." };
       }
 
-      const res = await fetch(`http://${SMTP_HOST}:${SMTP_PORT}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: SMTP_FROM,
-          to: input.to,
-          subject: input.subject,
-          text: input.text,
-          html: input.html,
-          auth: { user: SMTP_USER, pass: SMTP_PASS },
-        }),
-        signal: AbortSignal.timeout(10_000),
-      }).catch(() => null);
+      const sent = await sendMail({
+        to: input.to,
+        subject: input.subject,
+        text: input.text || "",
+        html: input.html,
+      });
 
       await ctx.prisma.notification.create({
         data: {
@@ -52,11 +37,11 @@ export const notificationsRouter = router({
           type: "EMAIL",
           title: input.subject,
           body: input.text || input.html || "",
-          data: { to: input.to, sent: !!res, status: res?.status },
+          data: { to: input.to, sent },
         },
       });
 
-      return { sent: !!res, status: res?.status };
+      return { sent };
     }),
 
   list: protectedProcedure

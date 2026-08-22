@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Search, Bot, Plus, Play, Square, Settings, MessageSquare, BarChart3, Trash2, Loader2 } from "lucide-react"
+import { Search, Bot, Plus, Play, Square, Settings, MessageSquare, Trash2, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { api } from "@/lib/api"
 import { useQuery, useMutation } from "@/hooks/use-query"
@@ -191,15 +191,14 @@ export default function AgentsPage() {
                   {selectedAgentData.status === "RUNNING" ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                   {selectedAgentData.status === "RUNNING" ? "Stop" : "Start"}
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={async () => {
+                  const session = await api.chat.createSession({ title: `Agent: ${selectedAgentData.name}` })
+                  window.location.href = `/chat?session=${session.id}`
+                }}>
                   <MessageSquare className="h-3 w-3" />
                   Chat
                 </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
-                  <BarChart3 className="h-3 w-3" />
-                  Metrics
-                </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 text-red-400 hover:text-red-400 ml-auto" onClick={() => deleteAgent(selectedAgentData.id)}>
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={() => deleteAgent(selectedAgentData.id)}>
                   <Trash2 className="h-3 w-3" />
                   Delete
                 </Button>

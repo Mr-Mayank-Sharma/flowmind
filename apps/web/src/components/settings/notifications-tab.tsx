@@ -37,14 +37,14 @@ export function NotificationsTab() {
                 <p className="text-sm font-medium">Email Notifications</p>
                 <p className="text-xs text-muted-foreground">Send notifications to your email</p>
               </div>
-              <Switch defaultChecked />
+              <Switch checked disabled />
             </div>
             <div className="flex items-center justify-between rounded-lg border bg-surface px-4 py-3">
               <div>
                 <p className="text-sm font-medium">Push Notifications</p>
                 <p className="text-xs text-muted-foreground">Browser and mobile push alerts</p>
               </div>
-              <Switch defaultChecked />
+              <Switch checked disabled />
             </div>
           </div>
 

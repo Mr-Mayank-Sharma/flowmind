@@ -44,6 +44,11 @@ export default function WorkspacePage() {
 
   const [newKeyName, setNewKeyName] = useState("")
   const [newKeyProvider, setNewKeyProvider] = useState("flowmind")
+  const [newKeyValue, setNewKeyValue] = useState("")
+
+  const [wsName, setWsName] = useState("")
+  const [wsSlug, setWsSlug] = useState("")
+  const [savingWs, setSavingWs] = useState(false)
 
   useEffect(() => {
     api.console.listWorkspaces().then(setWorkspaces).catch(() => {})
@@ -81,11 +86,30 @@ export default function WorkspacePage() {
     } catch {}
   }
 
+  const removeMember = async (userId: string) => {
+    if (!selectedOrgId) return
+    try {
+      await api.console.removeMember({ orgId: selectedOrgId, userId })
+      const list = await api.console.listMembers(selectedOrgId)
+      setMembers(list)
+    } catch {}
+  }
+
+  const saveWorkspace = async () => {
+    if (!selectedOrgId) return
+    setSavingWs(true)
+    try {
+      const updated = await api.console.updateWorkspace({ id: selectedOrgId, name: wsName || undefined, slug: wsSlug || undefined })
+      setWorkspaces((prev) => prev.map((w) => (w.id === selectedOrgId ? { ...w, ...updated } : w)))
+    } catch {}
+    setSavingWs(false)
+  }
+
   const createKey = async () => {
     if (!newKeyName) return
     try {
       const key = await api.console.createApiKey({ name: newKeyName, provider: newKeyProvider })
-      alert(`Save this key: ${key.key ?? "Created"}`)
+      setNewKeyValue(key.key ?? "")
       const list = await api.console.listApiKeys()
       setApiKeys(list)
       setNewKeyName("")
@@ -268,7 +292,7 @@ export default function WorkspacePage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className="text-[10px] capitalize">{m.role.toLowerCase()}</Badge>
-                        <button className="text-muted-foreground hover:text-destructive">
+                        <button onClick={() => removeMember(m.user?.id)} className="text-muted-foreground hover:text-destructive">
                           <XCircle className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -375,6 +399,17 @@ export default function WorkspacePage() {
                     <Plus className="h-3.5 w-3.5" /> Create
                   </Button>
                 </div>
+                {newKeyValue && (
+                  <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/[0.02] p-3">
+                    <p className="text-xs font-medium text-emerald-400">Key created! Copy it now — it won&apos;t be shown again.</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-xs font-mono bg-muted px-2 py-1.5 rounded break-all">{newKeyValue}</code>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(newKeyValue); setNewKeyValue("") }}>
+                        <Copy className="h-3 w-3" /> Copy
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <Separator />
                 <div className="space-y-2">
                   {apiKeys.length === 0 && (
@@ -470,13 +505,15 @@ export default function WorkspacePage() {
                 <CardContent className="space-y-4">
                   <div className="space-y-1">
                     <label className="text-[11px] text-muted-foreground">Workspace Name</label>
-                    <Input defaultValue={currentWs.name} className="h-8 text-xs" />
+                    <Input value={wsName} onChange={(e) => setWsName(e.target.value)} placeholder={currentWs.name} className="h-8 text-xs" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[11px] text-muted-foreground">Slug</label>
-                    <Input defaultValue={currentWs.slug} className="h-8 text-xs font-mono" />
+                    <Input value={wsSlug} onChange={(e) => setWsSlug(e.target.value)} placeholder={currentWs.slug} className="h-8 text-xs font-mono" />
                   </div>
-                  <Button size="sm" className="h-8 text-xs">Save Changes</Button>
+                  <Button size="sm" className="h-8 text-xs" onClick={saveWorkspace} disabled={savingWs}>
+                    {savingWs ? "Saving..." : "Save Changes"}
+                  </Button>
                 </CardContent>
               </Card>
             )}
