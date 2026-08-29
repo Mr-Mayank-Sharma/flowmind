@@ -85,10 +85,10 @@ export default function DocsPage() {
               <p>FlowMind AI OS is a comprehensive platform for running AI workloads on your own infrastructure. It provides:</p>
               <div className="grid sm:grid-cols-2 gap-3">
                 {[
-                  { icon: Brain, title: "Model Hub", desc: "Browse, pull, and manage 23+ models across 5 providers" },
+                  { icon: Brain, title: "Model Hub", desc: "Browse and configure models across 4 providers — Ollama, OpenAI, Anthropic, Google" },
                   { icon: MessageSquare, title: "AI Chat", desc: "Chat with any model, attach files, use tools" },
-                  { icon: Workflow, title: "Pipeline Builder", desc: "Visual workflow editor with 22 node types" },
-                  { icon: Server, title: "Framework Manager", desc: "Monitor and control 8+ AI frameworks" },
+                  { icon: Workflow, title: "Pipeline Builder", desc: "Visual workflow editor with 25 node types" },
+                  { icon: Server, title: "Framework Manager", desc: "Monitor and control local AI runtimes — Ollama, LM Studio, Stable Diffusion, and more" },
                   { icon: Database, title: "Knowledge Base", desc: "RAG-powered document search and indexing" },
                   { icon: Terminal, title: "CLI Tools", desc: "Full terminal-based AI agent framework" },
                 ].map((feat) => {
@@ -169,7 +169,7 @@ export default function DocsPage() {
               {[
                 { icon: Globe, title: "Web UI (Next.js 14)", desc: "Modern dashboard for managing AI infrastructure — models, agents, pipelines, files, system monitoring, and chat.", meta: ":3000" },
                 { icon: Server, title: "API Server (Fastify + tRPC)", desc: "Type-safe API with JWT auth, rate limiting, PostgreSQL integration, and streaming support.", meta: ":3001" },
-                { icon: Cpu, title: "Agent Runtime (Python FastAPI)", desc: "AI inference engine with Ollama, HuggingFace, OpenAI, Anthropic, and Google providers. SSE streaming.", meta: ":8001" },
+                { icon: Cpu, title: "Agent Runtime (Python FastAPI)", desc: "AI inference engine with Ollama, OpenAI, Anthropic, and Google providers. SSE streaming.", meta: ":8001" },
                 { icon: Terminal, title: "CLI (Commander.js)", desc: "Terminal-based AI agent framework with interactive REPL, agent management, model configuration, and chat.", meta: "flowmind" },
                 { icon: Brain, title: "Ollama (Local LLM)", desc: "Local LLM inference server for running open-source models. Auto-detected and managed by FlowMind.", meta: ":11434" },
               ].map((arc) => {
@@ -301,17 +301,16 @@ export default function DocsPage() {
               Model Management
             </h2>
             <div className="space-y-4 text-sm text-muted-foreground">
-              <p>FlowMind supports 23+ models across 5 providers. The Model Hub lets you browse, pull, and configure all models.</p>
+              <p>FlowMind routes to 4 providers via the LLM router. The Model Hub lets you browse, pull, and configure models.</p>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="rounded-lg border border-border/50 bg-surface p-4">
                   <h3 className="text-sm font-semibold mb-2">Providers</h3>
                   <ul className="space-y-1.5 text-xs">
                     {[
                       { name: "Ollama", desc: "Local models - free, run on your machine" },
-                      { name: "OpenAI", desc: "GPT-4, GPT-3.5 - requires API key" },
-                      { name: "Anthropic", desc: "Claude 3 Opus/Sonnet - requires API key" },
-                      { name: "Google", desc: "Gemini Pro/Ultra - requires API key" },
-                      { name: "HuggingFace", desc: "Community models - free tier available" },
+                      { name: "OpenAI", desc: "GPT models - requires API key" },
+                      { name: "Anthropic", desc: "Claude models - requires API key" },
+                      { name: "Google", desc: "Gemini models - requires API key" },
                     ].map((p) => (
                       <li key={p.name} className="flex items-start gap-2">
                         <ArrowRight className="h-3 w-3 text-primary mt-0.5 shrink-0" />
@@ -385,7 +384,7 @@ export default function DocsPage() {
                   <h3 className="font-semibold text-sm">Environment Variables</h3>
                 </div>
                 <div className="bg-background rounded p-2.5 font-mono text-xs space-y-1">
-                  <div><span className="text-muted-foreground">DATABASE_URL=</span>postgresql://flowmind@localhost:5432/flowmind</div>
+                  <div><span className="text-muted-foreground">DATABASE_URL=</span>postgresql://user:pass@localhost:5432/flowmind</div>
                   <div><span className="text-muted-foreground">JWT_SECRET=</span>your-secret-key</div>
                   <div><span className="text-muted-foreground">AGENT_RUNTIME_URL=</span>http://127.0.0.1:8001</div>
                 </div>

@@ -39,15 +39,12 @@ async function migrateMarketplace() {
     const listing = await prisma.marketplaceListing.create({
       data: {
         type: "SKILL",
-        ownerId: skill.creatorId ?? undefined,
         title: skill.name,
         description: skill.description,
+        tags: skill.tags,
         downloads: skill.downloads,
         ratingAvg: skill.ratingAvg,
         ratingCount: skill.ratingCount,
-        isFeatured: skill.isFeatured,
-        isVerified: skill.isVerified,
-        publishedAt: skill.publishedAt,
       },
     });
     await prisma.marketplaceListingVersion.create({

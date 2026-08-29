@@ -12,8 +12,6 @@ const INSTALL_METHODS = {
   curl: { label: "curl", cmd: "curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash" },
   npm: { label: "npm", cmd: "npm install -g @flowmind/cli" },
   pnpm: { label: "pnpm", cmd: "pnpm add -g @flowmind/cli" },
-  brew: { label: "brew", cmd: "brew install flowmind/tap/flowmind" },
-  docker: { label: "docker", cmd: "docker run -d -p 3000:3000 flowmind/flowmind" },
 }
 
 type InstallKey = keyof typeof INSTALL_METHODS
@@ -62,29 +60,29 @@ function InstallCmdBlock() {
 
 const features = [
   { icon: Bot, title: "Autonomous AI Agents", desc: "Self-learning agents with contextual memory, skill acquisition, and multi-model orchestration." },
-  { icon: GitBranch, title: "Visual Pipeline Builder", desc: "Drag-and-drop workflow editor with AI agents, triggers, conditions, and 50+ integrations." },
-  { icon: Cpu, title: "Multi-Model Hub", desc: "23 models across 5 providers — Ollama, OpenAI, Anthropic, Google, HuggingFace. Switch providers in one click." },
+  { icon: GitBranch, title: "Visual Pipeline Builder", desc: "Drag-and-drop workflow editor with 25 node types across triggers, AI nodes, actions, and flow control." },
+  { icon: Cpu, title: "Multi-Model Hub", desc: "Route to 4 providers — Ollama, OpenAI, Anthropic, and Google. Switch models in one click." },
   { icon: Server, title: "Local-First Architecture", desc: "Everything runs on your machine. No cloud dependency. Full data ownership and offline capability." },
   { icon: Shield, title: "Enterprise Governance", desc: "RBAC, audit logging, and fine-grained permission controls for teams of any size." },
   { icon: Globe, title: "MCP Protocol Support", desc: "Connect any tool via Model Context Protocol. Built-in OAuth and credential management." },
-  { icon: Terminal, title: "CLI & REPL", desc: "Full-featured terminal interface with 8 commands and interactive REPL for power users." },
+  { icon: Terminal, title: "CLI & REPL", desc: "Full-featured terminal interface with commands for agents, models, pipelines, skills, and an interactive REPL." },
   { icon: Monitor, title: "Desktop App", desc: "Native Electron app with system tray, global shortcuts, and auto-start." },
 ]
 
 const stats = [
-  { value: "28+", label: "Node Types" },
-  { value: "17", label: "LLM Providers" },
-  { value: "23", label: "Data Models" },
-  { value: "10", label: "Built-in Tools" },
+  { value: "25", label: "Node Types" },
+  { value: "4", label: "LLM Providers" },
+  { value: "10", label: "CLI Command Groups" },
+  { value: "4", label: "Billing Tiers" },
 ]
 
 const faqs = [
-  { q: "What is FlowMind?", a: "FlowMind is an open-source AI Operating System that lets you manage local and cloud AI models, build autonomous agents, create visual pipelines, and monitor your entire AI infrastructure — all from a beautiful web UI or your terminal." },
-  { q: "How do I install FlowMind?", a: "Run the one-command install: curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash. It installs everything — Node.js, pnpm, PostgreSQL, Ollama, the web dashboard, API server, and CLI." },
+  { q: "What is FlowMind?", a: "FlowMind is an open-source AI platform that lets you manage local and cloud AI models, build autonomous agents, create visual pipelines, and monitor your entire AI infrastructure — all from a web UI or your terminal." },
+  { q: "How do I install FlowMind?", a: "Run the one-command install: curl -fsSL https://raw.githubusercontent.com/Mr-Mayank-Sharma/flowmind/main/install.sh | bash. It installs Node.js, pnpm, PostgreSQL, Ollama, the web dashboard, API server, and CLI." },
   { q: "Do I need extra AI subscriptions?", a: "No. FlowMind works with local models via Ollama out of the box. You can optionally connect cloud providers (OpenAI, Anthropic, Google) by adding API keys in the settings." },
   { q: "Can I use my existing AI subscriptions?", a: "Yes. FlowMind supports OpenAI, Anthropic Claude, and Google Gemini. Just add your API key in the Model Hub settings and all models become available immediately." },
   { q: "Is it only for the terminal?", a: "No. FlowMind has three interfaces: a web dashboard (localhost:3000), a desktop app (Electron with system tray), and a CLI with interactive REPL. Use whichever you prefer." },
-  { q: "How much does it cost?", a: "FlowMind is free and open source (MIT License). There are no paid tiers, no subscriptions, no hidden fees." },
+  { q: "How much does it cost?", a: "FlowMind is open source (MIT License) and self-hostable. It ships with a free tier (100 chats/month, 50 pipeline nodes), plus paid tiers billed through Stripe: Pro at $19/month, Team at $49/seat/month, and Enterprise with custom pricing." },
   { q: "What about data and privacy?", a: "Everything runs locally on your machine. FlowMind does not store or transmit any of your code, data, or prompts to external servers (unless you explicitly configure a cloud provider)." },
   { q: "Is FlowMind open source?", a: "Yes. FlowMind is MIT licensed. The entire source code is available on GitHub. Fork it, modify it, deploy it anywhere." },
 ]
@@ -198,18 +196,19 @@ export default function LandingPage() {
             <span className="text-xs text-muted-foreground ml-2 font-mono">flowmind</span>
           </div>
           <div className="p-5 font-mono text-xs leading-relaxed space-y-2 overflow-x-auto">
-            <div><span className="text-emerald-400">$</span> flowmind model list</div>
-            <div className="text-muted-foreground">╔══════════════════════════════════════════════════════════╗</div>
-            <div className="text-muted-foreground">║  Provider       │ Model                      │ Status    ║</div>
-            <div className="text-muted-foreground">╠══════════════════════════════════════════════════════════╣</div>
-            <div className="text-muted-foreground">║  Ollama         │ llama3.2:latest            │ pulled    ║</div>
-            <div className="text-muted-foreground">║  Ollama         │ mistral:latest              │ available ║</div>
-            <div className="text-muted-foreground">║  HuggingFace    │ meta-llama/Llama-3.2-3B    │ loaded    ║</div>
-            <div className="text-muted-foreground">║  OpenAI         │ gpt-4o                      │ connected ║</div>
-            <div className="text-muted-foreground">║  Anthropic      │ claude-sonnet-4-20250514    │ connected ║</div>
-            <div className="text-muted-foreground">║  Google         │ gemini-2.5-flash-001        │ connected ║</div>
-            <div className="text-muted-foreground">╚══════════════════════════════════════════════════════════╝</div>
-            <div className="pt-1 text-muted-foreground">23 models available across 5 providers</div>
+            <div><span className="text-emerald-400">$</span> flowmind --help</div>
+            <div className="text-muted-foreground">Usage: flowmind [command] [options]</div>
+            <div className="text-muted-foreground">Commands:</div>
+            <div className="text-muted-foreground">  agent        Manage AI agents</div>
+            <div className="text-muted-foreground">  model        Browse and configure models</div>
+            <div className="text-muted-foreground">  pipeline     Manage pipelines</div>
+            <div className="text-muted-foreground">  mcp          Manage MCP servers</div>
+            <div className="text-muted-foreground">  context      View context engine sessions</div>
+            <div className="text-muted-foreground">  governance   View governance and audit data</div>
+            <div className="text-muted-foreground">  chat         Chat with an AI agent</div>
+            <div className="text-muted-foreground">  skill        Manage skills</div>
+            <div className="text-muted-foreground">  interactive  Start interactive REPL mode</div>
+            <div className="pt-1 text-muted-foreground">Model Hub: Ollama, OpenAI, Anthropic, Google</div>
             <div><span className="text-emerald-400">$</span> <span className="animate-pulse">▊</span></div>
           </div>
         </div>
@@ -244,10 +243,10 @@ export default function LandingPage() {
       <section className="border-y border-border/50 bg-surface/50 py-16">
         <div className="max-w-4xl mx-auto px-4">
           <p className="text-center text-sm text-muted-foreground mb-10">
-            FlowMind ships with <strong className="text-foreground">28+ node types</strong>,{" "}
-            <strong className="text-foreground">17 LLM provider</strong> integrations, and{" "}
-            <strong className="text-foreground">10 built-in tools</strong> — all open source
-            and ready to use.
+            FlowMind ships with <strong className="text-foreground">25 node types</strong>,{" "}
+            <strong className="text-foreground">4 LLM provider</strong> integrations (Ollama,
+            OpenAI, Anthropic, Google), and a <strong className="text-foreground">full CLI</strong>{" "}
+            — all open source and ready to use.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((s) => (

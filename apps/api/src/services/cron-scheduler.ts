@@ -1,76 +1,14 @@
 import cron from "node-cron"
 import { prisma } from "@flowmind/db"
 import { PipelineEngine } from "@flowmind/pipeline-engine"
-import type { PipelineGraph, PipelineNode, LLMProvider } from "@flowmind/pipeline-engine"
-import { LLMEngine, resolveDefaultOllamaModel } from "@flowmind/llm-router"
+import type { LLMProvider } from "@flowmind/pipeline-engine"
+import { buildLLMProvider, normalizeGraph } from "../lib/llm-factory"
+import { registerActiveRun, unregisterActiveRun } from "./active-runs"
 
 const log = {
   info: (...args: unknown[]) => console.log("[cron-scheduler]", ...args),
   warn: (...args: unknown[]) => console.warn("[cron-scheduler]", ...args),
   error: (...args: unknown[]) => console.error("[cron-scheduler]", ...args),
-}
-
-function buildLLMProvider(): LLMProvider | undefined {
-  const openaiKey = process.env.OPENAI_KEY
-  const anthropicKey = process.env.ANTHROPIC_KEY
-  const groqKey = process.env.GROQ_KEY
-  const ollamaUrl = process.env.OLLAMA_BASE_URL
-  if (!openaiKey && !anthropicKey && !groqKey && !ollamaUrl) return undefined
-  const llmEngine = new LLMEngine({
-    openaiKey: openaiKey ?? undefined,
-    anthropicKey: anthropicKey ?? undefined,
-    groqKey: groqKey ?? undefined,
-    deepseekKey: process.env.DEEPSEEK_KEY,
-    openrouterKey: process.env.OPENROUTER_KEY,
-    togetherKey: process.env.TOGETHER_KEY,
-    mistralKey: process.env.MISTRAL_KEY,
-    perplexityKey: process.env.PERPLEXITY_KEY,
-    deepinfraKey: process.env.DEEPINFRA_KEY,
-    cerebrasKey: process.env.CEREBRAS_KEY,
-    xaiKey: process.env.XAI_KEY,
-    cohereKey: process.env.COHERE_KEY,
-    cloudflareKey: process.env.CLOUDFLARE_KEY,
-    veniceAIKey: process.env.VENICE_AI_KEY,
-    alibabaKey: process.env.ALIBABA_KEY,
-    googleKey: process.env.GOOGLE_KEY,
-    ollamaBaseUrl: ollamaUrl ?? undefined,
-  })
-  return {
-    complete: async (req) => {
-      const model = req.model || (await resolveDefaultOllamaModel()) || "tinyllama"
-      const result = await llmEngine.complete({
-        messages: req.messages as any,
-        model,
-        maxTokens: req.maxTokens ?? 500,
-        temperature: req.temperature,
-      })
-      return { content: result.message.content as string, model: result.model }
-    },
-  }
-}
-
-function normalizeGraph(graph: any): PipelineGraph {
-  if (!graph || !graph.nodes) return { nodes: [], edges: [] }
-  return {
-    nodes: (graph.nodes as any[]).map((n: any) => ({
-      id: n.id,
-      type: n.engineType ?? n.type,
-      label: n.label ?? "",
-      position: n.position ?? { x: 0, y: 0 },
-      config: n.config ?? {},
-      continueOnFail: n.continueOnFail,
-      retryOnFail: n.retryOnFail,
-      maxRetries: n.maxRetries,
-      disabled: n.disabled,
-    } as PipelineNode)),
-    edges: (graph.edges || []).map((e: any) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle ?? null,
-      targetHandle: e.targetHandle ?? null,
-    })),
-  }
 }
 
 function computeNextRun(expression: string): Date | null {
@@ -162,6 +100,9 @@ function scheduleJob(jobId: string, expression: string, pipelineId: string, llm:
 async function executeJob(jobId: string, pipelineId: string, llm: LLMProvider | undefined) {
   log.info(`Executing cron job ${jobId} for pipeline ${pipelineId}`)
 
+  let runId: string | null = null
+  const controller = new AbortController()
+
   try {
     const pipeline = await prisma.pipeline.findUnique({ where: { id: pipelineId } })
     if (!pipeline) {
@@ -177,11 +118,13 @@ async function executeJob(jobId: string, pipelineId: string, llm: LLMProvider | 
         startedAt: new Date(),
       },
     })
+    runId = run.id
+    registerActiveRun(run.id, controller)
 
     const engine = new PipelineEngine({ llm })
     const graph = normalizeGraph(pipeline.graph)
 
-    const result = await engine.execute(run.id, pipelineId, graph, { triggeredBy: "cron", jobId })
+    const result = await engine.execute(run.id, pipelineId, graph, { triggeredBy: "cron", jobId }, undefined, controller.signal)
 
     const finalStatus = result.status === "success" ? "SUCCESS" : "FAILED"
 
@@ -223,6 +166,8 @@ async function executeJob(jobId: string, pipelineId: string, llm: LLMProvider | 
         runCount: { increment: 1 },
       },
     }).catch(() => {})
+  } finally {
+    if (runId) unregisterActiveRun(runId)
   }
 }
 

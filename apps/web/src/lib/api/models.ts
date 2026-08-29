@@ -10,9 +10,19 @@ export interface OllamaModel {
   family: string
 }
 
+export interface RegistryModel {
+  id: string
+  name: string
+  providerId: string
+  context: number
+  maxOutput: number
+}
+
 export const modelsApi = {
   list: () => tRPCQuery<OllamaModel[]>("models.list"),
   getProviders: () => tRPCQuery<{ id: string; name: string; available: boolean; modelCount: number }[]>("models.getProviders"),
+  listModels: (providerId?: string) =>
+    tRPCQuery<RegistryModel[]>("toolsV2.listModels", providerId ? { providerId } : undefined),
   pullModel: (name: string) =>
     tRPCMutation<{ status: string; name: string; progress: number }>("models.pullModel", { name }),
   deleteModel: (name: string) =>

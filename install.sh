@@ -103,10 +103,6 @@ if command -v psql &>/dev/null; then
   sudo -u postgres psql -c "CREATE DATABASE flowmind OWNER flowmind;" 2>/dev/null || true
 fi
 
-# ── Generate random admin password ──────────────────────────────────
-FLOWMIND_PASSWORD=$(openssl rand -base64 12 | tr -d '\n')
-log "Admin password generated"
-
 # ── Install Qdrant ───────────────────────────────────────────────────
 if ! curl -s http://127.0.0.1:6333/health &>/dev/null; then
   if command -v docker &>/dev/null; then
@@ -184,7 +180,8 @@ DATABASE_URL="postgresql://flowmind:flowmind@localhost:5432/flowmind"
 export DATABASE_URL
 
 pnpm db:migrate 2>/dev/null || warn "DB migration skipped (manual: pnpm db:migrate)"
-ADMIN_PASSWORD="$FLOWMIND_PASSWORD" pnpm db:seed 2>/dev/null || warn "DB seed skipped (manual: ADMIN_PASSWORD=... pnpm db:seed)"
+# Optional: bootstrap an admin user/org (no-op without env):
+#   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=... pnpm db:seed
 
 # ── CLI link ────────────────────────────────────────────────────────
 cmd "Linking CLI..."
@@ -326,11 +323,9 @@ nohup python3 -m uvicorn src.main:app --host 127.0.0.1 --port 8001 > /tmp/flowmi
 echo "  Agent runtime starting on :8001"
 echo ""
 echo "  Open your browser to: http://localhost:3000"
-echo "  Login: admin@flowmind.ai / admin123"
 echo "  CLI:   flowmind"
 echo ""
 LAUNCHER
-sed -i "s|admin123|$FLOWMIND_PASSWORD|g" "$INSTALL_DIR/flowmind.sh"
 chmod +x "$INSTALL_DIR/flowmind.sh"
 
 # ── Desktop App standalone launcher ──────────────────────────────────
@@ -365,9 +360,9 @@ echo ""
 echo -e "  ${CYAN}Quick Start:${NC}"
 echo -e "    ${YELLOW}1.${NC} Start services:  cd ~/.flowmind && bash flowmind.sh"
 echo -e "    ${YELLOW}2.${NC} Open browser:    http://localhost:3000"
-echo -e "    ${YELLOW}3.${NC} Login:           admin@flowmind.ai / ${FLOWMIND_PASSWORD}"
-echo -e "    ${YELLOW}4.${NC} Use CLI:         flowmind chat start"
-echo -e "    ${YELLOW}5.${NC} Manage models:   flowmind model list"
+echo -e "    ${YELLOW}3.${NC} Use CLI:         flowmind chat start"
+echo -e "    ${YELLOW}4.${NC} Manage models:   flowmind model list"
+echo -e "    ${YELLOW}5.${NC} Register a user in the web UI to get started"
 echo ""
-echo -e "  ${YELLOW}Default login: admin@flowmind.ai / ${FLOWMIND_PASSWORD}${NC}"
+echo -e "  ${YELLOW}Tip: bootstrap an admin user with ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=... pnpm db:seed${NC}"
 echo ""

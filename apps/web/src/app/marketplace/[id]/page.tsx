@@ -26,6 +26,7 @@ export default function ListingDetailPage() {
   const [listing, setListing] = useState<any>(null)
   const [related, setRelated] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [showRawJson, setShowRawJson] = useState(false)
 
   useEffect(() => {
     if (!params.id) return
@@ -159,9 +160,16 @@ export default function ListingDetailPage() {
                   <Copy className="h-4 w-4" /> Clone to My Items
                 </Button>
                 {listing.manifest && (
-                  <Button variant="outline" className="w-full gap-2">
-                    <ExternalLink className="h-4 w-4" /> View Raw JSON
-                  </Button>
+                  <>
+                    <Button variant="outline" className="w-full gap-2" onClick={() => setShowRawJson((v) => !v)}>
+                      <ExternalLink className="h-4 w-4" /> {showRawJson ? "Hide Raw JSON" : "View Raw JSON"}
+                    </Button>
+                    {showRawJson && (
+                      <pre className="mt-3 text-xs text-muted-foreground overflow-x-auto max-h-96 rounded-md bg-muted/50 border border-border p-3">
+                        {JSON.stringify(listing.manifest, null, 2)}
+                      </pre>
+                    )}
+                  </>
                 )}
               </div>
             </Card>

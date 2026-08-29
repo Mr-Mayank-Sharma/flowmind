@@ -58,14 +58,14 @@ pnpm db:generate
 # Run database migrations (creates tables)
 pnpm db:migrate
 
-# Seed demo data (creates admin user + 5 demo pipelines)
-pnpm db:seed
+# Optional: bootstrap an admin user/org (no-op without env)
+#   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=... pnpm db:seed
 
 # Start development servers (api on :3001, web on :3000)
 pnpm dev
 ```
 
-Open http://localhost:3000 — login with `admin@flowmind.ai` / `admin123`
+Open http://localhost:3000 and register a new account, or bootstrap an admin with `ADMIN_EMAIL`/`ADMIN_PASSWORD` before starting.
 
 > **Note**: On first run, the API auto-detects missing env vars and logs warnings. At minimum, set `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, and one LLM API key (e.g. `OPENAI_API_KEY`).
 
@@ -110,16 +110,6 @@ Permissions are granular: `VIEW_PROJECTS`, `CREATE_PIPELINES`, `MANAGE_SKILLS`, 
 - **Rate Limiting**: Per-IP and per-key rate limits via `@fastify/rate-limit`
 - **Sentry**: Error tracking and performance monitoring (optional, set `SENTRY_DSN`)
 - **Encryption at Rest**: Sensitive LLM API keys and credentials are encrypted with `ENCRYPTION_KEY`
-
-## Demo Workflows
-
-The seed data includes 5 production-ready multi-node pipelines:
-
-1. **SEO Optimization Pipeline** — Fetch page → Extract meta tags → AI analysis → Generate optimizations → Format report
-2. **Email Triage Pipeline** — Cron trigger → Fetch emails → AI classify → Branch by urgency → Compose digest → Send to Slack
-3. **AI Code Review Pipeline** — GitHub webhook → Fetch diff → Parallel AI review (quality + security) → Merge → Post PR comment
-4. **Content Generation Pipeline** — Topic input → Web research → Generate outline → Write article → SEO optimize → Format
-5. **Data Extraction Pipeline** — URL input → Fetch content → Clean HTML → AI extract → Validate → Format output
 
 ## Architecture
 
@@ -185,7 +175,7 @@ packages/          23 shared packages
 | `pnpm build` | Build all packages |
 | `pnpm db:generate` | Generate Prisma client |
 | `pnpm db:migrate` | Run database migrations |
-| `pnpm db:seed` | Seed demo data |
+| `pnpm db:seed` | Bootstrap admin user/org (env-gated; no-op without `ADMIN_EMAIL`/`ADMIN_PASSWORD`) |
 | `pnpm lint` | Lint all packages |
 | `pnpm cli --help` | Run the CLI tool |
 

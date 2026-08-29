@@ -30,9 +30,10 @@ createdb flowmind
 
 # Run migrations
 pnpm db:generate
+pnpm db:migrate
 
-# Seed demo data
-pnpm db:seed
+# Optional: bootstrap an admin user/org (no-op without env)
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=your-strong-password pnpm db:seed
 ```
 
 ## Ollama (Local Models)

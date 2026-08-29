@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "@flowmind/db";
 import { router, t, publicProcedure, protectedProcedure } from "../middleware/trpc";
 import { diffGraphs, mergeGraphs, validateGraph } from "@flowmind/pipeline-engine";
-import type { PipelineGraph } from "@flowmind/pipeline-engine";
+import { normalizeGraph } from "../lib/llm-factory";
 import { hashConnectToken, signHostClientToken } from "../services/host-auth";
 import { getContextEngine } from "../services/context-engine";
 import { userGroupRoles } from "../services/group-access";
@@ -48,30 +48,6 @@ async function ollamaGenerate(params: { model: string; prompt: string; system?: 
   }
   const data = await res.json();
   return (data.response as string) ?? "";
-}
-
-function normalizeGraph(graph: any): PipelineGraph {
-  if (!graph || !graph.nodes) return { nodes: [], edges: [] };
-  return {
-    nodes: (graph.nodes as any[]).map((n: any) => ({
-      id: n.id,
-      type: n.engineType ?? n.type,
-      label: n.label ?? "",
-      position: n.position ?? { x: 0, y: 0 },
-      config: n.config ?? {},
-      continueOnFail: n.continueOnFail,
-      retryOnFail: n.retryOnFail,
-      maxRetries: n.maxRetries,
-      disabled: n.disabled,
-    })),
-    edges: (graph.edges || []).map((e: any) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle ?? null,
-      targetHandle: e.targetHandle ?? null,
-    })),
-  };
 }
 
 const hostClientProcedure = t.procedure.use(({ ctx, next }) => {

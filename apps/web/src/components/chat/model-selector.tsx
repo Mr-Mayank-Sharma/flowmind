@@ -27,12 +27,6 @@ interface ModelInfo {
   pricing?: string
 }
 
-interface ProviderInfo {
-  id: string
-  name: string
-  available?: boolean
-}
-
 interface ModelSelectorProps {
   selectedModel: string
   onModelChange: (model: string) => void
@@ -46,7 +40,6 @@ export function ModelSelector({ selectedModel, onModelChange, disabled }: ModelS
   const [credentialProvider, setCredentialProvider] = useState<string | null>(null)
   const [showKey, setShowKey] = useState(false)
   const [models, setModels] = useState<ModelInfo[]>([])
-  const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
   const { toast } = useToast()
@@ -55,39 +48,41 @@ export function ModelSelector({ selectedModel, onModelChange, disabled }: ModelS
     let cancelled = false
     async function load() {
       try {
-        const [m, p] = await Promise.all([
-          api.models.list().catch(() => []),
-          api.models.getProviders().catch(() => []),
-        ])
-        const mapped: ModelInfo[] = Array.isArray(m)
-          ? m.map((item: any) => ({
-              id: item.name ?? item.id ?? "",
-              name: item.name ?? "",
-              provider: "ollama",
-              available: true,
-              local: true,
-            }))
-          : []
-        if (!cancelled) {
-          setModels(mapped)
-          setProviders(Array.isArray(p) ? p : [])
-          try {
-            const keys = await api.models.getProviderKeys()
-            const keyMap: Record<string, string> = {}
-            for (const entry of Array.isArray(keys) ? keys : []) {
-              if (entry?.hasKey && entry.providerId) keyMap[entry.providerId] = "configured"
-            }
-            setApiKeys(keyMap)
-          } catch {}
+        const keys = await api.models.getProviderKeys().catch(() => [])
+        const keyMap: Record<string, string> = {}
+        for (const entry of Array.isArray(keys) ? keys : []) {
+          if (entry?.hasKey && entry.providerId) keyMap[entry.providerId] = "configured"
         }
+        if (!cancelled) setApiKeys(keyMap)
+
+        const [localResult, cloudResult] = await Promise.all([
+          api.models.list().catch(() => []),
+          api.models.listModels().catch(() => []),
+        ])
+
+        const mapped: ModelInfo[] = []
+        for (const item of Array.isArray(localResult) ? localResult : []) {
+          if (item.name) {
+            mapped.push({ id: item.name, name: item.name, provider: "ollama", available: true, local: true })
+          }
+        }
+        for (const model of Array.isArray(cloudResult) ? cloudResult : []) {
+          if (keyMap[model.providerId]) {
+            mapped.push({
+              id: model.id,
+              name: model.name || model.id,
+              provider: model.providerId,
+              available: true,
+              local: false,
+              contextLength: model.context,
+            })
+          }
+        }
+
+        if (!cancelled) setModels(mapped)
       } finally {
         if (!cancelled) setLoading(false)
       }
-      if (typeof window === "undefined" || cancelled) return
-      try {
-        const raw = localStorage.getItem("flowmind_api_keys")
-        if (raw) setApiKeys(JSON.parse(raw))
-      } catch {}
     }
     load()
     return () => {

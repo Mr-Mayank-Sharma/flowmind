@@ -2,6 +2,8 @@ import type { Node, Edge } from "reactflow"
 
 export interface PipelineTemplateNode extends Node {
   engineType?: string
+  label?: string
+  config?: Record<string, unknown>
 }
 
 export interface PipelineTemplate {
@@ -9,6 +11,7 @@ export interface PipelineTemplate {
   name: string
   description: string
   icon: string
+  category: string
   nodes: PipelineTemplateNode[]
   edges: Edge[]
 }
@@ -34,6 +37,8 @@ const node = (
   id,
   type,
   position: { x, y },
+  label,
+  config,
   data: { label, icon, config: { ...config, summary: "" } },
   engineType,
 })
@@ -44,6 +49,7 @@ export const pipelineTemplates: PipelineTemplate[] = [
     name: "Blank Pipeline",
     description: "Start from scratch with an empty canvas",
     icon: "FileText",
+    category: "General",
     nodes: [],
     edges: [],
   },
@@ -52,6 +58,7 @@ export const pipelineTemplates: PipelineTemplate[] = [
     name: "SEO Optimization",
     description: "Fetch URL, analyze SEO, generate optimizations",
     icon: "Search",
+    category: "Marketing",
     nodes: [
       node("trigger-1", "triggerNode", "webhookTrigger", "Webhook Trigger", "Webhook", { webhookUrl: "/webhook/seo" }, 0, 0),
       node("http-1", "actionNode", "httpRequest", "Fetch URL", "Globe", { method: "GET", url: "{{$json.url}}" }, 0, 150),
@@ -71,6 +78,7 @@ export const pipelineTemplates: PipelineTemplate[] = [
     name: "Email Triage",
     description: "Cron-triggered email classification and digest",
     icon: "Mail",
+    category: "Communication",
     nodes: [
       node("trigger-1", "triggerNode", "cronTrigger", "Cron Trigger", "Clock", { cronExpression: "0 7 * * *" }, 0, 0),
       node("http-1", "actionNode", "httpRequest", "Fetch Emails", "Mail", { method: "GET", url: "{{$json.endpoint}}" }, 0, 150),
@@ -92,6 +100,7 @@ export const pipelineTemplates: PipelineTemplate[] = [
     name: "AI Code Review",
     description: "Parallel quality and security review on PRs",
     icon: "Code",
+    category: "Development",
     nodes: [
       node("trigger-1", "triggerNode", "webhookTrigger", "GitHub Webhook", "Webhook", { webhookUrl: "/webhook/github" }, 0, 0),
       node("http-1", "actionNode", "httpRequest", "Fetch Diff", "Code", { method: "GET", url: "{{$json.diff_url}}" }, 0, 150),
@@ -116,6 +125,7 @@ export const pipelineTemplates: PipelineTemplate[] = [
     name: "Content Generation",
     description: "Research, draft, and optimize content with AI",
     icon: "FileText",
+    category: "Content",
     nodes: [
       node("trigger-1", "triggerNode", "manualTrigger", "Manual Trigger", "MousePointerClick", {}, 0, 0),
       node("ai-1", "aiNode", "webResearcher", "Web Research", "Globe", { prompt: "Research this topic: {{$json.topic}}" }, 0, 150),
@@ -135,6 +145,7 @@ export const pipelineTemplates: PipelineTemplate[] = [
     name: "Data Extraction",
     description: "Fetch URLs and extract structured data with AI",
     icon: "Database",
+    category: "Data",
     nodes: [
       node("trigger-1", "triggerNode", "manualTrigger", "Manual Trigger", "MousePointerClick", {}, 0, 0),
       node("http-1", "actionNode", "httpRequest", "Fetch URL", "Globe", { method: "GET", url: "{{$json.url}}" }, 0, 150),
@@ -145,6 +156,138 @@ export const pipelineTemplates: PipelineTemplate[] = [
       { id: "e1", source: "trigger-1", target: "http-1", animated: true },
       { id: "e2", source: "http-1", target: "ai-1" },
       { id: "e3", source: "ai-1", target: "action-2" },
+    ],
+  },
+  {
+    id: "email-automation",
+    name: "Email Automation",
+    description: "Trigger on schedule, generate content with AI, and send via email",
+    icon: "Mail",
+    category: "Communication",
+    nodes: [
+      node("1", "triggerNode", "cronTrigger", "Daily Schedule", "Clock", { cronExpression: "0 9 * * *" }, 50, 200),
+      node("2", "aiNode", "contentWriter", "Write Email", "FileText", { prompt: "Write a professional daily update email" }, 300, 200),
+      node("3", "actionNode", "sendEmail", "Send Email", "Mail", { to: "", subject: "Daily Update" }, 550, 200),
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+    ],
+  },
+  {
+    id: "web-research",
+    name: "Web Research Pipeline",
+    description: "Research a topic, summarize findings, and save to database",
+    icon: "Globe",
+    category: "Research",
+    nodes: [
+      node("1", "triggerNode", "manualTrigger", "Start Research", "MousePointerClick", {}, 50, 200),
+      node("2", "aiNode", "webResearcher", "Research Topic", "Globe", { topic: "" }, 300, 200),
+      node("3", "aiNode", "summarizer", "Summarize", "FileText", {}, 550, 200),
+      node("4", "actionNode", "databaseQuery", "Save Results", "Database", { query: "INSERT INTO research ..." }, 800, 200),
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+      { id: "e3-4", source: "3", target: "4" },
+    ],
+  },
+  {
+    id: "ai-content-factory",
+    name: "AI Content Factory",
+    description: "Generate content, classify it, and branch based on type",
+    icon: "FileText",
+    category: "Content",
+    nodes: [
+      node("1", "triggerNode", "manualTrigger", "Generate Content", "MousePointerClick", {}, 50, 200),
+      node("2", "aiNode", "contentWriter", "Write Content", "FileText", { prompt: "" }, 300, 200),
+      node("3", "aiNode", "classifier", "Classify", "GitBranch", {}, 550, 200),
+      node("4", "flowNode", "condition", "Route by Type", "SplitSquareHorizontal", { condition: "type === 'blog'" }, 800, 200),
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+      { id: "e3-4", source: "3", target: "4" },
+    ],
+  },
+  {
+    id: "data-pipeline",
+    name: "Data Processing Pipeline",
+    description: "Extract data from API, transform with code, and store in database",
+    icon: "Database",
+    category: "Data",
+    nodes: [
+      node("1", "triggerNode", "webhookTrigger", "Webhook", "Webhook", {}, 50, 200),
+      node("2", "actionNode", "httpRequest", "Fetch Data", "Globe", { method: "GET", url: "" }, 300, 200),
+      node("3", "aiNode", "dataExtractor", "Extract Fields", "Database", {}, 550, 200),
+      node("4", "actionNode", "databaseQuery", "Store Data", "Database", { query: "" }, 800, 200),
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+      { id: "e3-4", source: "3", target: "4" },
+    ],
+  },
+  {
+    id: "branching-workflow",
+    name: "Branching Workflow",
+    description: "Classify input and route to different processing branches",
+    icon: "GitBranch",
+    category: "Flow Control",
+    nodes: [
+      node("1", "triggerNode", "channelTrigger", "Incoming Message", "MessageSquare", {}, 50, 200),
+      node("2", "aiNode", "classifier", "Classify Intent", "GitBranch", {}, 300, 200),
+      node("3", "flowNode", "switch", "Route", "SplitSquareHorizontal", { branches: ["support", "sales", "general"] }, 550, 200),
+      node("4", "aiNode", "aiAgent", "Support Agent", "Bot", {}, 800, 100),
+      node("5", "aiNode", "aiAgent", "Sales Agent", "Bot", {}, 800, 300),
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+      { id: "e3-4", source: "3", target: "4" },
+      { id: "e3-5", source: "3", target: "5" },
+    ],
+  },
+  {
+    id: "parallel-processing",
+    name: "Parallel Processing",
+    description: "Fork into parallel tasks and merge results",
+    icon: "ArrowRight",
+    category: "Flow Control",
+    nodes: [
+      node("1", "triggerNode", "manualTrigger", "Start", "MousePointerClick", {}, 50, 200),
+      node("2", "flowNode", "parallelFork", "Fork", "Merge", { branches: 2 }, 300, 200),
+      node("3", "aiNode", "contentWriter", "Task A", "FileText", {}, 550, 100),
+      node("4", "aiNode", "webResearcher", "Task B", "Globe", {}, 550, 300),
+      node("5", "flowNode", "merge", "Merge", "Merge", {}, 800, 200),
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+      { id: "e2-4", source: "2", target: "4" },
+      { id: "e3-5", source: "3", target: "5" },
+      { id: "e4-5", source: "4", target: "5" },
+    ],
+  },
+  {
+    id: "host-review-chain",
+    name: "Host Review Chain",
+    description:
+      "Flagship enterprise chain: retrieve group context, draft with the host model, pause for human approval, then finalize.",
+    icon: "Shield",
+    category: "Enterprise",
+    nodes: [
+      node("1", "triggerNode", "manualTrigger", "Start", "MousePointerClick", {}, 50, 200),
+      node("2", "aiNode", "ragRetrieve", "Retrieve Group Context", "Database", { query: "{{$json.prompt}}", topK: 3 }, 300, 200),
+      node("3", "aiNode", "aiAgent", "Draft Response", "Bot", { prompt: "Using the retrieved context, answer: {{$json.prompt}}", model: "llama3.1" }, 550, 200),
+      node("4", "flowNode", "humanApproval", "Approve Release", "Shield", { message: "Approve the drafted response for release?" }, 800, 200),
+      node("5", "aiNode", "summarizer", "Finalize", "FileText", {}, 1050, 200),
+    ],
+    edges: [
+      { id: "e1-2", source: "1", target: "2" },
+      { id: "e2-3", source: "2", target: "3" },
+      { id: "e3-4", source: "3", target: "4" },
+      { id: "e4-5", source: "4", target: "5" },
     ],
   },
 ]

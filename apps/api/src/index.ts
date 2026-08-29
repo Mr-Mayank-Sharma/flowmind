@@ -28,6 +28,7 @@ import type { AgentLoopStep } from "@flowmind/llm-router";
 import { getSessionEmitter, cleanupSessionEmitter } from "./services/session-emitters";
 import { getRunEmitter } from "./services/run-emitters";
 import { getCronScheduler } from "./services/cron-scheduler";
+import { startRunRecovery } from "./services/run-recovery";
 
 const SENTRY_DSN = process.env.SENTRY_DSN;
 if (SENTRY_DSN) {
@@ -420,9 +421,11 @@ async function main() {
   });
 
   const cronScheduler = getCronScheduler();
+  let stopRunRecovery: (() => void) | undefined;
 
   const shutdown = async (signal: string) => {
     server.log.info(`Received ${signal}, shutting down...`);
+    stopRunRecovery?.();
     cronScheduler.stop();
     const forceExit = setTimeout(() => {
       server.log.warn("Forced shutdown after timeout");
@@ -458,6 +461,9 @@ async function main() {
 
     await cronScheduler.start();
     server.log.info("Cron scheduler started");
+
+    stopRunRecovery = startRunRecovery();
+    server.log.info("Run recovery started");
   } catch (err) {
     server.log.error(err);
     process.exit(1);

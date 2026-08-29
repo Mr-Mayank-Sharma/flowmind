@@ -27,6 +27,7 @@ export interface Session {
 }
 
 const STORAGE_KEY = "flowmind_chat_data"
+const MAX_STREAM_DURATION = 90_000
 
 interface PersistedData {
   sessions: Session[]
@@ -268,6 +269,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     let toolCallId = 0
     let finished = false
 
+    let streamTimer: ReturnType<typeof setTimeout> | undefined
+
     const finalize = (contentOverride?: string) => {
       if (finished) return
       finished = true
@@ -389,6 +392,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
               parseSSEChunk(chunk, (d) => handleSseData(d))
             }
           }
+          if (buffer.trim()) {
+            parseSSEChunk(buffer, (d) => handleSseData(d))
+          }
         } catch (err) {
           if ((err as any)?.name === "AbortError") return
           if (!finished) {
@@ -398,6 +404,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       const streamPromise = openStream()
+
+      streamTimer = setTimeout(() => {
+        abortController.abort()
+        finalize("The response is taking too long. Please try again.")
+      }, MAX_STREAM_DURATION)
 
       const mutationPromise = api.chat.sendMessage({
         sessionId: currentSessionId,
@@ -418,6 +429,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (err) {
       finalize("I encountered an error processing your request. Please try again.")
     } finally {
+      if (streamTimer) clearTimeout(streamTimer)
       ;(get() as any)._abortController = null
     }
   },

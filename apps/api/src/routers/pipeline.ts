@@ -1,80 +1,18 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
+import { prisma } from "@flowmind/db";
 import { PipelineEngine } from "@flowmind/pipeline-engine";
-import type { PipelineGraph, PipelineNode, LLMProvider } from "@flowmind/pipeline-engine";
-import { LLMEngine, resolveDefaultOllamaModel } from "@flowmind/llm-router";
+import type { LLMProvider, PipelineGraph, WorkflowSettings, ApprovalDecision } from "@flowmind/pipeline-engine";
+import { buildLLMProvider, normalizeGraph } from "../lib/llm-factory";
 import { getRunEmitter, cleanupRunEmitter } from "../services/run-emitters";
 import { getContextEngine } from "../services/context-engine";
 import { userGroupRoles } from "../services/group-access";
+import { registerActiveRun, unregisterActiveRun, getActiveRunController } from "../services/active-runs";
 
-function buildLLMProvider(): LLMProvider | undefined {
-  const openaiKey = process.env.OPENAI_KEY;
-  const anthropicKey = process.env.ANTHROPIC_KEY;
-  const groqKey = process.env.GROQ_KEY;
-  const ollamaUrl = process.env.OLLAMA_BASE_URL;
-  if (!openaiKey && !anthropicKey && !groqKey && !ollamaUrl) return undefined;
-  const llmEngine = new LLMEngine({
-    openaiKey: openaiKey ?? undefined,
-    anthropicKey: anthropicKey ?? undefined,
-    groqKey: groqKey ?? undefined,
-    deepseekKey: process.env.DEEPSEEK_KEY,
-    openrouterKey: process.env.OPENROUTER_KEY,
-    togetherKey: process.env.TOGETHER_KEY,
-    mistralKey: process.env.MISTRAL_KEY,
-    perplexityKey: process.env.PERPLEXITY_KEY,
-    deepinfraKey: process.env.DEEPINFRA_KEY,
-    cerebrasKey: process.env.CEREBRAS_KEY,
-    xaiKey: process.env.XAI_KEY,
-    cohereKey: process.env.COHERE_KEY,
-    cloudflareKey: process.env.CLOUDFLARE_KEY,
-    veniceAIKey: process.env.VENICE_AI_KEY,
-    alibabaKey: process.env.ALIBABA_KEY,
-    googleKey: process.env.GOOGLE_KEY,
-    ollamaBaseUrl: ollamaUrl ?? undefined,
-  });
-  return {
-    complete: async (req) => {
-      const model = req.model || (await resolveDefaultOllamaModel()) || "tinyllama";
-      const result = await llmEngine.complete({
-        messages: req.messages as any,
-        model,
-        maxTokens: req.maxTokens ?? 500,
-        temperature: req.temperature,
-      });
-      return { content: result.message.content as string, model: result.model };
-    },
-  };
+function getLLM(): LLMProvider | undefined {
+  return buildLLMProvider();
 }
-
-function normalizeGraph(graph: any): PipelineGraph {
-  if (!graph || !graph.nodes) return { nodes: [], edges: [] }
-  return {
-    nodes: (graph.nodes as any[]).map((n: any) => ({
-      id: n.id,
-      type: n.engineType ?? n.type,
-      label: n.label ?? "",
-      position: n.position ?? { x: 0, y: 0 },
-      config: n.config ?? {},
-      continueOnFail: n.continueOnFail,
-      retryOnFail: n.retryOnFail,
-      maxRetries: n.maxRetries,
-      disabled: n.disabled,
-    } as PipelineNode)),
-    edges: (graph.edges || []).map((e: any) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle ?? null,
-      targetHandle: e.targetHandle ?? null,
-    })),
-  }
-}
-
-const llm = buildLLMProvider();
-const engine = new PipelineEngine({ llm });
-
-const activeRunControllers = new Map<string, AbortController>();
 
 const graphSchema = z.object({
   nodes: z.array(z.any()),
@@ -91,6 +29,151 @@ const workflowSettingsSchema = z.object({
   maxRetries: z.number().optional(),
   timeout: z.number().optional(),
 }).optional();
+
+interface ExecuteRunParams {
+  runId: string;
+  pipelineId: string;
+  groupId: string | null;
+  userId: string;
+  graph: PipelineGraph;
+  input: Record<string, unknown>;
+  settings?: WorkflowSettings;
+  controller: AbortController;
+  approvalOverrides?: Record<string, ApprovalDecision>;
+}
+
+type PendingLog = { runId: string; nodeId: string; nodeType: string; input: any; output: any; error?: string; duration: number };
+
+async function executeRunBackground(params: ExecuteRunParams): Promise<void> {
+  const runEmitter = getRunEmitter(params.runId);
+  const pendingLogs = new Map<string, PendingLog>();
+  const flushedLogs = new Set<string>();
+
+  const flushLog = async (entry: PendingLog) => {
+    if (flushedLogs.has(entry.nodeId)) return;
+    flushedLogs.add(entry.nodeId);
+    try {
+      await prisma.runLog.createMany({ data: [entry] });
+    } catch (err) {
+      console.error("Failed to persist run log:", err);
+    }
+  };
+
+  const ragSearch = async (q: { text: string; topK?: number; filters?: Record<string, unknown> }) => {
+    if (params.groupId) {
+      return getContextEngine().search({
+        text: q.text,
+        userId: `group:${params.groupId}`,
+        groupId: params.groupId,
+        topK: q.topK ?? 5,
+        filters: q.filters,
+      });
+    }
+    return getContextEngine().search({ text: q.text, userId: params.userId, topK: q.topK ?? 5, filters: q.filters });
+  };
+
+  const engineWithStatus = new PipelineEngine({
+    llm: getLLM(),
+    ragSearch,
+    requestApproval: async () => {
+      // No interactive approval channel wired to the run yet: pause the run.
+      return { approved: false, note: "Run paused awaiting manual approval" };
+    },
+    onNodeStatus: async (event) => {
+      const emitter = getRunEmitter(params.runId);
+      emitter.emit("node", {
+        nodeId: event.nodeId,
+        nodeType: event.nodeType,
+        status: event.status,
+        error: event.error,
+        durationMs: event.durationMs,
+      });
+
+      if (event.status === "running") {
+        pendingLogs.set(event.nodeId, {
+          runId: params.runId, nodeId: event.nodeId, nodeType: event.nodeType,
+          input: {}, output: {}, duration: 0,
+        });
+      } else if (event.status === "completed" || event.status === "failed") {
+        const existing = pendingLogs.get(event.nodeId);
+        const entry: PendingLog = {
+          runId: params.runId,
+          nodeId: event.nodeId,
+          nodeType: event.nodeType,
+          input: existing?.input ?? {},
+          output: event.error ? { error: event.error } : (event.output ?? {}),
+          error: event.error,
+          duration: event.durationMs ?? 0,
+        };
+        pendingLogs.set(event.nodeId, entry);
+        await flushLog(entry);
+      }
+    },
+  });
+
+  try {
+    const result = await engineWithStatus.execute(
+      params.runId,
+      params.pipelineId,
+      params.graph,
+      params.input,
+      params.settings,
+      params.controller.signal,
+    );
+
+    // Flush any logs for nodes that never reached a terminal event
+    for (const entry of pendingLogs.values()) {
+      await flushLog(entry);
+    }
+    pendingLogs.clear();
+
+    // Check if run was cancelled mid-execution
+    const afterRun = await prisma.pipelineRun.findUnique({ where: { id: params.runId }, select: { status: true } });
+    if (afterRun?.status === "CANCELLED" || result.status === "cancelled") {
+      await prisma.pipelineRun.update({
+        where: { id: params.runId },
+        data: { status: "CANCELLED", completedAt: new Date() },
+      });
+      return;
+    }
+
+    const finalStatus = result.status === "success" ? "SUCCESS" as const : result.status === "awaiting_approval" ? "AWAITING_APPROVAL" as const : "FAILED" as const;
+
+    await prisma.pipelineRun.update({
+      where: { id: params.runId },
+      data: {
+        status: finalStatus,
+        output: result as any,
+        completedAt: new Date(),
+      },
+    });
+
+    runEmitter.emit("done", { status: finalStatus, outputs: result.outputs, durationMs: result.durationMs });
+
+    await prisma.pipeline.update({
+      where: { id: params.pipelineId },
+      data: {
+        runCount: { increment: 1 },
+        lastRunAt: new Date(),
+        avgDurationMs: result.durationMs,
+      },
+    });
+  } catch (err: any) {
+    for (const entry of pendingLogs.values()) {
+      await flushLog({ ...entry, error: entry.error ?? "Node did not complete" });
+    }
+    pendingLogs.clear();
+    await prisma.pipelineRun.update({
+      where: { id: params.runId },
+      data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
+    });
+    runEmitter.emit("error", { message: err.message });
+    console.error(`Pipeline run ${params.runId} failed:`, err);
+  } finally {
+    unregisterActiveRun(params.runId);
+    setTimeout(() => cleanupRunEmitter(params.runId), 60_000).unref?.();
+  }
+}
 
 export const pipelineRouter = router({
   list: protectedProcedure
@@ -298,132 +381,20 @@ export const pipelineRouter = router({
       runEmitter.clearBuffer();
 
       const abortController = new AbortController();
-      activeRunControllers.set(run.id, abortController);
+      registerActiveRun(run.id, abortController);
 
-      type PendingLog = { runId: string; nodeId: string; nodeType: string; input: any; output: any; error?: string; duration: number };
-      const pendingLogs = new Map<string, PendingLog>();
-      const flushedLogs = new Set<string>();
-
-      const flushLog = async (entry: PendingLog) => {
-        if (flushedLogs.has(entry.nodeId)) return;
-        flushedLogs.add(entry.nodeId);
-        try {
-          await ctx.prisma.runLog.createMany({ data: [entry] });
-        } catch (err) {
-          console.error("Failed to persist run log:", err);
-        }
-      };
-
-      const ragSearch = async (q: { text: string; topK?: number; filters?: Record<string, unknown> }) => {
-        if (pipeline.groupId) {
-          return getContextEngine().search({
-            text: q.text,
-            userId: `group:${pipeline.groupId}`,
-            groupId: pipeline.groupId,
-            topK: q.topK ?? 5,
-            filters: q.filters,
-          });
-        }
-        return getContextEngine().search({ text: q.text, userId: ctx.userId!, topK: q.topK ?? 5, filters: q.filters });
-      };
-
-      const engineWithStatus = new PipelineEngine({
-        llm,
-        ragSearch,
-        requestApproval: async () => {
-          // No interactive approval channel wired to the run yet: pause the run.
-          return { approved: false, note: "Run paused awaiting manual approval" };
-        },
-        onNodeStatus: async (event) => {
-          const emitter = getRunEmitter(run.id);
-          emitter.emit("node", {
-            nodeId: event.nodeId,
-            nodeType: event.nodeType,
-            status: event.status,
-            error: event.error,
-            durationMs: event.durationMs,
-          });
-
-          if (event.status === "running") {
-            pendingLogs.set(event.nodeId, {
-              runId: run.id, nodeId: event.nodeId, nodeType: event.nodeType,
-              input: {}, output: {}, duration: 0,
-            });
-          } else if (event.status === "completed" || event.status === "failed") {
-            const existing = pendingLogs.get(event.nodeId);
-            const entry: PendingLog = {
-              runId: run.id,
-              nodeId: event.nodeId,
-              nodeType: event.nodeType,
-              input: existing?.input ?? {},
-              output: event.error ? { error: event.error } : (event.output ?? {}),
-              error: event.error,
-              duration: event.durationMs ?? 0,
-            };
-            pendingLogs.set(event.nodeId, entry);
-            await flushLog(entry);
-          }
-        },
+      void executeRunBackground({
+        runId: run.id,
+        pipelineId: input.id,
+        groupId: pipeline.groupId,
+        userId: ctx.userId!,
+        graph: normalizeGraph(pipeline.graph),
+        input: input.input ?? {},
+        settings: input.settings,
+        controller: abortController,
       });
 
-      try {
-        const rawGraph = pipeline.graph as any;
-        const graph = normalizeGraph(rawGraph);
-        const result = await engineWithStatus.execute(run.id, input.id, graph, input.input ?? {}, input.settings, abortController.signal);
-
-        // Flush any logs for nodes that never reached a terminal event
-        for (const entry of pendingLogs.values()) {
-          await flushLog(entry);
-        }
-        pendingLogs.clear();
-
-        // Check if run was cancelled mid-execution
-        const afterRun = await ctx.prisma.pipelineRun.findUnique({ where: { id: run.id }, select: { status: true } });
-        if (afterRun?.status === "CANCELLED" || result.status === "cancelled") {
-          return { runId: run.id, status: "CANCELLED" as const, outputs: result.outputs, durationMs: result.durationMs };
-        }
-
-        const finalStatus = result.status === "success" ? "SUCCESS" as const : result.status === "awaiting_approval" ? "AWAITING_APPROVAL" as const : "FAILED" as const;
-
-        await ctx.prisma.pipelineRun.update({
-          where: { id: run.id },
-          data: {
-            status: finalStatus,
-            output: result as any,
-            completedAt: new Date(),
-          },
-        });
-
-        const runEmitter = getRunEmitter(run.id);
-        runEmitter.emit("done", { status: finalStatus, outputs: result.outputs, durationMs: result.durationMs });
-        setTimeout(() => cleanupRunEmitter(run.id), 60_000).unref?.();
-
-        await ctx.prisma.pipeline.update({
-          where: { id: input.id },
-          data: {
-            runCount: { increment: 1 },
-            lastRunAt: new Date(),
-            avgDurationMs: result.durationMs,
-          },
-        });
-
-        return { runId: run.id, status: finalStatus, outputs: result.outputs, durationMs: result.durationMs };
-      } catch (err: any) {
-        for (const entry of pendingLogs.values()) {
-          await flushLog({ ...entry, error: entry.error ?? "Node did not complete" });
-        }
-        pendingLogs.clear();
-        await ctx.prisma.pipelineRun.update({
-          where: { id: run.id },
-          data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
-        });
-        const runEmitter = getRunEmitter(run.id);
-        runEmitter.emit("error", { message: err.message });
-        setTimeout(() => cleanupRunEmitter(run.id), 60_000).unref?.();
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err.message ?? "Pipeline execution failed" });
-      } finally {
-        activeRunControllers.delete(run.id);
-      }
+      return { runId: run.id, status: "RUNNING" as const, outputs: [], durationMs: 0 };
     }),
 
   executeNode: protectedProcedure
@@ -441,7 +412,7 @@ export const pipelineRouter = router({
       }
 
       const graph = normalizeGraph(pipeline.graph);
-      const nodeOutput = await engine.executeSingleNode(
+      const nodeOutput = await new PipelineEngine({ llm: getLLM() }).executeSingleNode(
         `test-${Date.now()}`,
         input.pipelineId,
         graph,
@@ -461,7 +432,7 @@ export const pipelineRouter = router({
   simulate: protectedProcedure
     .input(z.object({ graph: graphSchema }))
     .query(async ({ input }) => {
-      const result = engine.simulate(normalizeGraph(input.graph));
+      const result = new PipelineEngine({ llm: getLLM() }).simulate(normalizeGraph(input.graph));
       return result;
     }),
 
@@ -473,7 +444,7 @@ export const pipelineRouter = router({
       filter: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      return engine.loadOptions(input.nodeType, input.field, input.config ?? {}, input.filter);
+      return new PipelineEngine({ llm: getLLM() }).loadOptions(input.nodeType, input.field, input.config ?? {}, input.filter);
     }),
 
   getRuns: protectedProcedure
@@ -508,10 +479,10 @@ export const pipelineRouter = router({
         where: { id: input.runId },
         data: { status: "CANCELLED", completedAt: new Date() },
       });
-      const controller = activeRunControllers.get(input.runId);
+      const controller = getActiveRunController(input.runId);
       if (controller) {
         controller.abort();
-        activeRunControllers.delete(input.runId);
+        unregisterActiveRun(input.runId);
       }
       const emitter = getRunEmitter(input.runId);
       emitter.emit("error", { message: "Run cancelled" });
@@ -551,10 +522,13 @@ export const pipelineRouter = router({
       const runEmitter = getRunEmitter(resumeRun.id);
       runEmitter.clearBuffer();
 
+      const abortController = new AbortController();
+      registerActiveRun(resumeRun.id, abortController);
+
       try {
         const graph = normalizeGraph(paused.pipeline.graph);
-        const engineWithStatus = new PipelineEngine({ llm, approvalOverrides });
-        const result = await engineWithStatus.execute(resumeRun.id, paused.pipelineId, graph, paused.input ?? {});
+        const engineWithStatus = new PipelineEngine({ llm: getLLM(), approvalOverrides });
+        const result = await engineWithStatus.execute(resumeRun.id, paused.pipelineId, graph, paused.input ?? {}, undefined, abortController.signal);
 
         const finalStatus = result.status === "success" ? "SUCCESS" as const : result.status === "awaiting_approval" ? "AWAITING_APPROVAL" as const : "FAILED" as const;
         await ctx.prisma.pipelineRun.update({
@@ -572,6 +546,8 @@ export const pipelineRouter = router({
         runEmitter.emit("error", { message: err.message });
         setTimeout(() => cleanupRunEmitter(resumeRun.id), 60_000).unref?.();
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err.message ?? "Pipeline resume failed" });
+      } finally {
+        unregisterActiveRun(resumeRun.id);
       }
     }),
 
@@ -805,12 +781,14 @@ export const pipelineRouter = router({
           results.push({ index: i, runId: run.id, status: "RUNNING" });
           const emitter = getRunEmitter(run.id);
           emitter.clearBuffer();
+          const abortController = new AbortController();
+          registerActiveRun(run.id, abortController);
 
           try {
             const rawGraph = pipeline.graph as any;
             const graph = normalizeGraph(rawGraph);
-            const batchEngine = new PipelineEngine({ llm });
-            const result = await batchEngine.execute(run.id, input.id, graph, batchInput, input.settings);
+            const batchEngine = new PipelineEngine({ llm: getLLM() });
+            const result = await batchEngine.execute(run.id, input.id, graph, batchInput, input.settings, abortController.signal);
 
             await ctx.prisma.pipelineRun.update({
               where: { id: run.id },
@@ -832,6 +810,7 @@ export const pipelineRouter = router({
             }
             emitter.emit("error", { message: err.message });
           } finally {
+            unregisterActiveRun(run.id);
             setTimeout(() => cleanupRunEmitter(run.id), 60_000).unref?.();
           }
         }

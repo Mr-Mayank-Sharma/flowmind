@@ -17,7 +17,7 @@
 		"@openspoon/subtask2@latest",
 		"opencode-scheduler@latest",
 		"micode@latest",
-		"octto@latest",
+		"opencode-conductor@latest",
 		"firecrawl/opencode-firecrawl",
 		"tavily-ai/opencode-tavily",
 		"@tarquinen/opencode-dcp@3.1.3",

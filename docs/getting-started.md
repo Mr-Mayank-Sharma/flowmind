@@ -35,13 +35,16 @@ OLLAMA_BASE_URL=http://localhost:11434  # optional
 
 ```bash
 pnpm db:generate
-pnpm db:seed
+pnpm db:migrate
 ```
 
-This creates:
-- Admin user: `admin@flowmind.ai` / `admin123`
-- 5 demo workflows with multi-node graphs
-- Marketplace categories
+Optionally bootstrap an admin user and org (skipped entirely if env vars are missing):
+
+```bash
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=your-strong-password pnpm db:seed
+```
+
+Optional env vars: `ADMIN_NAME` (user display name) and `ADMIN_ORG_NAME` (defaults to "My Org").
 
 ## Start Development
 

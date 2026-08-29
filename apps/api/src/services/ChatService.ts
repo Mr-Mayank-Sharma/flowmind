@@ -3,6 +3,8 @@ import { MessageRole } from "@flowmind/shared"
 import { ContextEngine, type ContextChunk } from "@flowmind/context-engine"
 import { LLMEngine, runAgentLoop, resolveDefaultOllamaModel, type AgentTool, type AgentLoopStep } from "@flowmind/llm-router"
 import { toolRegistry } from "@flowmind/tool-system"
+import { config } from "../lib/config"
+import { buildLLMConfig } from "../lib/llm-keys"
 
 let _contextEngine: ContextEngine | null = null
 function getContextEngine(): ContextEngine {
@@ -10,7 +12,7 @@ function getContextEngine(): ContextEngine {
   return _contextEngine
 }
 
-const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
+const AGENT_RUNTIME_URL = config.agentRuntimeUrl
 
 const CLOUD_DEFAULT_MODELS: Record<string, string> = {
   openai: "gpt-4o-mini",
@@ -24,17 +26,7 @@ const CLOUD_DEFAULT_MODELS: Record<string, string> = {
 }
 
 function buildLLMEngine(): LLMEngine {
-  return new LLMEngine({
-    openaiKey: process.env.OPENAI_API_KEY,
-    anthropicKey: process.env.ANTHROPIC_API_KEY,
-    googleKey: process.env.GOOGLE_API_KEY,
-    groqKey: process.env.GROQ_API_KEY,
-    deepseekKey: process.env.DEEPSEEK_API_KEY,
-    openrouterKey: process.env.OPENROUTER_API_KEY,
-    togetherKey: process.env.TOGETHER_API_KEY,
-    mistralKey: process.env.MISTRAL_API_KEY,
-    ollamaBaseUrl: process.env.OLLAMA_BASE_URL,
-  })
+  return new LLMEngine(buildLLMConfig(config))
 }
 
 const NON_DESTRUCTIVE_TOOLS = new Set(["read", "grep", "glob", "webfetch", "websearch", "todowrite"])
@@ -203,6 +195,7 @@ export class ChatService {
     if (!provider) {
       const reply = "No LLM provider is configured. Please add an API key in Settings."
       const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
+      callbacks?.onError(new Error(reply))
       return { message: assistantMessage, reply, steps: [], iterations: 0 }
     }
 

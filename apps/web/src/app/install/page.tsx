@@ -67,8 +67,8 @@ const platforms = {
 
 const whatsIncluded = [
   { icon: Server, title: "Web Dashboard", desc: "Full AI infrastructure management UI" },
-  { icon: Cpu, title: "AI Model Hub", desc: "23 models across 5 providers (Ollama, OpenAI, Anthropic, etc.)" },
-  { icon: Terminal, title: "CLI Tool", desc: "8 commands + interactive REPL for AI agent management" },
+  { icon: Cpu, title: "AI Model Hub", desc: "Models from 4 providers — Ollama, OpenAI, Anthropic, Google" },
+  { icon: Terminal, title: "CLI Tool", desc: "Commands for agents, models, pipelines, skills + interactive REPL" },
   { icon: Globe, title: "API Server", desc: "Type-safe tRPC API with JWT auth and real-time streaming" },
   { icon: Package, title: "Agent Runtime", desc: "Real AI inference with Python FastAPI (port 8001)" },
   { icon: Github, title: "Open Source", desc: "MIT licensed — fork, modify, deploy anywhere" },
