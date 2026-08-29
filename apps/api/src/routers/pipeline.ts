@@ -338,9 +338,31 @@ export const pipelineRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      await ctx.prisma.pipeline.deleteMany({
-        where: { id: input.id, userId: ctx.userId },
+      const pipeline = await ctx.prisma.pipeline.findUnique({
+        where: { id: input.id },
+        select: { id: true, userId: true },
       });
+      if (!pipeline || pipeline.userId !== ctx.userId) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      await ctx.prisma.$transaction(async (tx) => {
+        const flows = await tx.marketplaceFlow.findMany({
+          where: { pipelineId: input.id },
+          select: { id: true },
+        });
+        const flowIds = flows.map((f) => f.id);
+
+        if (flowIds.length > 0) {
+          await tx.flowClone.deleteMany({ where: { sourceFlowId: { in: flowIds } } });
+          await tx.flowExecution.deleteMany({ where: { flowId: { in: flowIds } } });
+          await tx.marketplaceFlow.deleteMany({ where: { pipelineId: input.id } });
+        }
+
+        await tx.pipelineRun.deleteMany({ where: { pipelineId: input.id } });
+        await tx.pipeline.delete({ where: { id: input.id } });
+      });
+
       return { success: true };
     }),
 
@@ -485,8 +507,8 @@ export const pipelineRouter = router({
         unregisterActiveRun(input.runId);
       }
       const emitter = getRunEmitter(input.runId);
-      emitter.emit("error", { message: "Run cancelled" });
-      return { success: true };
+      emitter.emit("done", { status: "CANCELLED" });
+      return { success: true, runId: input.runId, status: "CANCELLED" as const };
     }),
 
   resume: protectedProcedure

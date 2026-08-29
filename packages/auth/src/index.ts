@@ -23,7 +23,17 @@ const RP_NAME = process.env.RP_NAME ?? "FlowMind";
 const RP_ID = process.env.RP_ID ?? "localhost";
 const ORIGIN = process.env.APP_URL ?? "http://localhost:3000";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "fallback-secret-change-in-production";
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be set in production");
+  }
+  console.warn("WARNING: JWT_SECRET not set, using insecure fallback for development only");
+  return "dev-secret-change-in-production-32chars!";
+}
+
+const JWT_SECRET = resolveJwtSecret();
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY = "7d";
 const BCRYPT_ROUNDS = 12;

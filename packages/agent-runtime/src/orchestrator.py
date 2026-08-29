@@ -15,7 +15,15 @@ from src.resilience import ToolExecutor
 from src.skill_engine import SkillEngine
 
 API_URL = os.environ.get("FLOWMIND_API_URL", "http://localhost:3001")
+AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
 MAX_AGENT_ITERATIONS = 10
+
+
+def _internal_auth_headers() -> dict[str, str]:
+    """Send the shared internal token so callbacks to the API authenticate."""
+    if AGENT_API_KEY:
+        return {"x-internal-token": AGENT_API_KEY}
+    return {}
 
 SYSTEM_PROMPT = (
     "You are FlowMind Agent, an AI assistant that helps users build websites, apps, "
@@ -290,6 +298,7 @@ footer { text-align: center; padding: 2rem; color: #777; font-size: .85rem; bord
                 r = await client.post(
                     f"{API_URL}/api/internal/execute-tool",
                     json={"toolId": tool_id, "args": args},
+                    headers=_internal_auth_headers(),
                 )
                 if r.is_success:
                     data = r.json()
@@ -452,6 +461,7 @@ footer { text-align: center; padding: 2rem; color: #777; font-size: .85rem; bord
                     r = await client.post(
                         f"{API_URL}/api/internal/create-pipeline",
                         json={"name": pipeline_name, "description": pipeline_desc, "userId": self.user_id},
+                        headers=_internal_auth_headers(),
                     )
                     if r.is_success:
                         data = r.json()

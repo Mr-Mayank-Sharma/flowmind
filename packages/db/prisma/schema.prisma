@@ -134,11 +134,27 @@ model User {
   hostGroupMembers HostGroupMember[]
   hostConnections  HostConnection[]
   knowledgeBases   KnowledgeBase[]
+  providerCredentials ProviderCredential[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("users")
+}
+
+model ProviderCredential {
+  id             String   @id @default(cuid())
+  userId         String
+  provider       String
+  encryptedValue String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("provider_credentials")
 }
 
 model Org {
@@ -299,6 +315,7 @@ model Message {
   sessionId   String
   role        MessageRole
   content     String
+  error       Boolean      @default(false)
   toolCalls   Json?
   toolResults Json?
   model       String?

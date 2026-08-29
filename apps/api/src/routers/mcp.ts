@@ -151,6 +151,7 @@ export const mcpRouter = router({
         name: t.name,
         category: t.category,
         description: t.description,
+        status: t.implemented ? "available" : "unavailable",
       }));
     }),
 

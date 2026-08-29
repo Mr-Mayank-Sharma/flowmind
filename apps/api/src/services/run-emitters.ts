@@ -10,6 +10,11 @@ export interface BufferedEvent {
 export class BufferedEmitter extends EventEmitter {
   readonly buffer: BufferedEvent[] = []
 
+  constructor() {
+    super()
+    this.on("error", () => {})
+  }
+
   emit(event: string | symbol, ...args: unknown[]): boolean {
     if (typeof event === "string") {
       this.buffer.push({ event, data: args[0] })

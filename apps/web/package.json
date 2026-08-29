@@ -8,6 +8,7 @@
     "start": "next start --port 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "clean": "rm -rf .next"
   },
   "dependencies": {
@@ -52,6 +53,7 @@
     "postcss": "^8.4.0",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.4.0",
+    "vitest": "^4.1.9",
     "@flowmind/api": "workspace:*"
   }
 }

@@ -11,6 +11,24 @@ import { userGroupRoles } from "../services/group-access";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
+async function probeHostReachable(url: string | undefined): Promise<{ ok: boolean; detail: string }> {
+  if (!url || !url.trim()) return { ok: false, detail: "client did not report a URL" };
+  const trimmed = url.trim();
+  const base = (/^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`).replace(/\/+$/, "");
+  const candidates = [`${base}/health`, base];
+  let lastError = "";
+  for (const target of candidates) {
+    try {
+      const res = await fetch(target, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(4000) });
+      return { ok: true, detail: `responded HTTP ${res.status} at ${target}` };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      // try the next candidate before giving up
+    }
+  }
+  return { ok: false, detail: `no reachable endpoint (${lastError})` };
+}
+
 async function ollamaModels(): Promise<string[]> {
   try {
     const res = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(5000) });
@@ -394,15 +412,25 @@ export const hostRouter = router({
       if (client.connectTokenExpiresAt && client.connectTokenExpiresAt < new Date()) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Connect token expired" });
       }
+
+      const reportedUrl = (input.url ?? client.url ?? "").trim();
+      const probe = await probeHostReachable(reportedUrl);
+      if (!probe.ok) {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: `Host is not connected: ${probe.detail}`,
+        });
+      }
+
       if (client.status === "PENDING") {
         await prisma.hostClient.update({
           where: { id: client.id },
-          data: { status: "ACTIVE", lastConnectedAt: new Date(), url: input.url ?? client.url },
+          data: { status: "ACTIVE", lastConnectedAt: new Date(), url: reportedUrl },
         });
       } else {
         await prisma.hostClient.update({
           where: { id: client.id },
-          data: { lastConnectedAt: new Date(), url: input.url ?? client.url },
+          data: { lastConnectedAt: new Date(), url: reportedUrl },
         });
       }
       const groupId = client.connectTokenGroupId ?? null;

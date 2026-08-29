@@ -117,6 +117,7 @@ export default function ToolsV2Page() {
     setPendingDestructiveTool(false)
     try {
       const args = JSON.parse(toolArgs)
+      await api.toolsV2.approveToolExecution(selectedTool!, args)
       const result = await api.toolsV2.executeTool({ toolId: selectedTool!, args, autoApprove: true })
       setToolResult(JSON.stringify(result, null, 2))
     } catch (e: any) {

@@ -142,8 +142,13 @@ export class SkillEngine {
     }
   }
 
-  async unregister(skillId: string): Promise<void> {
-    await prisma.skill.deleteMany({ where: { id: skillId } })
+  async unregister(skillId: string, userId: string): Promise<void> {
+    const skill = await prisma.skill.findUnique({ where: { id: skillId } })
+    if (!skill) throw new Error(`Skill ${skillId} not found`)
+    if (skill.userId !== userId) {
+      throw new Error("You can only unregister skills you own")
+    }
+    await prisma.skill.delete({ where: { id: skillId } })
   }
 
   async execute(skillId: string, context: SkillExecutionContext): Promise<SkillResult> {

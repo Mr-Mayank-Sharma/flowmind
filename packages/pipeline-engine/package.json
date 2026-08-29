@@ -11,7 +11,8 @@
   "dependencies": {
     "@flowmind/llm-router": "workspace:*",
     "@flowmind/provider-registry": "workspace:*",
-    "@flowmind/skill-engine": "workspace:*"
+    "@flowmind/skill-engine": "workspace:*",
+    "isolated-vm": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

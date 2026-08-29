@@ -1,4 +1,5 @@
 import { z } from "zod";
+import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../middleware/trpc";
 import { prisma } from "@flowmind/db";
@@ -10,12 +11,46 @@ import { SessionEngine } from "@flowmind/session-engine";
 import { providerRegistry } from "@flowmind/provider-registry";
 import { pluginEngine } from "@flowmind/plugin-engine";
 import { createTodoWriteTool } from "@flowmind/tool-system";
+import { encrypt, decrypt } from "../lib/crypto";
 
 const sessionEngines = new Map<string, SessionEngine>();
 const snapshotManagers = new Map<string, SnapshotManager>();
 const permissionRulesByUser = new Map<string, Array<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }>>();
 
 const DESTRUCTIVE_TOOLS = new Set(["bash", "write", "edit", "apply_patch", "applypatch", "update_todos"]);
+
+const APPROVAL_TTL_MS = 60_000;
+interface ToolApproval {
+  token: string;
+  userId: string;
+  toolId: string;
+  argsHash: string;
+  expiresAt: number;
+}
+const pendingToolApprovals = new Map<string, ToolApproval>();
+
+function hashToolArgs(args: Record<string, unknown>): string {
+  return JSON.stringify(args);
+}
+
+function pruneExpiredApprovals(now: number): void {
+  for (const [token, approval] of pendingToolApprovals) {
+    if (approval.expiresAt < now) pendingToolApprovals.delete(token);
+  }
+}
+
+function consumeToolApproval(userId: string, toolId: string, args: Record<string, unknown>): boolean {
+  const now = Date.now();
+  pruneExpiredApprovals(now);
+  const argsHash = hashToolArgs(args);
+  for (const [token, approval] of pendingToolApprovals) {
+    if (approval.userId === userId && approval.toolId === toolId && approval.argsHash === argsHash) {
+      pendingToolApprovals.delete(token);
+      return true;
+    }
+  }
+  return false;
+}
 
 function getSessionEngine(sessionId: string): SessionEngine {
   if (!sessionEngines.has(sessionId)) {
@@ -63,6 +98,29 @@ export const toolsV2Router = router({
       };
     }),
 
+  approveToolExecution: protectedProcedure
+    .input(z.object({
+      toolId: z.string(),
+      args: z.record(z.unknown()),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const tool = toolRegistry.get(input.toolId);
+      if (!tool) throw new TRPCError({ code: "NOT_FOUND", message: `Tool ${input.toolId} not found` });
+      if (!DESTRUCTIVE_TOOLS.has(input.toolId)) return { approved: true, token: "" };
+
+      const now = Date.now();
+      pruneExpiredApprovals(now);
+      const token = crypto.randomUUID();
+      pendingToolApprovals.set(token, {
+        token,
+        userId: ctx.userId!,
+        toolId: input.toolId,
+        argsHash: hashToolArgs(input.args),
+        expiresAt: now + APPROVAL_TTL_MS,
+      });
+      return { approved: true, token };
+    }),
+
   executeTool: protectedProcedure
     .input(z.object({
       toolId: z.string(),
@@ -74,7 +132,17 @@ export const toolsV2Router = router({
       const tool = toolRegistry.get(input.toolId);
       if (!tool) throw new TRPCError({ code: "NOT_FOUND", message: `Tool ${input.toolId} not found` });
 
-      if (DESTRUCTIVE_TOOLS.has(input.toolId) && !input.autoApprove) {
+      const isDestructive = DESTRUCTIVE_TOOLS.has(input.toolId);
+      let approved = false;
+      if (isDestructive && input.autoApprove) {
+        approved = consumeToolApproval(ctx.userId!, input.toolId, input.args);
+        if (!approved) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Tool ${input.toolId} modifies the filesystem or runs commands. No server-side approval found; request approval before executing.`,
+          });
+        }
+      } else if (isDestructive) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: `Tool ${input.toolId} modifies the filesystem or runs commands. Confirm execution to continue.`,
@@ -89,7 +157,7 @@ export const toolsV2Router = router({
         messageId: `msg_${Date.now()}`,
         agent: "user",
         async ask(permInput) {
-          if (DESTRUCTIVE_TOOLS.has(input.toolId) && input.autoApprove) return;
+          if (isDestructive && approved) return;
           throw new TRPCError({
             code: "FORBIDDEN",
             message: `Tool ${input.toolId} requires approval for: ${JSON.stringify(permInput)}`,
@@ -160,6 +228,18 @@ export const toolsV2Router = router({
     .input(z.object({ filePath: z.string(), line: z.number(), column: z.number() }))
     .query(async ({ input }) => {
       return lspManager.getHover(input.filePath, input.line, input.column);
+    }),
+
+  lspGetDiagnostics: protectedProcedure
+    .input(z.object({ filePath: z.string() }))
+    .query(async ({ input }) => {
+      try {
+        const diagnostics = await lspManager.getDiagnostics(input.filePath)
+        return { supported: true, diagnostics }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "LSP diagnostics are not supported"
+        return { supported: false, message, diagnostics: [] }
+      }
     }),
 
   // --- Snapshot System ---
@@ -267,17 +347,52 @@ export const toolsV2Router = router({
 
   setProviderKey: protectedProcedure
     .input(z.object({ providerId: z.string(), apiKey: z.string() }))
-    .mutation(async ({ input }) => {
-      providerRegistry.setApiKey(input.providerId, input.apiKey);
-      return { success: true };
+    .mutation(async ({ input, ctx }) => {
+      const provider = providerRegistry.getProvider(input.providerId)
+      if (!provider) {
+        throw new TRPCError({ code: "NOT_FOUND", message: `Provider ${input.providerId} not found` })
+      }
+      if (provider.authType === "none") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `${input.providerId} does not require an API key` })
+      }
+
+      const encryptedValue = encrypt(input.apiKey)
+      await prisma.providerCredential.upsert({
+        where: { userId_provider: { userId: ctx.userId!, provider: input.providerId } },
+        create: { userId: ctx.userId!, provider: input.providerId, encryptedValue },
+        update: { encryptedValue },
+      })
+
+      providerRegistry.setApiKey(input.providerId, input.apiKey)
+      return { success: true }
     }),
 
   getProviderKeys: protectedProcedure
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const credentials = await prisma.providerCredential.findMany({
+        where: { userId: ctx.userId! },
+        select: { provider: true, encryptedValue: true },
+      })
+
+      const persisted = new Map<string, string>()
+      for (const cred of credentials) {
+        try {
+          persisted.set(cred.provider, decrypt(cred.encryptedValue))
+        } catch {
+          // Unreadable credential (key rotation) -> treat as absent, never log plaintext
+        }
+      }
+
+      for (const [provider, key] of persisted) {
+        if (!providerRegistry.getApiKey(provider)) {
+          providerRegistry.setApiKey(provider, key)
+        }
+      }
+
       return providerRegistry.getProviders().map((p) => ({
         providerId: p.id,
-        hasKey: Boolean(providerRegistry.getApiKey(p.id)),
-      }));
+        hasKey: p.authType === "none" ? false : Boolean(providerRegistry.getApiKey(p.id) ?? persisted.get(p.id)),
+      }))
     }),
 
   // --- Plugin Engine ---

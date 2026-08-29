@@ -39,6 +39,8 @@ describe("SkillEngine - sandbox security", () => {
     vi.mocked(prisma.skill.findUnique).mockResolvedValue({
       id: "test-skill-1",
       userId: "user-1",
+      groupId: null,
+      hostGroupId: null,
       name: "test",
       description: "",
       triggerPattern: null,
@@ -64,6 +66,8 @@ describe("SkillEngine - sandbox security", () => {
     vi.mocked(prisma.skill.findUnique).mockResolvedValue({
       id: "test-skill-1",
       userId: "user-1",
+      groupId: null,
+      hostGroupId: null,
       name: "test",
       description: "",
       triggerPattern: null,
@@ -89,6 +93,8 @@ describe("SkillEngine - sandbox security", () => {
     vi.mocked(prisma.skill.findUnique).mockResolvedValue({
       id: "test-skill-1",
       userId: "user-1",
+      groupId: null,
+      hostGroupId: null,
       name: "test",
       description: "",
       triggerPattern: null,
@@ -114,6 +120,8 @@ describe("SkillEngine - sandbox security", () => {
     vi.mocked(prisma.skill.findUnique).mockResolvedValue({
       id: "test-skill-1",
       userId: "user-1",
+      groupId: null,
+      hostGroupId: null,
       name: "test",
       description: "",
       triggerPattern: null,
@@ -139,6 +147,8 @@ describe("SkillEngine - sandbox security", () => {
     vi.mocked(prisma.skill.findUnique).mockResolvedValue({
       id: "test-skill-1",
       userId: "user-1",
+      groupId: null,
+      hostGroupId: null,
       name: "test",
       description: "",
       triggerPattern: null,
@@ -164,6 +174,8 @@ describe("SkillEngine - sandbox security", () => {
     vi.mocked(prisma.skill.findUnique).mockResolvedValue({
       id: "test-skill-1",
       userId: "user-1",
+      groupId: null,
+      hostGroupId: null,
       name: "test",
       description: "",
       triggerPattern: null,
@@ -222,6 +234,8 @@ describe("SkillEngine - successRate", () => {
       .mockResolvedValueOnce({
         id: "test-skill-1",
         userId: "user-1",
+        groupId: null,
+        hostGroupId: null,
         name: "test",
         description: "",
         triggerPattern: null,
@@ -237,6 +251,8 @@ describe("SkillEngine - successRate", () => {
       .mockResolvedValueOnce({
         id: "test-skill-1",
         userId: "user-1",
+        groupId: null,
+        hostGroupId: null,
         name: "test",
         description: "",
         triggerPattern: null,

@@ -4,6 +4,12 @@ import { router, protectedProcedure } from "../middleware/trpc";
 import { BillingService } from "@flowmind/billing";
 import { Tier } from "@flowmind/shared";
 
+const BILLING_MOCK_ENABLED = process.env.ENABLE_DEV_BILLING_MOCK === "true" && process.env.NODE_ENV !== "production";
+
+function billingNotConfigured(): never {
+  throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing is not configured. Contact the administrator." });
+}
+
 export const billingRouter = router({
   getSubscription: protectedProcedure
     .query(async ({ ctx }) => {
@@ -20,15 +26,15 @@ export const billingRouter = router({
     .input(z.object({ tier: z.enum(["PRO", "TEAM"]) }))
     .mutation(async ({ input, ctx }) => {
       if (!process.env.STRIPE_SECRET_KEY) {
-        if (process.env.NODE_ENV === "production") {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing is not configured" });
+        if (BILLING_MOCK_ENABLED) {
+          await ctx.prisma.subscription.upsert({
+            where: { userId: ctx.userId ?? undefined },
+            update: { tier: input.tier },
+            create: { userId: ctx.userId!, tier: input.tier },
+          });
+          return { url: "/settings/billing?success=1", mock: true };
         }
-        await ctx.prisma.subscription.upsert({
-          where: { userId: ctx.userId ?? undefined },
-          update: { tier: input.tier },
-          create: { userId: ctx.userId!, tier: input.tier },
-        });
-        return { url: "/settings/billing?success=1", mock: true };
+        billingNotConfigured();
       }
 
       const url = await BillingService.createCheckoutSession({
@@ -41,10 +47,10 @@ export const billingRouter = router({
   createPortalSession: protectedProcedure
     .mutation(async ({ ctx }) => {
       if (!process.env.STRIPE_SECRET_KEY) {
-        if (process.env.NODE_ENV === "production") {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing is not configured" });
+        if (BILLING_MOCK_ENABLED) {
+          return { url: "/settings/billing" };
         }
-        return { url: "/settings/billing" };
+        billingNotConfigured();
       }
 
       const url = await BillingService.createPortalSession(ctx.userId!);
@@ -92,15 +98,15 @@ export const billingRouter = router({
       const memberCount = await ctx.prisma.orgMember.count({ where: { orgId: input.orgId } });
 
       if (!process.env.STRIPE_SECRET_KEY) {
-        if (process.env.NODE_ENV === "production") {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing is not configured" });
+        if (BILLING_MOCK_ENABLED) {
+          await ctx.prisma.orgSubscription.upsert({
+            where: { orgId: input.orgId },
+            update: { tier: input.tier, memberLimit: input.tier === "TEAM" ? 10 : 100, membersUsed: memberCount },
+            create: { orgId: input.orgId, tier: input.tier, memberLimit: input.tier === "TEAM" ? 10 : 100, membersUsed: memberCount },
+          });
+          return { url: "/settings/billing?success=1", mock: true };
         }
-        await ctx.prisma.orgSubscription.upsert({
-          where: { orgId: input.orgId },
-          update: { tier: input.tier, memberLimit: input.tier === "TEAM" ? 10 : 100, membersUsed: memberCount },
-          create: { orgId: input.orgId, tier: input.tier, memberLimit: input.tier === "TEAM" ? 10 : 100, membersUsed: memberCount },
-        });
-        return { url: "/settings/billing?success=1", mock: true };
+        billingNotConfigured();
       }
 
       const url = await BillingService.createCheckoutSession({

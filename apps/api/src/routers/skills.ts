@@ -81,10 +81,29 @@ export const skillsRouter = router({
 
   install: protectedProcedure
     .input(z.object({ skillId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const skill = await prisma.marketplaceSkill.findUnique({ where: { id: input.skillId } })
       if (!skill) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Skill not found" })
+      }
+
+      const manifest = skill.manifest as Record<string, unknown> | null
+      const name = typeof manifest?.name === "string" ? manifest.name : skill.name
+      const description = typeof manifest?.description === "string" ? manifest.description : skill.description
+
+      const existing = await prisma.skill.findFirst({
+        where: { userId: ctx.userId!, name },
+      })
+
+      if (existing) {
+        await prisma.skill.update({
+          where: { id: existing.id },
+          data: { description, code: skill.code, isActive: true },
+        })
+      } else {
+        await prisma.skill.create({
+          data: { userId: ctx.userId!, name, description, code: skill.code, isActive: true },
+        })
       }
 
       await prisma.marketplaceSkill.update({
@@ -92,7 +111,11 @@ export const skillsRouter = router({
         data: { downloads: { increment: 1 } },
       })
 
-      return { success: true, skill: { name: skill.name, version: skill.version, manifest: skill.manifest, code: skill.code } }
+      return {
+        success: true,
+        action: "installed",
+        skill: { name, version: skill.version, manifest: skill.manifest, code: skill.code },
+      }
     }),
 
   publish: protectedProcedure

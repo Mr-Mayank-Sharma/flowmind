@@ -88,6 +88,7 @@ export type Message = {
   sessionId: string;
   role: MessageRole;
   content: string;
+  error: boolean;
   toolCalls: ToolCall[] | null;
   toolResults: ToolResult[] | null;
   model: string | null;

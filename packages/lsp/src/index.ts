@@ -106,14 +106,8 @@ export class LSPClient {
     })
   }
 
-  async getDiagnostics(filePath: string): Promise<LSPDiagnostic[]> {
-    if (!this.initialized) await this.start()
-    const uri = `file://${filePath}`
-    const response = await this.sendRequest("textDocument/publishDiagnostics", {
-      uri,
-      diagnostics: [],
-    }, true)
-    return []
+  async getDiagnostics(_filePath: string): Promise<LSPDiagnostic[]> {
+    throw new Error("LSP diagnostics are not supported in this deployment")
   }
 
   async goToDefinition(filePath: string, line: number, column: number): Promise<LSPDefinition | null> {
@@ -255,6 +249,14 @@ export class LSPManager {
   async getHover(filePath: string, line: number, column: number) {
     const client = this.getClient(filePath)
     return client?.getHover(filePath, line, column) ?? null
+  }
+
+  async getDiagnostics(filePath: string): Promise<LSPDiagnostic[]> {
+    const client = this.getClient(filePath)
+    if (!client) {
+      throw new Error("LSP diagnostics are not supported in this deployment")
+    }
+    return client.getDiagnostics(filePath)
   }
 
   async stopAll(): Promise<void> {

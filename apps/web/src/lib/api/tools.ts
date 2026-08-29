@@ -14,6 +14,8 @@ export const toolsV2Api = {
   getTool: (id: string) => tRPCQuery<any>("toolsV2.getTool", { id }),
   executeTool: (input: { toolId: string; args: Record<string, unknown>; sessionId?: string; autoApprove?: boolean }) =>
     tRPCMutation<any>("toolsV2.executeTool", input),
+  approveToolExecution: (toolId: string, args: Record<string, unknown>) =>
+    tRPCMutation<any>("toolsV2.approveToolExecution", { toolId, args }),
   getPermissionRules: () => tRPCQuery<any>("toolsV2.getPermissionRules"),
   updatePermissionRules: (rules: any[]) =>
     tRPCMutation<any>("toolsV2.updatePermissionRules", { rules }),

@@ -22,9 +22,9 @@ export const chatRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" })
       }
 
-      const saveMessage = (role: MessageRole, content: string) =>
+      const saveMessage = (role: MessageRole, content: string, options?: { error?: boolean }) =>
         ctx.prisma.message.create({
-          data: { sessionId: input.sessionId, role, content },
+          data: { sessionId: input.sessionId, role, content, error: options?.error ?? false },
         })
 
       const emitter = getSessionEmitter(input.sessionId)

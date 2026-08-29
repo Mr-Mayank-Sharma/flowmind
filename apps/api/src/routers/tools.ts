@@ -46,6 +46,11 @@ export const toolsRouter = router({
   execute: protectedProcedure
     .input(z.object({ skillId: z.string(), input: z.string() }))
     .mutation(async ({ input, ctx }) => {
+      const skill = await ctx.prisma.skill.findUnique({ where: { id: input.skillId } });
+      if (!skill) throw new TRPCError({ code: "NOT_FOUND", message: "Skill not found" });
+      if (skill.userId !== ctx.userId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You can only execute skills you own" });
+      }
       const result = await skillEngine.execute(input.skillId, {
         userId: ctx.userId!,
         input: input.input,

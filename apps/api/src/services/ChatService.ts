@@ -80,6 +80,7 @@ export interface SendMessageResult {
   reply: string
   steps?: AgentLoopStep[]
   iterations?: number
+  error?: boolean
 }
 
 export interface StreamingCallbacks {
@@ -88,7 +89,9 @@ export interface StreamingCallbacks {
   onError: (error: Error) => void
 }
 
-async function callAgentRuntime(input: SendMessageInput): Promise<string> {
+export type SaveMessageFn = (role: MessageRole, content: string, options?: { error?: boolean }) => Promise<any>
+
+async function callAgentRuntime(input: SendMessageInput): Promise<{ reply: string; generated: boolean }> {
   const res = await fetch(`${AGENT_RUNTIME_URL}/chat/send`, {
     method: "POST",
     headers: {
@@ -110,33 +113,36 @@ async function callAgentRuntime(input: SendMessageInput): Promise<string> {
   }
 
   const data = await res.json()
-  return data.reply || "I processed your request."
+  const rawReply = typeof data?.reply === "string" ? data.reply : ""
+  return { reply: rawReply || "I processed your request.", generated: rawReply.trim().length > 0 }
 }
 
-async function callAgentRuntimeWithRetry(input: SendMessageInput): Promise<string> {
+async function callAgentRuntimeWithRetry(input: SendMessageInput): Promise<{ reply: string; isFallback: boolean; generated: boolean }> {
   return agentRuntimeCircuitBreaker.call(
-    () => withRetry(() => callAgentRuntime(input), {
-      maxRetries: 2,
-      baseDelayMs: 500,
-      retryOn: (err) => {
-        const status = (err as any)?.status
-        return !status || status >= 500 || status === 429
-      },
-    }),
+    () =>
+      withRetry(() => callAgentRuntime(input), {
+        maxRetries: 2,
+        baseDelayMs: 500,
+        retryOn: (err) => {
+          const status = (err as any)?.status
+          return !status || status >= 500 || status === 429
+        },
+      }).then((result) => ({ ...result, isFallback: false })),
     async () => {
       logger.warn("Circuit breaker open for agent runtime, using fallback")
-      return "The agent runtime is temporarily unavailable. Your message has been saved."
+      return { reply: "The agent runtime is temporarily unavailable. Your message has been saved.", isFallback: true, generated: false }
     },
   )
 }
 
 export class ChatService {
-  async sendMessage(input: SendMessageInput, saveMessage: (role: MessageRole, content: string) => Promise<any>): Promise<{ message: any; reply: string }> {
+  async sendMessage(input: SendMessageInput, saveMessage: SaveMessageFn): Promise<{ message: any; reply: string; error: boolean }> {
     const startTime = Date.now()
 
     await saveMessage(MessageRole.USER, input.content)
 
     let reply: string
+    let isError: boolean
     try {
       let enhancedInput = input
       try {
@@ -148,24 +154,27 @@ export class ChatService {
       } catch {
         logger.debug({ userId: input.userId, sessionId: input.sessionId }, "Context engine search failed, proceeding without context");
       }
-      reply = await callAgentRuntimeWithRetry(enhancedInput)
+      const result = await callAgentRuntimeWithRetry(enhancedInput)
+      reply = result.reply
+      isError = result.isFallback || !result.generated
     } catch (err) {
       logger.error({ err, sessionId: input.sessionId, durationMs: Date.now() - startTime }, "Agent runtime call failed after all retries")
       reply = "I encountered an error processing your request. Please try again."
+      isError = true
     }
 
-    const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
+    const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply, { error: isError })
 
     logger.info({ sessionId: input.sessionId, durationMs: Date.now() - startTime, userId: input.userId }, "Message processed")
 
-    return { message: assistantMessage, reply }
+    return { message: assistantMessage, reply, error: isError }
   }
 
   async sendMessageWithAgentLoop(
     input: SendMessageInput,
-    saveMessage: (role: MessageRole, content: string) => Promise<any>,
+    saveMessage: SaveMessageFn,
     callbacks?: StreamingCallbacks,
-  ): Promise<{ message: any; reply: string; steps: AgentLoopStep[]; iterations: number }> {
+  ): Promise<{ message: any; reply: string; steps: AgentLoopStep[]; iterations: number; error: boolean }> {
     const startTime = Date.now()
     const requestedModel = input.model?.trim() || ""
 
@@ -194,9 +203,9 @@ export class ChatService {
 
     if (!provider) {
       const reply = "No LLM provider is configured. Please add an API key in Settings."
-      const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
+      const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply, { error: true })
       callbacks?.onError(new Error(reply))
-      return { message: assistantMessage, reply, steps: [], iterations: 0 }
+      return { message: assistantMessage, reply, steps: [], iterations: 0, error: true }
     }
 
     let model: string
@@ -223,20 +232,23 @@ export class ChatService {
         onStep: (step) => callbacks?.onStep(step),
       })
 
-      const reply = result.response || "I processed your request."
-      const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
+      const rawReply = typeof result.response === "string" ? result.response : ""
+      const reply = rawReply || "I processed your request."
+      const isError = rawReply.trim().length === 0
+      const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply, { error: isError })
 
       logger.info({
         sessionId: input.sessionId,
         durationMs: Date.now() - startTime,
         userId: input.userId,
         iterations: result.iterations,
+        error: isError,
         toolCalls: result.steps.filter((s) => s.type === "tool_call").length,
       }, "Agent loop completed")
 
-      callbacks?.onDone({ reply, steps: result.steps, iterations: result.iterations })
+      callbacks?.onDone({ reply, steps: result.steps, iterations: result.iterations, error: isError })
 
-      return { message: assistantMessage, reply, steps: result.steps, iterations: result.iterations }
+      return { message: assistantMessage, reply, steps: result.steps, iterations: result.iterations, error: isError }
     } catch (err) {
       logger.error({ err, sessionId: input.sessionId, durationMs: Date.now() - startTime }, "Agent loop failed, falling back to runtime")
 
@@ -250,15 +262,17 @@ export class ChatService {
           }
         } catch {}
 
-        const reply = await callAgentRuntimeWithRetry(enhancedInput)
-        const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
-        callbacks?.onDone({ reply, steps: [], iterations: 0 })
-        return { message: assistantMessage, reply, steps: [], iterations: 0 }
+        const result = await callAgentRuntimeWithRetry(enhancedInput)
+        const reply = result.reply
+        const isError = result.isFallback || !result.generated
+        const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply, { error: isError })
+        callbacks?.onDone({ reply, steps: [], iterations: 0, error: isError })
+        return { message: assistantMessage, reply, steps: [], iterations: 0, error: isError }
       } catch (innerErr) {
         const reply = "I encountered an error processing your request. Please try again."
-        const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply)
+        const assistantMessage = await saveMessage(MessageRole.ASSISTANT, reply, { error: true })
         callbacks?.onError(innerErr instanceof Error ? innerErr : new Error(String(innerErr)))
-        return { message: assistantMessage, reply, steps: [], iterations: 0 }
+        return { message: assistantMessage, reply, steps: [], iterations: 0, error: true }
       }
     }
   }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../middleware/trpc";
 
 const CHANNEL_SECRET_ENV: Record<string, string | undefined> = {
@@ -8,15 +9,47 @@ const CHANNEL_SECRET_ENV: Record<string, string | undefined> = {
   whatsapp: process.env.WHATSAPP_WEBHOOK_SECRET,
 };
 
+const ALLOW_UNVERIFIED_WEBHOOKS = process.env.ALLOW_UNVERIFIED_WEBHOOKS === "true";
+
 function verifyChannelSecret(channel: string, provided: string | undefined): boolean {
   const expected = CHANNEL_SECRET_ENV[channel] || process.env.WEBHOOK_SECRET;
   if (!expected) {
-    if (process.env.NODE_ENV === "production") {
-      console.warn(`webhooks.${channel}: no webhook secret configured; request accepted unverified`);
+    if (process.env.NODE_ENV === "production" && !ALLOW_UNVERIFIED_WEBHOOKS) {
+      console.warn(`webhooks.${channel}: no webhook secret configured; request rejected in production`);
+      return false;
     }
     return true;
   }
   return provided === expected;
+}
+
+function rejectWebhook(channel: string): never {
+  throw new TRPCError({ code: "UNAUTHORIZED", message: `Invalid webhook secret for ${channel}` });
+}
+
+async function forwardToAgentRuntime(channel: string, payload: Record<string, unknown>): Promise<void> {
+  const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
+  let response: Response;
+  try {
+    response = await fetch(`${agentUrl}/webhook/ingest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel, payload }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (err) {
+    throw new TRPCError({
+      code: "BAD_GATEWAY",
+      message: `Agent runtime unreachable while ingesting ${channel} webhook`,
+      cause: err,
+    });
+  }
+  if (!response.ok) {
+    throw new TRPCError({
+      code: "BAD_GATEWAY",
+      message: `Agent runtime rejected ${channel} webhook with status ${response.status}`,
+    });
+  }
 }
 
 function extractText(channel: string, body: any): { text: string; userId: string; channelId: string; media?: { id: string; type: string; mimeType: string; filename: string } } {
@@ -70,17 +103,9 @@ export const webhooksRouter = router({
   whatsapp: publicProcedure
     .input(z.object({ body: z.any(), secret: z.string().optional() }))
     .mutation(async ({ input }) => {
-      if (!verifyChannelSecret("whatsapp", input.secret)) {
-        return { received: false, error: "invalid secret" };
-      }
+      if (!verifyChannelSecret("whatsapp", input.secret)) rejectWebhook("whatsapp");
       const extracted = extractText("whatsapp", input.body);
-      const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
-      await fetch(`${agentUrl}/webhook/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: "whatsapp", payload: { ...extracted, raw: input.body } }),
-        signal: AbortSignal.timeout(5_000),
-      }).catch(() => {});
+      await forwardToAgentRuntime("whatsapp", { ...extracted, raw: input.body });
       return { received: true, text: extracted.text, channelId: extracted.channelId };
     }),
 
@@ -91,38 +116,21 @@ export const webhooksRouter = router({
       secret: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const webhookSecret = process.env.WEBHOOK_SECRET || "";
-      if (webhookSecret && input.secret !== webhookSecret) {
-        return { received: false, error: "invalid secret" };
-      }
+      if (!verifyChannelSecret(input.channel, input.secret)) rejectWebhook(input.channel);
 
       const extracted = extractText(input.channel, input.body);
 
-      const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
-      await fetch(`${agentUrl}/webhook/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: input.channel, payload: { ...extracted, raw: input.body } }),
-        signal: AbortSignal.timeout(5_000),
-      }).catch(() => {});
+      await forwardToAgentRuntime(input.channel, { ...extracted, raw: input.body });
       return { received: true, channel: input.channel, text: extracted.text.slice(0, 200), userId: extracted.userId, channelId: extracted.channelId };
     }),
 
   telegram: publicProcedure
     .input(z.object({ body: z.any(), secret: z.string().optional() }))
     .mutation(async ({ input }) => {
-      if (!verifyChannelSecret("telegram", input.secret)) {
-        return { received: false, error: "invalid secret" };
-      }
+      if (!verifyChannelSecret("telegram", input.secret)) rejectWebhook("telegram");
       const { text, userId, channelId } = extractText("telegram", input.body);
 
-      const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
-      await fetch(`${agentUrl}/webhook/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: "telegram", payload: { text, userId, channelId, raw: input.body } }),
-        signal: AbortSignal.timeout(5_000),
-      }).catch(() => {});
+      await forwardToAgentRuntime("telegram", { text, userId, channelId, raw: input.body });
 
       return { received: true, message: text, chatId: channelId };
     }),
@@ -132,19 +140,11 @@ export const webhooksRouter = router({
     .mutation(async ({ input }) => {
       const body = input.body as any;
       if (body?.challenge) return { challenge: body.challenge };
-      if (!verifyChannelSecret("slack", input.secret)) {
-        return { received: false, error: "invalid secret" };
-      }
+      if (!verifyChannelSecret("slack", input.secret)) rejectWebhook("slack");
 
       const { text, userId, channelId } = extractText("slack", body);
 
-      const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
-      await fetch(`${agentUrl}/webhook/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: "slack", payload: { text, userId, channelId, raw: body } }),
-        signal: AbortSignal.timeout(5_000),
-      }).catch(() => {});
+      await forwardToAgentRuntime("slack", { text, userId, channelId, raw: body });
 
       return { received: true, text, channelId };
     }),
@@ -152,18 +152,10 @@ export const webhooksRouter = router({
   discord: publicProcedure
     .input(z.object({ body: z.any(), secret: z.string().optional() }))
     .mutation(async ({ input }) => {
-      if (!verifyChannelSecret("discord", input.secret)) {
-        return { received: false, error: "invalid secret" };
-      }
+      if (!verifyChannelSecret("discord", input.secret)) rejectWebhook("discord");
       const { text, userId, channelId } = extractText("discord", input.body);
 
-      const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
-      await fetch(`${agentUrl}/webhook/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: "discord", payload: { text, userId, channelId, raw: input.body } }),
-        signal: AbortSignal.timeout(5_000),
-      }).catch(() => {});
+      await forwardToAgentRuntime("discord", { text, userId, channelId, raw: input.body });
 
       return { received: true, text, channelId };
     }),

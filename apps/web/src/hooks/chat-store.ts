@@ -16,6 +16,7 @@ export interface Message {
   role: Role;
   content: string;
   timestamp: number;
+  error?: boolean;
   toolCalls?: ToolCall[];
 }
 
@@ -69,6 +70,7 @@ function apiMessageToLocal(apiMsg: any, sessionId: string): Message {
     role: apiMsg.role as Role,
     content: apiMsg.content,
     timestamp: isNaN(ts.getTime()) ? Date.now() : ts.getTime(),
+    error: Boolean(apiMsg.error),
   }
 }
 
@@ -271,15 +273,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     let streamTimer: ReturnType<typeof setTimeout> | undefined
 
-    const finalize = (contentOverride?: string) => {
+    const finalize = (contentOverride?: string, isError = false) => {
       if (finished) return
       finished = true
       const content = contentOverride ?? ((finalContent ?? accumulatedContent) || "I processed your request.")
+      const error = isError || !(finalContent ?? accumulatedContent)
       set((s) => {
         const msgs = s.messages[currentSessionId] || []
         const updatedMsgs = msgs.map((m) =>
           m.id === assistantId
-            ? { ...m, content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined }
+            ? { ...m, content, error: error || undefined, toolCalls: toolCalls.length > 0 ? toolCalls : undefined }
             : m
         )
         const next = {
@@ -306,13 +309,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       if (parsed.type === "error") {
-        finalize(parsed.message || "An error occurred.")
+        finalize(parsed.message || "An error occurred.", true)
         return
       }
 
       if (parsed.type === "done") {
         finalContent = parsed.reply || accumulatedContent
-        finalize()
+        finalize(undefined, parsed.error === true)
         return
       }
 
@@ -398,7 +401,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } catch (err) {
           if ((err as any)?.name === "AbortError") return
           if (!finished) {
-            finalize("Connection lost. Please try again.")
+            finalize("Connection lost. Please try again.", true)
           }
         }
       }
@@ -407,7 +410,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       streamTimer = setTimeout(() => {
         abortController.abort()
-        finalize("The response is taking too long. Please try again.")
+        finalize("The response is taking too long. Please try again.", true)
       }, MAX_STREAM_DURATION)
 
       const mutationPromise = api.chat.sendMessage({
@@ -422,12 +425,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (mutationResult.status === "rejected") {
         const err = mutationResult.reason
         const isUnauthorized = (err as any)?.code === "UNAUTHORIZED"
-        finalize(isUnauthorized ? "Your session expired. Please sign in again." : "I encountered an error processing your request. Please try again.")
+        finalize(isUnauthorized ? "Your session expired. Please sign in again." : "I encountered an error processing your request. Please try again.", true)
       } else if (!finished) {
         finalize()
       }
     } catch (err) {
-      finalize("I encountered an error processing your request. Please try again.")
+      finalize("I encountered an error processing your request. Please try again.", true)
     } finally {
       if (streamTimer) clearTimeout(streamTimer)
       ;(get() as any)._abortController = null

@@ -29,6 +29,25 @@ import { getSessionEmitter, cleanupSessionEmitter } from "./services/session-emi
 import { getRunEmitter } from "./services/run-emitters";
 import { getCronScheduler } from "./services/cron-scheduler";
 import { startRunRecovery } from "./services/run-recovery";
+import { userGroupRoles } from "./services/group-access";
+import { providerRegistry } from "@flowmind/provider-registry";
+import { decrypt } from "./lib/crypto";
+
+async function loadProviderCredentialsFromDb(): Promise<void> {
+  const credentials = await prisma.providerCredential.findMany()
+  let loaded = 0
+  for (const cred of credentials) {
+    try {
+      providerRegistry.setApiKey(cred.provider, decrypt(cred.encryptedValue))
+      loaded += 1
+    } catch {
+      // Unreadable credential (e.g. key rotation) -> skip; never log plaintext
+    }
+  }
+  if (loaded > 0) {
+    console.info(`[provider-registry] Loaded ${loaded} persisted provider credentials from DB`)
+  }
+}
 
 const SENTRY_DSN = process.env.SENTRY_DSN;
 if (SENTRY_DSN) {
@@ -112,6 +131,36 @@ async function main() {
 
   collectDefaultMetrics();
 
+  const INTERNAL_TOKEN = process.env.AGENT_API_KEY || process.env.INTERNAL_API_KEY
+  const requireInternalAuth = (req: { headers: Record<string, string | string[] | undefined> }): boolean => {
+    if (!INTERNAL_TOKEN) {
+      server.log.warn("Internal API token (AGENT_API_KEY/INTERNAL_API_KEY) is not configured; /api/internal/* endpoints are denied")
+      return false
+    }
+    const provided = req.headers["x-internal-token"] ?? req.headers.authorization
+    if (Array.isArray(provided)) return provided.includes(INTERNAL_TOKEN)
+    return typeof provided === "string" && (provided === INTERNAL_TOKEN || provided.replace("Bearer ", "") === INTERNAL_TOKEN)
+  }
+  const requireMetricsAuth = (req: { headers: Record<string, string | string[] | undefined> }): boolean => {
+    if (!INTERNAL_TOKEN) {
+      if (process.env.NODE_ENV === "production") {
+        server.log.warn("Metrics token (AGENT_API_KEY/INTERNAL_API_KEY) is not configured; /metrics denied in production")
+        return false
+      }
+      return true
+    }
+    const provided = req.headers.authorization
+    if (Array.isArray(provided)) return provided.some((p) => p.replace("Bearer ", "") === INTERNAL_TOKEN)
+    return typeof provided === "string" && provided.replace("Bearer ", "") === INTERNAL_TOKEN
+  }
+  const resolveStreamToken = (req: { headers: Record<string, string | string[] | undefined>; query: { token?: string } }): string | undefined => {
+    const headerToken = Array.isArray(req.headers.authorization) ? req.headers.authorization[0] : req.headers.authorization
+    const fromHeader = typeof headerToken === "string" ? headerToken.replace(/^Bearer\s+/i, "") : ""
+    if (fromHeader) return fromHeader
+    if (process.env.NODE_ENV === "production") return undefined
+    return req.query.token
+  }
+
   server.get("/health", async (_req, reply) => {
     const dbOk = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
     const runtimeOk = await fetch(`${process.env.AGENT_RUNTIME_URL || "http://localhost:8001"}/health`)
@@ -127,14 +176,15 @@ async function main() {
     };
   });
 
-  server.get("/metrics", async (_req, reply) => {
+  server.get("/metrics", async (req, reply) => {
+    if (!requireMetricsAuth(req)) return reply.status(401).send({ error: "Unauthorized" })
     reply.header("content-type", register.contentType);
     return register.metrics();
   });
 
-  server.get<{ Params: { sessionId: string } }>("/api/chat/stream/:sessionId", async (req, reply) => {
+  server.get<{ Params: { sessionId: string }; Querystring: { token?: string } }>("/api/chat/stream/:sessionId", async (req, reply) => {
     const { sessionId } = req.params
-    const token = req.headers.authorization?.replace("Bearer ", "") || (req.query as { token?: string })?.token
+    const token = resolveStreamToken(req)
 
     if (!token) {
       return reply.status(401).send({ error: "Authentication required" })
@@ -189,7 +239,7 @@ async function main() {
       safeWrite(`data: ${data}\n\n`)
     }
 
-    const onDone = (result: { reply: string; steps: AgentLoopStep[]; iterations: number }) => {
+    const onDone = (result: { reply: string; steps: AgentLoopStep[]; iterations: number; error?: boolean }) => {
       const data = JSON.stringify({ type: "done", ...result })
       safeWrite(`data: ${data}\n\n`)
       safeWrite("data: [DONE]\n\n")
@@ -229,14 +279,14 @@ async function main() {
 
     for (const { event, data } of emitter.buffer) {
       if (event === "step") onStep(data as AgentLoopStep)
-      else if (event === "done") onDone(data as { reply: string; steps: AgentLoopStep[]; iterations: number })
+      else if (event === "done") onDone(data as { reply: string; steps: AgentLoopStep[]; iterations: number; error?: boolean })
       else if (event === "error") onError(data as Error)
     }
   })
 
-  server.get<{ Params: { runId: string } }>("/api/pipeline/stream/:runId", async (req, reply) => {
+  server.get<{ Params: { runId: string }; Querystring: { token?: string } }>("/api/pipeline/stream/:runId", async (req, reply) => {
     const { runId } = req.params
-    const token = req.headers.authorization?.replace("Bearer ", "") || (req.query as { token?: string })?.token
+    const token = resolveStreamToken(req)
 
     if (!token) {
       return reply.status(401).send({ error: "Authentication required" })
@@ -252,7 +302,16 @@ async function main() {
     }
 
     const run = await prisma.pipelineRun.findUnique({ where: { id: runId }, include: { pipeline: true } })
-    if (!run || run.pipeline.userId !== userId) {
+    if (!run) {
+      return reply.status(404).send({ error: "Run not found" })
+    }
+
+    // Per-tenant scope: allow the pipeline owner, or any user who belongs to the
+    // pipeline's group/org (mirrors the group-membership check in pipeline.getById).
+    const pipeline = run.pipeline
+    const isOwner = pipeline.userId === userId
+    const memberOfGroup = pipeline.groupId ? (await userGroupRoles(userId)).has(pipeline.groupId) : false
+    if (!isOwner && !memberOfGroup) {
       return reply.status(404).send({ error: "Run not found" })
     }
 
@@ -328,14 +387,6 @@ async function main() {
       else if (event === "error") onError(data)
     }
   })
-
-  const INTERNAL_TOKEN = process.env.AGENT_API_KEY || process.env.INTERNAL_API_KEY
-  const requireInternalAuth = (req: { headers: Record<string, string | string[] | undefined> }): boolean => {
-    if (!INTERNAL_TOKEN) return false
-    const provided = req.headers["x-internal-token"] ?? req.headers.authorization
-    if (Array.isArray(provided)) return provided.includes(INTERNAL_TOKEN)
-    return typeof provided === "string" && (provided === INTERNAL_TOKEN || provided.replace("Bearer ", "") === INTERNAL_TOKEN)
-  }
 
   server.post<{ Body: { name: string; description: string; userId: string } }>("/api/internal/create-pipeline", async (req, reply) => {
     if (!requireInternalAuth(req)) return reply.status(401).send({ error: "Unauthorized" });
@@ -456,6 +507,12 @@ async function main() {
   });
 
   try {
+    try {
+      await loadProviderCredentialsFromDb()
+    } catch (err) {
+      server.log.error(err, "Failed to load provider credentials from DB")
+    }
+
     await server.listen({ port: PORT, host: HOST });
     server.log.info(`FlowMind API running on http://${HOST}:${PORT}`);
 

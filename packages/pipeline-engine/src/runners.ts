@@ -3,6 +3,8 @@ import { resolveValue, buildExpressionContext } from "./expressions"
 import { kindForNodeType } from "./types"
 import { getDirectPredecessors } from "./graph"
 import { runAgentLoop, resolveDefaultOllamaModel, type AgentTool, type ProviderFacade, type CompletionRequest, type CompletionResult, type StreamCallbacks, type Message } from "@flowmind/llm-router"
+import { BlockedUrlError, fetchPublic } from "./network-guard"
+import { runCodeSandboxed, sanitizeEnv } from "./code-sandbox"
 
 import nodemailer from "nodemailer"
 
@@ -75,7 +77,7 @@ const triggerRunners: Record<string, (node: PipelineNode, context: ExecutionCont
     let payload: unknown = { polled: true, time: new Date().toISOString() }
     if (endpoint) {
       try {
-        const res = await fetch(endpoint, { signal: AbortSignal.timeout(10_000) })
+        const res = await fetchPublic(endpoint, { timeoutMs: 10_000 })
         payload = await res.json()
       } catch (err) {
         payload = { error: String(err), time: new Date().toISOString() }
@@ -360,7 +362,16 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
     let body: string | undefined
     try { body = bodyRaw ? JSON.stringify(JSON.parse(bodyRaw ?? "{}")) : undefined } catch { body = bodyRaw }
 
-    const res = await fetch(url, { method, headers, body, signal: context.abortSignal })
+    if (context.abortSignal.aborted) {
+      return { status: 0, error: "Request aborted", url, json: { status: 0, error: "aborted" } }
+    }
+
+    const res = await fetchPublic(url, {
+      method,
+      headers,
+      body,
+      timeoutMs: 15_000,
+    })
     const resBody = await res.text()
     let parsed: unknown
     try { parsed = JSON.parse(resBody) } catch { parsed = resBody }
@@ -369,10 +380,24 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
   async databaseQuery(node, context) {
     const exprCtx = buildExpressionContext(context)
     const query = resolveValue(node.config.query ?? "", exprCtx) as string
-    const connectionString = (node.config.connectionString as string) ?? process.env.DATABASE_URL ?? ""
+    const configuredConnection = (node.config.connectionString as string) ?? (node.config.url as string) ?? ""
 
+    if (configuredConnection) {
+      return {
+        query, rows: [], rowCount: 0,
+        error: "databaseQuery with a custom connection string is not supported. Use the server-configured DATABASE_URL instead.",
+        json: { query, rowCount: 0, rows: [], error: "custom connection string not supported" },
+      }
+    }
+
+    const connectionString = process.env.DATABASE_URL ?? ""
     if (!connectionString) {
-      return { query, rows: [], rowCount: 0, error: "No database connection string configured", json: { query, rowCount: 0, rows: [], error: "No connection string" } }
+      return { query, rows: [], rowCount: 0, error: "No server DATABASE_URL configured", json: { query, rowCount: 0, rows: [], error: "No database URL" } }
+    }
+
+    const guardError = assertSafeReadOnlySql(query)
+    if (guardError) {
+      return { query, rows: [], rowCount: 0, error: guardError, json: { query, rowCount: 0, rows: [], error: guardError } }
     }
 
     try {
@@ -470,11 +495,32 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
     const code = resolveValue(node.config.code ?? "", exprCtx) as string
 
     if (language === "javascript" || language === "typescript") {
+      if (process.env.PIPELINE_CODE_EXECUTE_ENABLED === "false") {
+        return { language, code, result: null, disabled: true, error: "codeExecute is disabled by configuration", json: { result: null, disabled: true } }
+      }
       const predecessorData = predecessorsInput(node, context)
-      const vmGlobals = { $json: exprCtx.$json, $node: exprCtx.$node, $env: exprCtx.$env, $items: exprCtx.$items, $run: exprCtx.$run, console, Buffer, setTimeout, Math, JSON, Date, Array, Object, String, Number, Boolean, RegExp, Map, Set, Promise }
-      const fn = new Function(...Object.keys(vmGlobals), `"use strict"; ${code}`)
-      const result = await fn(...Object.values(vmGlobals))
-      return { language, code, result, json: { result, type: typeof result } }
+      const globals: Record<string, unknown> = {
+        $json: exprCtx.$json,
+        $node: exprCtx.$node,
+        $env: sanitizeEnv(process.env ?? {}),
+        $items: exprCtx.$items,
+        $run: exprCtx.$run,
+        $input: context.input,
+        $predecessors: predecessorData,
+      }
+      try {
+        const { output, console: consoleLines } = await runCodeSandboxed(code, globals)
+        return {
+          language,
+          code,
+          result: output,
+          console: consoleLines,
+          json: { result: output, type: typeof output, console: consoleLines },
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { language, code, result: null, error: message, json: { result: null, error: message } }
+      }
     }
 
     return { language, code, result: `[${language} execution simulated]`, json: { result: null } }
@@ -637,6 +683,20 @@ function evaluateSimpleCondition(condition: string, ctx: { $json: Record<string,
   }
 }
 
+const NON_READONLY_SQL = /^\s*(create|alter|drop|truncate|grant|revoke|insert|update|delete|merge|call|copy|vacuum|reindex|comment|do|import|prepare|execute|create\s+procedure|create\s+function)\b/i
+
+function assertSafeReadOnlySql(query: string): string | null {
+  const trimmed = query.trim()
+  if (!trimmed) return "databaseQuery requires a query"
+  if (/;/.test(trimmed.replace(/['"`][^'"]*['"`]/g, ""))) {
+    return "databaseQuery only supports a single statement (no multi-statement / no trailing semicolons allowed)"
+  }
+  if (NON_READONLY_SQL.test(trimmed)) {
+    return "databaseQuery only supports read-only SELECT queries (DDL/DML are blocked)"
+  }
+  return null
+}
+
 const integrationRunners: Record<string, (node: PipelineNode, context: ExecutionContext) => Promise<unknown>> = {
   async integrationNode(node, context) {
     const provider = (node.config.provider as string) ?? "generic"
@@ -681,16 +741,15 @@ const integrationRunners: Record<string, (node: PipelineNode, context: Execution
       const body = config.body ?? predecessorData
 
       try {
-        const res = await fetch(url, {
-          method,
-          headers: { "Content-Type": "application/json", ...headers },
-          body: method !== "GET" ? JSON.stringify(body) : undefined,
-          signal: context.abortSignal,
-        })
+        const res = await fetchPublic(
+          url,
+          { method, headers: { "Content-Type": "application/json", ...headers }, body: method !== "GET" ? JSON.stringify(body) : undefined, timeoutMs: 15_000 },
+        )
         const data = await res.json()
         return { provider, action, status: res.status, result: data, json: { provider, action, status: res.status } }
       } catch (err) {
-        return { provider, action, error: String(err), json: { provider, action, error: String(err) } }
+        const message = err instanceof Error ? err.message : String(err)
+        return { provider, action, error: message, blocked: err instanceof BlockedUrlError, json: { provider, action, error: message } }
       }
     }
 

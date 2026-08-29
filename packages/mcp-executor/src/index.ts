@@ -91,6 +91,7 @@ export type BuiltInTool = {
   description: string
   inputSchema: z.ZodTypeAny
   outputSchema: z.ZodTypeAny
+  implemented: boolean
 }
 
 const toolInputSchemas: Record<string, z.ZodTypeAny> = {
@@ -195,26 +196,26 @@ const toolInputSchemas: Record<string, z.ZodTypeAny> = {
 }
 
 export const BUILT_IN_TOOLS: BuiltInTool[] = [
-  { name: "flowmind.files.read", category: "Filesystem", description: "Read files from user's workspace", inputSchema: toolInputSchemas["flowmind.files.read"]!, outputSchema: z.string() },
-  { name: "flowmind.files.write", category: "Filesystem", description: "Write and create files", inputSchema: toolInputSchemas["flowmind.files.write"]!, outputSchema: z.object({ path: z.string(), size: z.number() }) },
-  { name: "flowmind.files.search", category: "Filesystem", description: "Full-text search across workspace", inputSchema: toolInputSchemas["flowmind.files.search"]!, outputSchema: z.array(z.object({ path: z.string(), snippet: z.string() })) },
-  { name: "flowmind.code.execute", category: "Code", description: "Run code in sandboxed Docker container", inputSchema: toolInputSchemas["flowmind.code.execute"]!, outputSchema: z.object({ stdout: z.string(), stderr: z.string(), exitCode: z.number() }) },
-  { name: "flowmind.code.lint", category: "Code", description: "Lint and format code with language-specific tools", inputSchema: toolInputSchemas["flowmind.code.lint"]!, outputSchema: z.array(z.object({ line: z.number(), column: z.number(), message: z.string(), severity: z.string() })) },
-  { name: "flowmind.git.diff", category: "Git", description: "Show git diff for a repository", inputSchema: toolInputSchemas["flowmind.git.diff"]!, outputSchema: z.string() },
-  { name: "flowmind.git.commit", category: "Git", description: "Commit staged changes with a message", inputSchema: toolInputSchemas["flowmind.git.commit"]!, outputSchema: z.object({ commitHash: z.string() }) },
-  { name: "flowmind.git.pr", category: "Git", description: "Create a pull request on GitHub/GitLab", inputSchema: toolInputSchemas["flowmind.git.pr"]!, outputSchema: z.object({ url: z.string().url(), number: z.number() }) },
-  { name: "flowmind.web.fetch", category: "Web", description: "Fetch and parse web page content", inputSchema: toolInputSchemas["flowmind.web.fetch"]!, outputSchema: z.object({ status: z.number(), body: z.string(), headers: z.record(z.string()) }) },
-  { name: "flowmind.web.search", category: "Web", description: "Search the web (self-hosted Searxng)", inputSchema: toolInputSchemas["flowmind.web.search"]!, outputSchema: z.array(z.object({ title: z.string(), url: z.string(), snippet: z.string() })) },
-  { name: "flowmind.db.query", category: "Database", description: "Execute SQL query on connected databases", inputSchema: toolInputSchemas["flowmind.db.query"]!, outputSchema: z.array(z.record(z.unknown())) },
-  { name: "flowmind.email.send", category: "Communication", description: "Send email via SMTP or Mailgun", inputSchema: toolInputSchemas["flowmind.email.send"]!, outputSchema: z.object({ messageId: z.string() }) },
-  { name: "flowmind.slack.message", category: "Communication", description: "Post message to Slack channel", inputSchema: toolInputSchemas["flowmind.slack.message"]!, outputSchema: z.object({ ts: z.string(), channel: z.string() }) },
-  { name: "flowmind.github.issue", category: "Project", description: "Create or update GitHub issue", inputSchema: toolInputSchemas["flowmind.github.issue"]!, outputSchema: z.object({ id: z.number(), url: z.string(), number: z.number() }) },
-  { name: "flowmind.notion.page", category: "Project", description: "Create or update Notion page", inputSchema: toolInputSchemas["flowmind.notion.page"]!, outputSchema: z.object({ id: z.string(), url: z.string() }) },
-  { name: "flowmind.memory.search", category: "AI", description: "Search agent memories via vector + FTS", inputSchema: toolInputSchemas["flowmind.memory.search"]!, outputSchema: z.array(z.object({ id: z.string(), content: z.string(), score: z.number() })) },
-  { name: "flowmind.skill.run", category: "AI", description: "Execute a stored FlowMind skill", inputSchema: toolInputSchemas["flowmind.skill.run"]!, outputSchema: z.unknown() },
-  { name: "flowmind.pipeline.trigger", category: "AI", description: "Trigger a workflow pipeline by ID", inputSchema: toolInputSchemas["flowmind.pipeline.trigger"]!, outputSchema: z.object({ runId: z.string(), status: z.string() }) },
-  { name: "flowmind.image.generate", category: "Media", description: "Generate image (local Stable Diffusion or API)", inputSchema: toolInputSchemas["flowmind.image.generate"]!, outputSchema: z.object({ url: z.string(), format: z.string() }) },
-  { name: "flowmind.audio.transcribe", category: "Media", description: "Transcribe audio file (local Whisper)", inputSchema: toolInputSchemas["flowmind.audio.transcribe"]!, outputSchema: z.object({ text: z.string(), segments: z.array(z.unknown()) }) },
+  { name: "flowmind.files.read", category: "Filesystem", description: "Read files from user's workspace", inputSchema: toolInputSchemas["flowmind.files.read"]!, outputSchema: z.string(), implemented: true },
+  { name: "flowmind.files.write", category: "Filesystem", description: "Write and create files", inputSchema: toolInputSchemas["flowmind.files.write"]!, outputSchema: z.object({ path: z.string(), size: z.number() }), implemented: true },
+  { name: "flowmind.files.search", category: "Filesystem", description: "Full-text search across workspace", inputSchema: toolInputSchemas["flowmind.files.search"]!, outputSchema: z.array(z.object({ path: z.string(), snippet: z.string() })), implemented: true },
+  { name: "flowmind.code.execute", category: "Code", description: "Run code in sandboxed Docker container", inputSchema: toolInputSchemas["flowmind.code.execute"]!, outputSchema: z.object({ stdout: z.string(), stderr: z.string(), exitCode: z.number() }), implemented: true },
+  { name: "flowmind.code.lint", category: "Code", description: "Lint and format code with language-specific tools", inputSchema: toolInputSchemas["flowmind.code.lint"]!, outputSchema: z.array(z.object({ line: z.number(), column: z.number(), message: z.string(), severity: z.string() })), implemented: true },
+  { name: "flowmind.git.diff", category: "Git", description: "Show git diff for a repository", inputSchema: toolInputSchemas["flowmind.git.diff"]!, outputSchema: z.string(), implemented: true },
+  { name: "flowmind.git.commit", category: "Git", description: "Commit staged changes with a message", inputSchema: toolInputSchemas["flowmind.git.commit"]!, outputSchema: z.object({ commitHash: z.string() }), implemented: true },
+  { name: "flowmind.git.pr", category: "Git", description: "Create a pull request on GitHub/GitLab", inputSchema: toolInputSchemas["flowmind.git.pr"]!, outputSchema: z.object({ url: z.string().url(), number: z.number() }), implemented: false },
+  { name: "flowmind.web.fetch", category: "Web", description: "Fetch and parse web page content", inputSchema: toolInputSchemas["flowmind.web.fetch"]!, outputSchema: z.object({ status: z.number(), body: z.string(), headers: z.record(z.string()) }), implemented: true },
+  { name: "flowmind.web.search", category: "Web", description: "Search the web (self-hosted Searxng)", inputSchema: toolInputSchemas["flowmind.web.search"]!, outputSchema: z.array(z.object({ title: z.string(), url: z.string(), snippet: z.string() })), implemented: true },
+  { name: "flowmind.db.query", category: "Database", description: "Execute SQL query on connected databases", inputSchema: toolInputSchemas["flowmind.db.query"]!, outputSchema: z.array(z.record(z.unknown())), implemented: false },
+  { name: "flowmind.email.send", category: "Communication", description: "Send email via SMTP or Mailgun", inputSchema: toolInputSchemas["flowmind.email.send"]!, outputSchema: z.object({ messageId: z.string() }), implemented: false },
+  { name: "flowmind.slack.message", category: "Communication", description: "Post message to Slack channel", inputSchema: toolInputSchemas["flowmind.slack.message"]!, outputSchema: z.object({ ts: z.string(), channel: z.string() }), implemented: false },
+  { name: "flowmind.github.issue", category: "Project", description: "Create or update GitHub issue", inputSchema: toolInputSchemas["flowmind.github.issue"]!, outputSchema: z.object({ id: z.number(), url: z.string(), number: z.number() }), implemented: false },
+  { name: "flowmind.notion.page", category: "Project", description: "Create or update Notion page", inputSchema: toolInputSchemas["flowmind.notion.page"]!, outputSchema: z.object({ id: z.string(), url: z.string() }), implemented: false },
+  { name: "flowmind.memory.search", category: "AI", description: "Search agent memories via vector + FTS", inputSchema: toolInputSchemas["flowmind.memory.search"]!, outputSchema: z.array(z.object({ id: z.string(), content: z.string(), score: z.number() })), implemented: false },
+  { name: "flowmind.skill.run", category: "AI", description: "Execute a stored FlowMind skill", inputSchema: toolInputSchemas["flowmind.skill.run"]!, outputSchema: z.unknown(), implemented: false },
+  { name: "flowmind.pipeline.trigger", category: "AI", description: "Trigger a workflow pipeline by ID", inputSchema: toolInputSchemas["flowmind.pipeline.trigger"]!, outputSchema: z.object({ runId: z.string(), status: z.string() }), implemented: false },
+  { name: "flowmind.image.generate", category: "Media", description: "Generate image (local Stable Diffusion or API)", inputSchema: toolInputSchemas["flowmind.image.generate"]!, outputSchema: z.object({ url: z.string(), format: z.string() }), implemented: false },
+  { name: "flowmind.audio.transcribe", category: "Media", description: "Transcribe audio file (local Whisper)", inputSchema: toolInputSchemas["flowmind.audio.transcribe"]!, outputSchema: z.object({ text: z.string(), segments: z.array(z.unknown()) }), implemented: false },
 ]
 
 export class McpServerRegistry {
@@ -256,11 +257,50 @@ export class McpServerRegistry {
   }
 }
 
-export class McpConnectionPool {
-  private connections: Map<string, unknown> = new Map()
+export type McpConnectionState = {
+  connected: boolean
+  checkedAt: number
+  error?: string
+}
 
-  async connect(serverId: string, _server: McpServer): Promise<void> {
-    this.connections.set(serverId, { connected: true, timestamp: Date.now() })
+export class McpConnectionPool {
+  private connections: Map<string, McpConnectionState> = new Map()
+
+  async connect(serverId: string, server: McpServer): Promise<McpConnectionState> {
+    const checkedAt = Date.now()
+    if (!server.baseUrl || server.transport !== "sse") {
+      const state: McpConnectionState = {
+        connected: false,
+        checkedAt,
+        error: "MCP SSE transport is not implemented for this server (no base URL configured)",
+      }
+      this.connections.set(serverId, state)
+      throw new Error(`MCP transport not implemented for server '${serverId}': no SSE base URL configured`)
+    }
+
+    try {
+      const res = await fetch(server.baseUrl, {
+        method: "GET",
+        headers: { Accept: "text/event-stream" },
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!res.ok) {
+        const state: McpConnectionState = {
+          connected: false,
+          checkedAt,
+          error: `Reachability probe failed with HTTP ${res.status}`,
+        }
+        this.connections.set(serverId, state)
+        throw new Error(`MCP server '${serverId}' unreachable at ${server.baseUrl}: HTTP ${res.status}`)
+      }
+      const state: McpConnectionState = { connected: true, checkedAt }
+      this.connections.set(serverId, state)
+      return state
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.connections.set(serverId, { connected: false, checkedAt, error: message })
+      throw new Error(`MCP server '${serverId}' unreachable at ${server.baseUrl}: ${message}`)
+    }
   }
 
   async disconnect(serverId: string): Promise<void> {
@@ -268,11 +308,17 @@ export class McpConnectionPool {
   }
 
   isConnected(serverId: string): boolean {
-    return this.connections.has(serverId)
+    return this.connections.get(serverId)?.connected === true
+  }
+
+  getConnectionState(serverId: string): McpConnectionState | undefined {
+    return this.connections.get(serverId)
   }
 
   listConnections(): string[] {
-    return Array.from(this.connections.keys())
+    return Array.from(this.connections.entries())
+      .filter(([, state]) => state.connected)
+      .map(([id]) => id)
   }
 }
 
@@ -354,8 +400,12 @@ export class McpExecutor {
       return { success: false, error: validation.error }
     }
 
-    const result = await this.runBuiltInTool(toolName, validation.data!)
-    return { success: true, data: result }
+    try {
+      const result = await this.runBuiltInTool(toolName, validation.data!)
+      return { success: true, data: result }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
   }
 
   async initiateOAuthFlow(
@@ -523,11 +573,15 @@ export class McpExecutor {
         return { written: true, path: args.path, size: args.content.length }
       }
       case "flowmind.files.search": {
-        const { execSync } = await import("child_process")
+        const { execFileSync } = await import("child_process")
         const root = args.rootPath ?? "."
-        const result = execSync(`grep -rl "${args.query}" ${root} --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" 2>/dev/null || true`, { encoding: "utf-8", maxBuffer: 1024 * 1024 })
-        const files = result.split("\n").filter(Boolean)
-        return { query: args.query, files, count: files.length }
+        try {
+          const result = execFileSync("grep", ["-rl", args.query, root, "--include=*.ts", "--include=*.tsx", "--include=*.js", "--include=*.py"], { encoding: "utf-8", maxBuffer: 1024 * 1024 })
+          const files = result.split("\n").filter(Boolean)
+          return { query: args.query, files, count: files.length }
+        } catch {
+          return { query: args.query, files: [], count: 0 }
+        }
       }
       case "flowmind.web.fetch": {
         const res = await fetch(args.url, { signal: AbortSignal.timeout(10000) })
@@ -585,41 +639,46 @@ export class McpExecutor {
         return lintResults
       }
       case "flowmind.git.diff": {
-        const { execSync } = await import("child_process")
-        const diff = execSync(`git -C "${args.repoPath}" diff ${args.baseRef ?? "HEAD"} ${args.targetRef ?? ""} 2>/dev/null || echo "not a git repository"`, { encoding: "utf-8", maxBuffer: 1024 * 1024 })
-        return diff
+        const { execFileSync } = await import("child_process")
+        const argsList = ["-C", args.repoPath, "diff", args.baseRef ?? "HEAD"]
+        if (args.targetRef) argsList.push(args.targetRef)
+        try {
+          return execFileSync("git", argsList, { encoding: "utf-8", maxBuffer: 1024 * 1024 })
+        } catch {
+          return "not a git repository"
+        }
       }
       case "flowmind.git.commit": {
-        const { execSync } = await import("child_process")
-        execSync(`git -C "${args.repoPath}" add -A && git -C "${args.repoPath}" commit -m "${args.message}" 2>/dev/null || true`, { encoding: "utf-8" })
-        const hash = execSync(`git -C "${args.repoPath}" rev-parse HEAD 2>/dev/null || echo "none"`, { encoding: "utf-8" }).trim()
+        const { execFileSync } = await import("child_process")
+        try {
+          execFileSync("git", ["-C", args.repoPath, "add", "-A"], { encoding: "utf-8" })
+          execFileSync("git", ["-C", args.repoPath, "commit", "-m", args.message], { encoding: "utf-8" })
+        } catch {
+          return { commitHash: "none" }
+        }
+        const hash = execFileSync("git", ["-C", args.repoPath, "rev-parse", "HEAD"], { encoding: "utf-8" }).trim()
         return { commitHash: hash }
       }
-      case "flowmind.memory.search": {
-        return { results: [], query: args.query, message: "Memory search requires Qdrant to be running" }
-      }
-      case "flowmind.pipeline.trigger": {
-        return { runId: "external", status: "MCP-triggered pipelines require API access" }
-      }
-      case "flowmind.email.send": {
-        return { messageId: `mock-${Date.now()}`, to: args.to, subject: args.subject, sent: true }
-      }
-      case "flowmind.audio.transcribe": {
-        return { text: "[Transcription requires local Whisper or API]", segments: [] }
-      }
-      case "flowmind.image.generate": {
-        return { url: `https://placehold.co/1024x1024?text=${encodeURIComponent(args.prompt?.slice(0, 30) ?? "generated")}`, format: "png" }
-      }
+      case "flowmind.memory.search":
+        throw new Error("flowmind.memory.search is not implemented")
+      case "flowmind.pipeline.trigger":
+        throw new Error("flowmind.pipeline.trigger is not implemented")
+      case "flowmind.email.send":
+        throw new Error("flowmind.email.send is not implemented")
+      case "flowmind.audio.transcribe":
+        throw new Error("flowmind.audio.transcribe is not implemented")
+      case "flowmind.image.generate":
+        throw new Error("flowmind.image.generate is not implemented")
       default:
-        return { message: `Tool ${toolName} execution not yet implemented` }
+        throw new Error(`Tool ${toolName} is not implemented`)
     }
   }
 
   private async executeExternalTool(
-    _toolName: string,
+    toolName: string,
     _args: unknown,
     _userId: string,
   ): Promise<{ success: boolean; data?: unknown; error?: string }> {
-    return { success: false, error: "External tools not yet implemented" }
+    return { success: false, error: `Tool '${toolName}' is not implemented: no MCP server registered for it` }
   }
 }

@@ -240,7 +240,7 @@ function CanvasInner({
     setRunning(true)
     setCurrentRunId(null)
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle", lastOutput: undefined } })))
-    let eventSource: EventSource | null = null
+    let streamController: AbortController | null = null
     try {
       setNodes((nds) =>
         nds.map((n) => ({ ...n, data: { ...n.data, status: "running" } }))
@@ -257,17 +257,10 @@ function CanvasInner({
         return
       }
 
-      const token = getToken()
-      const url = `${API_URL}/api/pipeline/stream/${runId}${token ? `?token=${encodeURIComponent(token)}` : ""}`
-      eventSource = new EventSource(url)
-
-      eventSource.onmessage = (ev) => {
-        if (ev.data === "[DONE]") {
-          eventSource?.close()
-          return
-        }
+      const handleStreamData = (data: string) => {
+        if (data === "[DONE]") return
         try {
-          const msg = JSON.parse(ev.data)
+          const msg = JSON.parse(data)
           if (msg.type === "node") {
             setNodes((nds) =>
               nds.map((n) => {
@@ -283,20 +276,57 @@ function CanvasInner({
               })
             )
           } else if (msg.type === "done") {
-            setNodes((nds) =>
-              nds.map((n) => ({ ...n, data: { ...n.data, status: msg.status === "SUCCESS" ? "success" : "error" } }))
-            )
+            if (msg.status === "CANCELLED") {
+              setNodes((nds) =>
+                nds.map((n) => ({ ...n, data: { ...n.data, status: "cancelled" as string } }))
+              )
+            } else {
+              setNodes((nds) =>
+                nds.map((n) => ({ ...n, data: { ...n.data, status: msg.status === "SUCCESS" ? "success" : "error" } }))
+              )
+            }
           } else if (msg.type === "error") {
             setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
           }
         } catch { /* ignore parse errors */ }
       }
 
-      eventSource.onerror = () => {
-        eventSource?.close()
+      const token = getToken()
+      const url = `${API_URL}/api/pipeline/stream/${runId}`
+      streamController = new AbortController()
+
+      const openStream = async () => {
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: streamController!.signal,
+        })
+        if (!res.ok || !res.body) throw new Error(`Stream failed (HTTP ${res.status})`)
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+        const consumeChunk = (chunk: string) => {
+          const lines = chunk.split(/\r?\n/)
+          for (const line of lines) {
+            if (line.startsWith("data: ")) handleStreamData(line.slice(6))
+            else if (line.startsWith("data:")) handleStreamData(line.slice(5))
+          }
+        }
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const newlineIdx = buffer.lastIndexOf("\n\n")
+          if (newlineIdx >= 0) {
+            consumeChunk(buffer.slice(0, newlineIdx))
+            buffer = buffer.slice(newlineIdx + 2)
+          }
+        }
+        if (buffer.trim()) consumeChunk(buffer)
       }
+
+      const streamPromise = openStream()
+      void streamPromise.catch(() => { /* stream error surfaced via node status */ })
     } catch (err) {
-      eventSource?.close()
       console.error("Run failed:", err)
       setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "error" } })))
     } finally {

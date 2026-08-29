@@ -381,13 +381,14 @@ function renderMarkdown(content: string): React.ReactNode[] {
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
+  const isError = isAssistant && message.error === true;
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
         className={cn(
           "flex gap-3 max-w-[85%] px-4 py-3 rounded-2xl",
-          isUser ? "bg-primary/10" : "bg-surface border border-border"
+          isUser ? "bg-primary/10" : isError ? "bg-destructive/5 border border-destructive/40" : "bg-surface border border-border"
         )}
       >
         {!isUser && (
@@ -395,7 +396,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             <AvatarFallback
               className={
                 isAssistant
-                  ? "bg-primary/10 text-primary"
+                  ? isError
+                    ? "bg-destructive/10 text-destructive"
+                    : "bg-primary/10 text-primary"
                   : "bg-muted text-muted-foreground"
               }
             >
@@ -414,8 +417,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               {isUser ? "You" : isAssistant ? "FlowMind" : message.role === "system" ? "System" : "Tool"}
             </span>
             {isAssistant && (
-              <Badge variant="default" className="h-5 px-1.5 text-[10px]">
-                AI
+              <Badge variant={isError ? "destructive" : "default"} className="h-5 px-1.5 text-[10px]">
+                {isError ? "Not answered" : "AI"}
               </Badge>
             )}
             <span className="text-[10px] text-muted-foreground ml-auto">

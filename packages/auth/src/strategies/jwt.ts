@@ -10,9 +10,19 @@ export interface JwtPayload {
   type: "access" | "refresh";
 }
 
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be set in production");
+  }
+  console.warn("WARNING: JWT_SECRET not set, using insecure fallback for development only");
+  return "dev-secret-change-in-production-32chars!";
+}
+
 const options: StrategyOptions = {
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET ?? "fallback-secret-change-in-production",
+  secretOrKey: resolveJwtSecret(),
   issuer: "flowmind",
   algorithms: ["HS256"],
 };
