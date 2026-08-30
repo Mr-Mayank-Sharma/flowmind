@@ -1,4 +1,5 @@
 import { QdrantClient } from "@qdrant/js-client-rest"
+import { createHash } from "crypto"
 
 const COLLECTION_NAME = "context_chunks"
 const EMBEDDING_DIM = 384
@@ -72,6 +73,11 @@ function matchesFilter(payload: Record<string, unknown>, key: string, value: unk
   if (actual === null || actual === undefined) return false
   if (Array.isArray(actual)) return (actual as unknown[]).includes(value)
   return false
+}
+
+function pointId(docId: string, chunkIndex: number): string {
+  const digest = createHash("sha256").update(`${docId}_${chunkIndex}`).digest("hex")
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-${digest.slice(12, 16)}-${digest.slice(16, 20)}-${digest.slice(20, 32)}`
 }
 
 export class ContextEngine {
@@ -178,7 +184,7 @@ export class ContextEngine {
       const chunk = chunks[i]!
       const vec = await embed(chunk)
       points.push({
-        id: `${docId}_${i}`,
+        id: pointId(docId, i),
         vector: vec,
         payload: { userId, groupId, docId, content: chunk, chunkIndex: i, metadata: metadata ?? {} },
       })

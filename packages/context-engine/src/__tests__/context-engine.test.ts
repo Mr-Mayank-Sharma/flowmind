@@ -62,7 +62,7 @@ describe("ContextEngine", () => {
     const upsertCall = mockQdrantClient.upsert.mock.calls[0] as [string, { points: Array<Record<string, unknown>> }];
     expect(upsertCall[0]).toBe("context_chunks");
     expect(upsertCall[1].points[0]).toMatchObject({
-      id: "doc-1_0",
+      id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
       payload: expect.objectContaining({
         userId: "user-1",
         docId: "doc-1",

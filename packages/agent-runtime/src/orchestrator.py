@@ -71,7 +71,7 @@ TOOLS_DESCRIPTION = (
 class AgentOrchestrator:
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
-        self.context_engine = ContextEngine()
+        self.context_engine = ContextEngine(qdrant_url=os.environ.get("QDRANT_URL") or None)
         self.skill_engine = SkillEngine()
         self.llm_router = LLMRouter()
         self.tool_executor = ToolExecutor()

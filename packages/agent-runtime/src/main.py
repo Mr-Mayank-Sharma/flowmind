@@ -175,6 +175,23 @@ def _save_knowledge():
 
 _load_knowledge()
 
+from src.context_engine import ContextEngine as VectorContextEngine
+
+_vector_engine: "VectorContextEngine | None" = None
+
+
+def _get_vector_engine() -> "VectorContextEngine | None":
+    """Return the Qdrant-backed engine only when it is genuinely usable."""
+    global _vector_engine
+    qdrant_url = os.environ.get("QDRANT_URL", "").strip()
+    if not qdrant_url:
+        return None
+    if _vector_engine is None:
+        _vector_engine = VectorContextEngine(qdrant_url=qdrant_url)
+    if _vector_engine.is_mock:
+        return None
+    return _vector_engine
+
 def _cosine_sim(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
     na = math.sqrt(sum(x * x for x in a))
@@ -206,6 +223,14 @@ class SearchRequest(BaseModel):
 
 @app.post("/knowledge/index")
 async def index_document(body: IndexRequest) -> dict:
+    engine = _get_vector_engine()
+    if engine is not None:
+        await engine.ingest(body.user_id, [{
+            "id": body.doc_id,
+            "content": body.content,
+            "source": "upload",
+            "metadata": {"doc_id": body.doc_id, **body.metadata},
+        }])
     embedding = await _get_embedding(body.content)
     store = _knowledge_store.setdefault(body.user_id, [])
     # Remove existing doc with same id
@@ -221,6 +246,19 @@ async def index_document(body: IndexRequest) -> dict:
 
 @app.post("/knowledge/search")
 async def search_knowledge(body: SearchRequest) -> list[dict]:
+    engine = _get_vector_engine()
+    if engine is not None:
+        blocks = await engine.retrieve_context(body.user_id, body.query, body.top_k)
+        return [
+            {
+                "id": b.metadata.get("doc_id", b.source),
+                "content": b.content[:500],
+                "score": round(b.relevance, 4),
+                "metadata": b.metadata,
+            }
+            for b in blocks
+        ]
+
     query_emb = await _get_embedding(body.query)
     if not query_emb:
         return []

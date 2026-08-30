@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
+import uuid
 from typing import Any
 
 from src.models import ContextBlock
@@ -40,6 +42,10 @@ class ContextEngine:
                 self._use_mock = True
                 self._client = None
 
+    @property
+    def is_mock(self) -> bool:
+        return self._use_mock
+
     def _ensure_collection(self) -> None:
         if not self._client:
             return
@@ -72,7 +78,7 @@ class ContextEngine:
     def _get_embedding_from_ollama(self, text: str) -> list[float]:
         try:
             import httpx
-            ollama_url = self._qdrant_url.rsplit(":", 1)[0] if self._qdrant_url else "http://localhost:11434"
+            ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
             with httpx.Client(timeout=10.0) as client:
                 resp = client.post(
                     f"{ollama_url}/api/embeddings",
@@ -124,20 +130,30 @@ class ContextEngine:
 
         try:
             query_vector = self._get_embedding_from_ollama(query)
-
-            results = self._client.search(
-                collection_name=self._collection_name,
-                query_vector=query_vector,
-                limit=top_k,
-                query_filter=Filter(
-                    must=[
-                        FieldCondition(
-                            key="user_id",
-                            match=MatchValue(value=user_id),
-                        )
-                    ]
-                ),
+            query_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="user_id",
+                        match=MatchValue(value=user_id),
+                    )
+                ]
             )
+
+            if hasattr(self._client, "query_points"):
+                response = self._client.query_points(
+                    collection_name=self._collection_name,
+                    query=query_vector,
+                    limit=top_k,
+                    query_filter=query_filter,
+                )
+                results = response.points
+            else:
+                results = self._client.search(
+                    collection_name=self._collection_name,
+                    query_vector=query_vector,
+                    limit=top_k,
+                    query_filter=query_filter,
+                )
 
             return [
                 ContextBlock(
@@ -145,9 +161,12 @@ class ContextEngine:
                     content=hit.payload.get("content", ""),
                     relevance=hit.score,
                     metadata={
-                        k: v
-                        for k, v in (hit.payload or {}).items()
-                        if k not in ("source", "content", "user_id")
+                        **hit.payload.get("metadata", {}),
+                        **{
+                            k: v
+                            for k, v in (hit.payload or {}).items()
+                            if k not in ("source", "content", "user_id", "metadata")
+                        },
                     },
                 )
                 for hit in results
@@ -169,16 +188,22 @@ class ContextEngine:
                 doc_id = doc.get("id") or hashlib.md5(
                     f"{user_id}:{content[:100]}".encode()
                 ).hexdigest()
+                point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{user_id}:{doc_id}:{i}"))
 
                 points.append(
                     PointStruct(
-                        id=doc_id,
+                        id=point_id,
                         vector=vector,
                         payload={
                             "user_id": user_id,
                             "source": doc.get("source", "upload"),
                             "content": content,
-                            **{k: v for k, v in doc.items() if k not in ("content", "source", "id")},
+                            "metadata": doc.get("metadata", {}),
+                            **{
+                                k: v
+                                for k, v in doc.items()
+                                if k not in ("content", "source", "id", "metadata")
+                            },
                         },
                     )
                 )

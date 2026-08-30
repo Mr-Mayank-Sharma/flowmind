@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { JWT_SECRET } from "../lib/jwt-secret";
 import { sendMail, smtpConfigured } from "../lib/mailer";
+import { getStateStore } from "../lib/redis";
 
 const APP_URL = process.env.APP_URL || "http://localhost:4000";
 
@@ -28,32 +29,60 @@ const SSO_CLIENTS: Record<string, { authorizeUrl: string; tokenUrl: string; clie
   },
 };
 
-const ssoStateStore = new Map<string, { provider: string; expiresAt: number }>();
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const stateStore = getStateStore();
 
-function recordFailedLogin(key: string) {
-  const attempt = loginAttempts.get(key);
-  if (!attempt) {
-    loginAttempts.set(key, { count: 1, resetAt: Date.now() + 15 * 60 * 1000 });
-  } else {
-    attempt.count++;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const MAX_LOGIN_ATTEMPTS = 5;
+const SSO_STATE_TTL_MS = 600_000;
+
+interface LoginAttemptEntry {
+  count: number;
+  resetAt: number;
+}
+
+async function readLoginAttempts(key: string): Promise<LoginAttemptEntry | null> {
+  const raw = await stateStore.get(`auth:attempts:${key}`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as LoginAttemptEntry;
+    if (typeof parsed.count !== "number" || typeof parsed.resetAt !== "number") return null;
+    return parsed;
+  } catch {
+    return null;
   }
 }
 
-function generateState(provider: string): string {
+async function recordFailedLogin(key: string): Promise<void> {
+  const now = Date.now();
+  const current = await readLoginAttempts(key);
+  const entry: LoginAttemptEntry =
+    current && current.resetAt > now
+      ? { count: current.count + 1, resetAt: current.resetAt }
+      : { count: 1, resetAt: now + LOGIN_WINDOW_MS };
+  await stateStore.set(`auth:attempts:${key}`, JSON.stringify(entry), Math.max(1, entry.resetAt - now));
+}
+
+async function clearLoginAttempts(key: string): Promise<void> {
+  await stateStore.del(`auth:attempts:${key}`);
+}
+
+async function generateState(provider: string): Promise<string> {
   const state = crypto.randomBytes(32).toString("hex");
-  ssoStateStore.set(state, { provider, expiresAt: Date.now() + 600_000 });
+  await stateStore.set(`auth:sso:${state}`, JSON.stringify({ provider, expiresAt: Date.now() + SSO_STATE_TTL_MS }), SSO_STATE_TTL_MS);
   return state;
 }
 
-function verifyState(state: string, provider: string): boolean {
-  const entry = ssoStateStore.get(state);
-  if (!entry || entry.provider !== provider || entry.expiresAt < Date.now()) {
-    ssoStateStore.delete(state);
+async function verifyState(state: string, provider: string): Promise<boolean> {
+  const key = `auth:sso:${state}`;
+  const raw = await stateStore.get(key);
+  await stateStore.del(key);
+  if (!raw) return false;
+  try {
+    const entry = JSON.parse(raw) as { provider: string; expiresAt: number };
+    return entry.provider === provider && entry.expiresAt >= Date.now();
+  } catch {
     return false;
   }
-  ssoStateStore.delete(state);
-  return true;
 }
 
 export const authRouter = router({
@@ -79,27 +108,24 @@ export const authRouter = router({
     .mutation(async ({ input, ctx }) => {
       const key = `${ctx.req.ip}:${input.email.toLowerCase()}`;
       const now = Date.now();
-      const attempt = loginAttempts.get(key);
-      if (attempt && attempt.count >= 5 && attempt.resetAt > now) {
+      const attempt = await readLoginAttempts(key);
+      if (attempt && attempt.count >= MAX_LOGIN_ATTEMPTS && attempt.resetAt > now) {
         throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many login attempts. Try again later." });
-      }
-      if (!attempt || attempt.resetAt < now) {
-        loginAttempts.set(key, { count: 0, resetAt: now + 15 * 60 * 1000 });
       }
 
       const user = await ctx.prisma.user.findUnique({ where: { email: input.email } });
       if (!user || !user.passwordHash) {
-        recordFailedLogin(key);
+        await recordFailedLogin(key);
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
       const valid = await bcrypt.compare(input.password, user.passwordHash);
       if (!valid) {
-        recordFailedLogin(key);
+        await recordFailedLogin(key);
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      loginAttempts.delete(key);
+      await clearLoginAttempts(key);
 
       const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "15m" });
       const refreshToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
@@ -147,7 +173,7 @@ export const authRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: `${input.provider} SSO not configured` });
       }
 
-      const state = generateState(input.provider);
+      const state = await generateState(input.provider);
       const params = new URLSearchParams({
         client_id: client.clientId,
         redirect_uri: `${APP_URL}/auth/callback`,
@@ -172,7 +198,7 @@ export const authRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: `${input.provider} SSO not configured` });
       }
 
-      if (!verifyState(input.state, input.provider)) {
+      if (!(await verifyState(input.state, input.provider))) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid or expired state parameter" });
       }
 

@@ -3,10 +3,11 @@ import type { Context } from "../middleware/context";
 import { prisma } from "@flowmind/db";
 import { getTierConfig } from "@flowmind/billing/tiers";
 import { Tier } from "@flowmind/shared";
+import { getStateStore } from "../lib/redis";
 
 export const t = initTRPC.context<Context>().create();
 
-const requestCounts = new Map<string, { count: number; resetAt: number }>();
+const stateStore = getStateStore();
 
 const isAuthed = t.middleware(({ ctx, next }) => {
   if (!ctx.userId) {
@@ -37,34 +38,19 @@ async function resolveEffectiveTier(userId: string): Promise<Tier> {
   return effectiveTier;
 }
 
-function pruneStaleEntries(now: number) {
-  for (const [key, entry] of requestCounts) {
-    if (entry.resetAt < now) requestCounts.delete(key);
-  }
-}
-
 const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
   if (!ctx.userId) return next({ ctx });
 
   const tier = await resolveEffectiveTier(ctx.userId);
   const tierConfig = getTierConfig(tier);
-  const now = Date.now();
   const windowMs = 60_000;
   const maxRequests = tier === Tier.FREE ? 60 : tier === Tier.PRO ? 200 : 500;
   void tierConfig;
 
-  pruneStaleEntries(now);
-
-  const key = ctx.userId;
-  const entry = requestCounts.get(key);
-
-  if (!entry || entry.resetAt < now) {
-    requestCounts.set(key, { count: 1, resetAt: now + windowMs });
-    return next({ ctx });
-  }
-
-  entry.count++;
-  if (entry.count > maxRequests) {
+  const windowStart = Math.floor(Date.now() / windowMs);
+  const key = `rate:tier:${tier}:${ctx.userId}:${windowStart}`;
+  const requestCount = await stateStore.incr(key, windowMs);
+  if (requestCount > maxRequests) {
     throw new TRPCError({
       code: "TOO_MANY_REQUESTS",
       message: `Rate limit exceeded. ${tier} tier allows ${maxRequests} requests/minute.`,

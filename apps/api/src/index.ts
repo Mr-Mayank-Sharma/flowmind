@@ -11,6 +11,7 @@ import { createContext } from "./middleware/context";
 import { JWT_SECRET } from "./lib/jwt-secret";
 import { prisma } from "@flowmind/db";
 import { BillingService } from "@flowmind/billing";
+import { getRedisClient, isRedisUp, closeRedis } from "./lib/redis";
 import {
   toolRegistry,
   createReadTool,
@@ -114,6 +115,10 @@ async function main() {
     });
   });
 
+  const redisAvailable = await isRedisUp();
+  if (redisAvailable) {
+    server.log.info("Rate limiting backed by Redis");
+  }
   await server.register(rateLimit, {
     max: parseInt(process.env.RATE_LIMIT_MAX || "200", 10),
     timeWindow: process.env.RATE_LIMIT_WINDOW || "1 minute",
@@ -122,6 +127,8 @@ async function main() {
       if (userId) return `user:${userId}`;
       return req.ip;
     },
+    skipOnError: true,
+    ...(redisAvailable ? { redis: getRedisClient() } : {}),
   });
 
   await server.register(fastifyTRPCPlugin, {
@@ -490,6 +497,7 @@ async function main() {
         setTimeout(resolve, 5_000);
       });
       await prisma.$disconnect();
+      closeRedis();
       process.exit(0);
     } catch (err) {
       server.log.error(err, "Error during shutdown");
