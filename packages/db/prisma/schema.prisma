@@ -76,6 +76,12 @@ enum FrameworkStatus {
   UNKNOWN
 }
 
+enum McpServerTransport {
+  STDIO
+  STREAMABLE_HTTP
+  SSE
+}
+
 enum Visibility {
   PRIVATE
   PUBLIC
@@ -135,6 +141,7 @@ model User {
   hostConnections  HostConnection[]
   knowledgeBases   KnowledgeBase[]
   providerCredentials ProviderCredential[]
+  mcpServers          McpServer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -464,6 +471,29 @@ model McpToken {
   updatedAt DateTime @updatedAt
 
   @@map("mcp_tokens")
+}
+
+model McpServer {
+  id              String             @id @default(cuid())
+  userId          String
+  name            String
+  transport       McpServerTransport
+  command         String?
+  args            Json?
+  baseUrl         String?
+  headers         Json?
+  enabled         Boolean            @default(true)
+  lastError       String?
+  lastConnectedAt DateTime?
+  lastToolCount   Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("mcp_servers")
 }
 
 model Pipeline {

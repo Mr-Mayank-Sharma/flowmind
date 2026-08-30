@@ -3,6 +3,7 @@ import { MessageRole } from "@flowmind/shared"
 import { ContextEngine, type ContextChunk } from "@flowmind/context-engine"
 import { LLMEngine, runAgentLoop, resolveDefaultOllamaModel, type AgentTool, type AgentLoopStep } from "@flowmind/llm-router"
 import { toolRegistry } from "@flowmind/tool-system"
+import { listMcpAgentToolsForUser } from "./mcp-client"
 import { config } from "../lib/config"
 import { buildLLMConfig } from "../lib/llm-keys"
 
@@ -29,9 +30,9 @@ function buildLLMEngine(): LLMEngine {
   return new LLMEngine(buildLLMConfig(config))
 }
 
-const NON_DESTRUCTIVE_TOOLS = new Set(["read", "grep", "glob", "webfetch", "websearch", "todowrite"])
+const NON_DESTRUCTIVE_TOOLS = new Set(["read", "grep", "glob", "webfetch", "websearch", "http_request", "todowrite"])
 
-function buildChatTools(sessionId: string, _userId: string): AgentTool[] {
+async function buildChatTools(sessionId: string, userId: string): Promise<AgentTool[]> {
   const defs = toolRegistry.all().filter((def) => NON_DESTRUCTIVE_TOOLS.has(def.id))
   const noopCtx = {
     sessionId,
@@ -41,7 +42,7 @@ function buildChatTools(sessionId: string, _userId: string): AgentTool[] {
     metadata() {},
   }
 
-  return defs.map((def) => ({
+  const localTools = defs.map((def) => ({
     name: def.id,
     description: def.description,
     parameters: def.parameters,
@@ -50,6 +51,15 @@ function buildChatTools(sessionId: string, _userId: string): AgentTool[] {
       return result.output
     },
   }))
+
+  let mcpTools: AgentTool[] = []
+  try {
+    mcpTools = await listMcpAgentToolsForUser(userId)
+  } catch (err) {
+    logger.warn({ userId, err }, "MCP tool discovery failed, continuing with local tools only")
+  }
+
+  return [...localTools, ...mcpTools]
 }
 
 const CHAT_SYSTEM_PROMPT = `You are FlowMind, an AI assistant that can use tools to help users accomplish tasks.
@@ -218,7 +228,7 @@ export class ChatService {
       model = CLOUD_DEFAULT_MODELS[provider.id] ?? "tinyllama"
     }
 
-    const tools = buildChatTools(input.sessionId, input.userId)
+    const tools = await buildChatTools(input.sessionId, input.userId)
 
     try {
       const result = await runAgentLoop({

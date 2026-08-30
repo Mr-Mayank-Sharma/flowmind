@@ -120,7 +120,7 @@ UI key persistence functional.
 | apps/web | 7 |
 | auth | 9 |
 | billing | 5 |
-| mcp-executor | 4 |
+| mcp-executor | 19 (real client stdio/HTTP/security — was 4) |
 | context-engine | 3 |
 | runtime-registry | 16 |
 | channel-gateway | 15 |
@@ -128,20 +128,21 @@ UI key persistence functional.
 | permission | 14 |
 | snapshot | 8 |
 | session-engine | 11 |
-| pipeline-engine | 54 (incl. 23 new security tests) |
+| pipeline-engine | 66 (65 passed + 1 skip; incl. 10 connector + 1 email tests — was 54) |
 | skill-engine | 20 |
-| **Total automated** | **211** |
+| tool-system | 4 (http_request SSRF tests — new) |
+| **Total automated** | **242** |
 
-- **Passed:** ~210
+- **Passed:** 241
 - **Failed:** 0
 - **Skipped:** 1 (intentional integration skip)
 
 ### E2E / Browser
 
-- Playwright e2e health checks: **3 pass**
-- Full 8-step browser smoke test: **all pass**
+- Playwright e2e health checks: **3 pass** (Track 1 pass)
+- Full 8-step browser smoke test: **all pass** (Track 1 pass)
 
-**Grand total: 211 automated + 3 Playwright + 8 browser smoke = 222 test points, 0 failures.**
+**Grand total: 242 automated + 3 Playwright + 8 browser smoke = 253 test points, 0 failures.**
 
 ---
 
@@ -180,7 +181,7 @@ All findings below were identified, fixed, and verified live during this pass:
 |------------|--------|-------|
 | Qdrant vector store down | RAG falls back to JSON-file store (agent-runtime) / memory-mode (context-engine) | Fallback is now explicit per-engine; Qdrant genuinely backs both engines when up (verified live, real scores). Point ids are UUID-shaped (Qdrant rejects arbitrary string ids) |
 | Redis down mid-run | Global fastify limiter degrades open (`skipOnError`); tier/attempt/SSO state falls back to per-process memory with retry-and-reconnect | Verified live: Redis stopped → user still bounded (429 at 61 via memory); Redis restarted → keys written again within ~30s. State is durable across API restarts only while Redis is up |
-| Connector ecosystem | Limited to built-in tools | Not n8n-scale; MCP client transport not fully real (reachability probe only, full MCP protocol client not implemented) |
+| Connector ecosystem | Real MCP client + generic connectors now exist, but not n8n-scale | Real `@modelcontextprotocol/sdk` client (stdio/SSE/streamable-http) over external MCP servers plus generic REST (`http_request`), SQLite (`sqliteQuery`), JSON `transform`, `fileIo`, and `email.send` connectors are verified. Still stubs: `flowmind.git.pr`, `flowmind.db.query`, `flowmind.slack.message`, `flowmind.github.issue`, `flowmind.notion.page`, `flowmind.memory.search`, `flowmind.skill.run`, `flowmind.pipeline.trigger`, `flowmind.image.generate`, `flowmind.audio.transcribe`. Per-SaaS webhook-trigger nodes and OAuth-consumed SaaS connectors remain future. DB writes gated behind `PIPELINE_DB_ALLOW_WRITE`; cacheable write transactions not built |
 | Desktop packaged mode | Doesn't start API/runtime | Dev launcher only |
 | Docker API image | Can't run compiled output | Dockerfiles exist but ship raw TS `main` — untested/broken for API |
 | Production build | Not validated | `next standalone` build fails on this Windows box; local dev mode (`next dev` / `tsx`) used throughout |
@@ -198,14 +199,14 @@ All findings below were identified, fixed, and verified live during this pass:
 - Critical security and correctness blockers from this pass are **FIXED and live-verified**
 - The application runs and works end-to-end locally
 - Auth, chat, pipelines, billing guards, tenant isolation, tool sandboxing all functional
-- 211 automated tests passing, 0 failures
+- 242 automated tests passing, 0 failures
 - Provider keys encrypted at rest, webhook HMAC verified, SSRF protected
 
 ### What blocks public deployment
 1. **No validated production build** — runs in dev mode (`next dev` / `tsx`); `next standalone` build not working
 2. **Localhost-only deployment** — no public internet URL, no reverse proxy, no TLS
-3. **Connector ecosystem gap** — only small built-in tool set; full MCP protocol client not implemented; no n8n-scale integrations
-4. **Infrastructure gaps** — Qdrant persistence, real MCP client, multi-replica state are roadmap items
+3. **Connector ecosystem gap** — real MCP client and generic REST/SQLite/transform/file/email connectors exist, but the per-SaaS surface is still thin: 10 `flowmind.*` tools remain stubs, and OAuth-consumed SaaS connectors / per-SaaS webhook-trigger nodes are not built; no n8n-scale integrations
+4. **Infrastructure gaps** — Qdrant persistence and multi-replica state are roadmap items (real MCP client is now implemented)
 5. **External integrations untested** — no real credentials for Stripe, cloud LLMs, OAuth, SaaS connectors
 
 ### Honest summary
@@ -219,8 +220,8 @@ This is a **working local application with real security hardening** — not a p
 |------|---------|---------------------------|
 | Stripe real checkout | No `STRIPE_SECRET_KEY` | Guard errors honestly when unconfigured |
 | Cloud LLM providers | No real API keys | Wiring/guards tested; inference NOT run |
-| External SaaS connectors | No external accounts | Connector definitions present but unconnected |
-| MCP external servers | No remote MCP endpoint | Built-in tools only |
+| External SaaS connectors | No external accounts | Connector definitions present but unconnected; OAuth-consumed SaaS connectors not built |
+| MCP external servers | No public third-party MCP endpoint | Real protocol client verified against the in-repo demo stdio server and a local SSE test server (tools/list + tools/call round-trips); live external third-party MCP endpoints not exercised |
 | OAuth provider flows | No real OAuth credentials | Not exercised with real Google/GitHub SSO |
 
 ---
@@ -287,4 +288,49 @@ Note: the `--dir` path must be quoted (redis fails to start with an unquoted pat
 
 ---
 
-*Report generated 2026-08-29. All findings based on live verification on this machine.*
+## 14. Track 3 — Real MCP Client (Phase A) & Connectors (Phase B)
+
+**Date:** 2026-08-30. This pass replaces the reachability-probe-only MCP layer with a genuine `@modelcontextprotocol/sdk` client and adds generic connectors, all configured disabled-by-default.
+
+### Phase A — Real MCP client
+
+- **Real protocol client** (`packages/mcp-executor/src/mcp-client.ts`): `Client` from `@modelcontextprotocol/sdk` v1.30.0 over `StdioClientTransport`, `SSEClientTransport`, and `StreamableHTTPClientTransport`. Real `tools/list` discovery and `tools/call` invocation with JSON-RPC round-trips (verified against the in-repo stdio fixture `packages/mcp-executor/src/__tests__/fixtures/demo-mcp-server.mjs` and a local SSE test server). Per-call timeouts (connect 10s / list 10s / call 30s) and AbortSignal cancellation.
+- **Honest errors**: a server-side `isError` tool result (e.g. `failTool`) is surfaced as `{ success: false, isError: true, content }`, never a fake success. Unknown tools throw descriptive errors; dropped servers record `lastError`.
+- **Server persistence**: new `McpServer` Prisma model + migration `20260830010000_add_mcp_server` (`mcp_servers` table, `McpServerTransport` enum STDIO/STREAMABLE_HTTP/SSE, `lastError`/`lastConnectedAt`/`lastToolCount`). Tenant-scoped tRPC router (`apps/api/src/routers/mcp.ts` + `apps/api/src/services/mcp-client.ts`): `servers.list/create/update/delete/test/tools/callTool`, all `protectedProcedure`-gated by `userId`, plus `mcp.execute` for the built-in tool set.
+- **Agent integration**: `ChatService` now builds agent tools from both local tools and per-user MCP servers (`listMcpAgentToolsForUser`); failing servers are skipped with persisted `lastError`, never faked.
+- **Live e2e (this box)**: `servers.test` listed the 3 demo-server tools (`echo`, `getWeather`, `failTool`) over real protocol; `callTool echo/getWeather` returned real content; `failTool` → `isError`; a private-URL server create → HTTP 400 (SSRF block); the agent loop called an MCP tool and completed in 2 iterations.
+
+### Phase A — Security
+
+- **stdio allowlist**: `MCP_ALLOWED_COMMANDS` is required for stdio (refused outright without it) and gates the executable by metacharacter rejection (no shell separators/globs/quoting) plus path gating (bare names, exact allowlisted paths, basename matching — Windows-aware). `assertCommandAllowed` in `packages/mcp-executor/src/security.ts`.
+- **Remote SSRF blocklist**: `assertMcpRemoteUrl` → `assertPublicHttpUrl` rejects `file:` schemes and any host resolving to private/loopback/link-local ranges (`BlockedUrlError`); explicit `ALLOW_PRIVATE_MCP_URLS=true` is the opt-out dev flag. Remote servers are **disabled by default** (create without `enabled` is refused for stdio; remote URLs are blocked unless opted out).
+- **No fake `connected: true`**: connection state only flips true after a real client handshake; failures record `{ connected: false, error }`.
+
+### Phase B — Connectors (offline-verified)
+
+- **`http_request` agent tool** (`packages/tool-system/src/tools/http_request.ts`): SSRF-guarded via pipeline-engine `fetchPublic` (every redirect re-validated); GET-body rejected, body size capped, permission-ask via `ctx.ask`. Live: `example.com` → 200; `127.0.0.1:3001/health` → refused (`BlockedUrlError`). 4 vitest tests.
+- **`sqliteQuery` pipeline node** (`packages/pipeline-engine/src/runners.ts`): `node:sqlite` `DatabaseSync`, **read-only by default** under `PIPELINE_DB_ALLOW_WRITE` (writes otherwise blocked by `assertSafeReadOnlySql`), path guard `resolveWithinRoot` against `PIPELINE_FILE_ROOT` (`packages/pipeline-engine/src/file-root.ts`).
+- **`transform` JSON node** (`packages/pipeline-engine/src/transform.ts`): map/select/rename/summary over predecessor output (with `{{ $json.x }}` expression resolution).
+- **`fileIo` node**: read/write JSON or text under `PIPELINE_FILE_ROOT` only; traversal (`../../etc/evil.txt`) and absolute paths refused.
+- **`flowmind.email.send` implemented**: per-user SMTP via `ProviderCredential` (type `"smtp"`, decrypted by `packages/mcp-executor/src/smtp-cred.ts` AES-256-GCM, prod requires `ENCRYPTION_KEY`) takes precedence over `SMTP_HOST` env fallback; pipeline `sendEmail` node reads the same credential through the engine's `credentialResolver`. Verified via local `smtp-server` capture (subject/to/body asserted).
+- **New plumbing**: `file-root` path-traversal guard (`resolveWithinRoot`/`assertWithinRoot`), `smtp-cred` decrypt, `network-guard` IPv6/IPv4-mapped range coverage.
+- **UI plumbing**: `apps/web` node map + icons for `sqliteQuery`, `transform`, `fileIo`.
+
+### Track 3 tests (run this pass)
+
+| Suite | Result |
+|-------|--------|
+| pipeline-engine | **65 passed / 1 skipped** (66) — incl. 10 connector + 1 email tests |
+| tool-system | **4 passed** |
+| mcp-executor | **19 passed** (stdio round-trip 6, SSE HTTP 3, security gates 6, PKCE 4) |
+| apps/api | **29 passed** (unchanged this pass) |
+
+`tsc --noEmit` → **0 errors** across `tool-system`, `pipeline-engine`, `mcp-executor`, `apps/api`, `apps/web`.
+
+### Honesty caveat (earlier B4 finding)
+
+`email.send` / `sendEmail` were verified against a **local `smtp-server` capture**; live delivery through an external SMTP provider was **not exercised** (no real credentials).
+
+---
+
+*Report generated 2026-08-30. All findings based on live verification on this machine.*

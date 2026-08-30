@@ -1,11 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
-import { McpExecutor, McpServerRegistry, McpConnectionPool, McpToolRouter, OAUTH_PROVIDERS, getClientId, getClientSecret } from "@flowmind/mcp-executor";
-
-const registry = new McpServerRegistry();
-const connectionPool = new McpConnectionPool();
-const toolRouter = new McpToolRouter();
+import { McpExecutor, OAUTH_PROVIDERS, getClientId, getClientSecret, assertCommandAllowed, assertMcpRemoteUrl, McpSecurityError } from "@flowmind/mcp-executor";
+import { mcpRegistry, mcpConnectionPool, mcpToolRouter, rowToMcpServerConfig, getUserMcpServer } from "../services/mcp-client";
 
 const tokenStore = {
   getToken: async (userId: string, provider: string) => {
@@ -72,7 +69,47 @@ const tokenStore = {
   },
 };
 
-const executor = new McpExecutor(registry, connectionPool, toolRouter, tokenStore);
+const executor = new McpExecutor(mcpRegistry, mcpConnectionPool, mcpToolRouter, tokenStore);
+
+const transportEnum = z.enum(["stdio", "streamable-http", "sse"]);
+
+const serverInputBase = z.object({
+  name: z.string().min(1).max(120),
+  transport: transportEnum,
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  baseUrl: z.string().url().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  enabled: z.boolean().optional(),
+});
+
+const serverInputSchema = serverInputBase.superRefine((val, ctx) => {
+  if (val.transport === "stdio") {
+    if (!val.command) ctx.addIssue({ code: "custom", path: ["command"], message: "command is required for stdio servers" });
+  } else if (!val.baseUrl) {
+    ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "baseUrl is required for remote servers" });
+  }
+});
+
+async function validateServerInput(input: {
+  transport: "stdio" | "streamable-http" | "sse";
+  command?: string;
+  baseUrl?: string;
+}): Promise<void> {
+  if (input.transport === "stdio") {
+    if (!input.command) throw new McpSecurityError("command is required for stdio servers");
+    assertCommandAllowed(input.command);
+  } else {
+    if (!input.baseUrl) throw new McpSecurityError("baseUrl is required for remote servers");
+    await assertMcpRemoteUrl(input.baseUrl);
+  }
+}
+
+function serverTransportToEnum(transport: "stdio" | "streamable-http" | "sse") {
+  if (transport === "stdio") return "STDIO" as const;
+  if (transport === "streamable-http") return "STREAMABLE_HTTP" as const;
+  return "SSE" as const;
+}
 
 export const mcpRouter = router({
   list: protectedProcedure
@@ -147,7 +184,7 @@ export const mcpRouter = router({
 
   tools: protectedProcedure
     .query(async () => {
-      return registry.listBuiltInTools().map((t) => ({
+      return mcpRegistry.listBuiltInTools().map((t) => ({
         name: t.name,
         category: t.category,
         description: t.description,
@@ -174,4 +211,146 @@ export const mcpRouter = router({
     .mutation(async ({ input, ctx }) => {
       return executor.execute(input.toolName, input.args, ctx.userId!);
     }),
+
+  servers: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const rows = await ctx.prisma.mcpServer.findMany({
+        where: { userId: ctx.userId! },
+        orderBy: { createdAt: "asc" },
+      });
+      return rows.map((row) => ({
+        ...row,
+        connectionState: mcpConnectionPool.getConnectionState(row.id) ?? null,
+      }));
+    }),
+
+    create: protectedProcedure
+      .input(serverInputSchema)
+      .mutation(async ({ input, ctx }) => {
+        try {
+          await validateServerInput(input);
+        } catch (err) {
+          if (err instanceof McpSecurityError) throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+          throw err;
+        }
+        const row = await ctx.prisma.mcpServer.create({
+          data: {
+            userId: ctx.userId!,
+            name: input.name,
+            transport: serverTransportToEnum(input.transport),
+            command: input.command ?? null,
+            args: input.args ?? undefined,
+            baseUrl: input.baseUrl ?? null,
+            headers: input.headers ?? undefined,
+            enabled: input.enabled ?? true,
+          },
+        });
+        mcpRegistry.register(rowToMcpServerConfig(row));
+        return row;
+      }),
+
+    update: protectedProcedure
+      .input(z.object({ id: z.string(), patch: serverInputBase.partial() }))
+      .mutation(async ({ input, ctx }) => {
+        const owned = await getUserMcpServer(ctx.userId!, input.id);
+        if (!owned) throw new TRPCError({ code: "NOT_FOUND", message: "MCP server not found" });
+
+        const merged = { ...owned, ...input.patch } as Parameters<typeof validateServerInput>[0];
+        try {
+          if (input.patch.command || input.patch.transport || input.patch.baseUrl) {
+            await validateServerInput(merged);
+          }
+        } catch (err) {
+          if (err instanceof McpSecurityError) throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+          throw err;
+        }
+
+        const row = await ctx.prisma.mcpServer.update({
+          where: { id: input.id },
+          data: {
+            name: input.patch.name,
+            transport: input.patch.transport ? serverTransportToEnum(input.patch.transport) : undefined,
+            command: input.patch.command,
+            args: input.patch.args,
+            baseUrl: input.patch.baseUrl,
+            headers: input.patch.headers,
+            enabled: input.patch.enabled,
+          },
+        });
+        const config = rowToMcpServerConfig(row);
+        mcpRegistry.unregister(row.id);
+        mcpRegistry.register(config);
+        mcpToolRouter.unregisterServer(row.id);
+        await mcpConnectionPool.disconnect(row.id);
+        return row;
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const owned = await getUserMcpServer(ctx.userId!, input.id);
+        if (!owned) throw new TRPCError({ code: "NOT_FOUND", message: "MCP server not found" });
+        await ctx.prisma.mcpServer.delete({ where: { id: input.id } });
+        mcpRegistry.unregister(input.id);
+        mcpToolRouter.unregisterServer(input.id);
+        await mcpConnectionPool.disconnect(input.id);
+        return { success: true };
+      }),
+
+    test: protectedProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const owned = await getUserMcpServer(ctx.userId!, input.id);
+        if (!owned) throw new TRPCError({ code: "NOT_FOUND", message: "MCP server not found" });
+        const config = rowToMcpServerConfig(owned);
+        mcpRegistry.register(config);
+        try {
+          const tools = await mcpConnectionPool.listTools(config);
+          mcpToolRouter.unregisterServer(config.id);
+          for (const tool of tools) mcpToolRouter.register(tool.name, config.id);
+          await ctx.prisma.mcpServer.update({
+            where: { id: input.id },
+            data: { lastError: null, lastConnectedAt: new Date(), lastToolCount: tools.length },
+          });
+          return { success: true, tools: tools.map((t) => t.name) };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          await ctx.prisma.mcpServer.update({
+            where: { id: input.id },
+            data: { lastError: message },
+          });
+          return { success: false, error: message };
+        }
+      }),
+
+    tools: protectedProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const owned = await getUserMcpServer(ctx.userId!, input.id);
+        if (!owned) throw new TRPCError({ code: "NOT_FOUND", message: "MCP server not found" });
+        const config = rowToMcpServerConfig(owned);
+        mcpRegistry.register(config);
+        try {
+          const tools = await mcpConnectionPool.listTools(config);
+          return { success: true, tools };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return { success: false, error: message };
+        }
+      }),
+
+    callTool: protectedProcedure
+      .input(z.object({ id: z.string(), toolName: z.string(), args: z.record(z.string(), z.unknown()).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const owned = await getUserMcpServer(ctx.userId!, input.id);
+        if (!owned) throw new TRPCError({ code: "NOT_FOUND", message: "MCP server not found" });
+        const config = rowToMcpServerConfig(owned);
+        mcpRegistry.register(config);
+        try {
+          return await mcpConnectionPool.callTool(config, input.toolName, input.args ?? {});
+        } catch (err) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err instanceof Error ? err.message : String(err) });
+        }
+      }),
+  }),
 });

@@ -22,6 +22,7 @@ import {
   createBashTool,
   createWebFetchTool,
   createWebSearchTool,
+  createHttpRequestTool,
   createApplyPatchTool,
   createTodoWriteTool,
 } from "@flowmind/tool-system";
@@ -424,6 +425,7 @@ async function main() {
     createBashTool(),
     createWebFetchTool(),
     createWebSearchTool(),
+    createHttpRequestTool(),
     createApplyPatchTool(),
     createTodoWriteTool(),
   ];

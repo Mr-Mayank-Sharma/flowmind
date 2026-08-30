@@ -1,6 +1,13 @@
 import { z } from "zod"
 import crypto from "crypto"
 import { prisma } from "@flowmind/db"
+import type { McpServerConfig } from "./types"
+import { McpConnectionPool, mcpErrorMessage } from "./mcp-client"
+
+export * from "./types"
+export * from "./network-guard"
+export * from "./security"
+export * from "./mcp-client"
 
 export type OAuthConfig = {
   authUrl: string
@@ -73,16 +80,6 @@ export type ServerCapability = {
   version: string
   authRequired: boolean
   authProvider?: string
-}
-
-export type McpServer = {
-  id: string
-  name: string
-  transport: "sse" | "stdio"
-  capabilities: ServerCapability[]
-  baseUrl?: string
-  command?: string
-  args?: string[]
 }
 
 export type BuiltInTool = {
@@ -207,7 +204,7 @@ export const BUILT_IN_TOOLS: BuiltInTool[] = [
   { name: "flowmind.web.fetch", category: "Web", description: "Fetch and parse web page content", inputSchema: toolInputSchemas["flowmind.web.fetch"]!, outputSchema: z.object({ status: z.number(), body: z.string(), headers: z.record(z.string()) }), implemented: true },
   { name: "flowmind.web.search", category: "Web", description: "Search the web (self-hosted Searxng)", inputSchema: toolInputSchemas["flowmind.web.search"]!, outputSchema: z.array(z.object({ title: z.string(), url: z.string(), snippet: z.string() })), implemented: true },
   { name: "flowmind.db.query", category: "Database", description: "Execute SQL query on connected databases", inputSchema: toolInputSchemas["flowmind.db.query"]!, outputSchema: z.array(z.record(z.unknown())), implemented: false },
-  { name: "flowmind.email.send", category: "Communication", description: "Send email via SMTP or Mailgun", inputSchema: toolInputSchemas["flowmind.email.send"]!, outputSchema: z.object({ messageId: z.string() }), implemented: false },
+  { name: "flowmind.email.send", category: "Communication", description: "Send email via SMTP (env-configured or per-user 'smtp' provider credential in pipelines)", inputSchema: toolInputSchemas["flowmind.email.send"]!, outputSchema: z.object({ messageId: z.string() }), implemented: true },
   { name: "flowmind.slack.message", category: "Communication", description: "Post message to Slack channel", inputSchema: toolInputSchemas["flowmind.slack.message"]!, outputSchema: z.object({ ts: z.string(), channel: z.string() }), implemented: false },
   { name: "flowmind.github.issue", category: "Project", description: "Create or update GitHub issue", inputSchema: toolInputSchemas["flowmind.github.issue"]!, outputSchema: z.object({ id: z.number(), url: z.string(), number: z.number() }), implemented: false },
   { name: "flowmind.notion.page", category: "Project", description: "Create or update Notion page", inputSchema: toolInputSchemas["flowmind.notion.page"]!, outputSchema: z.object({ id: z.string(), url: z.string() }), implemented: false },
@@ -219,7 +216,7 @@ export const BUILT_IN_TOOLS: BuiltInTool[] = [
 ]
 
 export class McpServerRegistry {
-  private servers: Map<string, McpServer> = new Map()
+  private servers: Map<string, McpServerConfig> = new Map()
   private builtInTools: Map<string, BuiltInTool> = new Map()
 
   constructor() {
@@ -228,7 +225,7 @@ export class McpServerRegistry {
     }
   }
 
-  register(server: McpServer): void {
+  register(server: McpServerConfig): void {
     this.servers.set(server.id, server)
   }
 
@@ -236,11 +233,11 @@ export class McpServerRegistry {
     this.servers.delete(serverId)
   }
 
-  getServer(serverId: string): McpServer | undefined {
+  getServer(serverId: string): McpServerConfig | undefined {
     return this.servers.get(serverId)
   }
 
-  listServers(): McpServer[] {
+  listServers(): McpServerConfig[] {
     return Array.from(this.servers.values())
   }
 
@@ -257,70 +254,7 @@ export class McpServerRegistry {
   }
 }
 
-export type McpConnectionState = {
-  connected: boolean
-  checkedAt: number
-  error?: string
-}
-
-export class McpConnectionPool {
-  private connections: Map<string, McpConnectionState> = new Map()
-
-  async connect(serverId: string, server: McpServer): Promise<McpConnectionState> {
-    const checkedAt = Date.now()
-    if (!server.baseUrl || server.transport !== "sse") {
-      const state: McpConnectionState = {
-        connected: false,
-        checkedAt,
-        error: "MCP SSE transport is not implemented for this server (no base URL configured)",
-      }
-      this.connections.set(serverId, state)
-      throw new Error(`MCP transport not implemented for server '${serverId}': no SSE base URL configured`)
-    }
-
-    try {
-      const res = await fetch(server.baseUrl, {
-        method: "GET",
-        headers: { Accept: "text/event-stream" },
-        signal: AbortSignal.timeout(5000),
-      })
-      if (!res.ok) {
-        const state: McpConnectionState = {
-          connected: false,
-          checkedAt,
-          error: `Reachability probe failed with HTTP ${res.status}`,
-        }
-        this.connections.set(serverId, state)
-        throw new Error(`MCP server '${serverId}' unreachable at ${server.baseUrl}: HTTP ${res.status}`)
-      }
-      const state: McpConnectionState = { connected: true, checkedAt }
-      this.connections.set(serverId, state)
-      return state
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.connections.set(serverId, { connected: false, checkedAt, error: message })
-      throw new Error(`MCP server '${serverId}' unreachable at ${server.baseUrl}: ${message}`)
-    }
-  }
-
-  async disconnect(serverId: string): Promise<void> {
-    this.connections.delete(serverId)
-  }
-
-  isConnected(serverId: string): boolean {
-    return this.connections.get(serverId)?.connected === true
-  }
-
-  getConnectionState(serverId: string): McpConnectionState | undefined {
-    return this.connections.get(serverId)
-  }
-
-  listConnections(): string[] {
-    return Array.from(this.connections.entries())
-      .filter(([, state]) => state.connected)
-      .map(([id]) => id)
-  }
-}
+// McpConnectionState and McpConnectionPool are re-exported from "./mcp-client" above.
 
 export class McpToolRouter {
   private toolServerMap: Map<string, string> = new Map()
@@ -331,6 +265,12 @@ export class McpToolRouter {
 
   unregister(toolName: string): void {
     this.toolServerMap.delete(toolName)
+  }
+
+  unregisterServer(serverId: string): void {
+    for (const [toolName, id] of this.toolServerMap) {
+      if (id === serverId) this.toolServerMap.delete(toolName)
+    }
   }
 
   resolve(toolName: string): string | undefined {
@@ -401,7 +341,7 @@ export class McpExecutor {
     }
 
     try {
-      const result = await this.runBuiltInTool(toolName, validation.data!)
+      const result = await this.runBuiltInTool(toolName, validation.data!, userId)
       return { success: true, data: result }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) }
@@ -560,7 +500,51 @@ export class McpExecutor {
     }
   }
 
-  private async runBuiltInTool(toolName: string, args: any): Promise<unknown> {
+  private async sendEmail(args: { to: string; subject: string; body: string; html?: string }, userId: string): Promise<{ messageId: string }> {
+    // Per-user SMTP provider credential (provider type "smtp") takes precedence over env fallback.
+    let config: { host: string; port: number; user?: string; pass?: string; from?: string; secure: boolean } | null = null
+    try {
+      const cred = await prisma.providerCredential.findFirst({ where: { userId, provider: "smtp" } })
+      if (cred) {
+        const { decryptSmtp } = await import("./smtp-cred")
+        config = decryptSmtp(cred.encryptedValue)
+      }
+    } catch {
+      config = null
+    }
+    if (!config) {
+      const host = process.env.SMTP_HOST || ""
+      const user = process.env.SMTP_USER || ""
+      const pass = process.env.SMTP_PASS || ""
+      if (!host) throw new Error("No SMTP configuration found (set SMTP_HOST or add an 'smtp' provider credential)")
+      config = {
+        host,
+        port: parseInt(process.env.SMTP_PORT || "587", 10),
+        user: user || undefined,
+        pass: pass || undefined,
+        from: process.env.SMTP_FROM || "noreply@flowmind.ai",
+        secure: process.env.SMTP_SECURE === "true",
+      }
+    }
+
+    const nodemailer = await import("nodemailer")
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: config.user ? { user: config.user, pass: config.pass ?? "" } : undefined,
+    })
+    const info = await transporter.sendMail({
+      from: config.from ?? "noreply@flowmind.ai",
+      to: args.to,
+      subject: args.subject,
+      text: args.body,
+      html: args.html,
+    })
+    return { messageId: String(info.messageId) }
+  }
+
+  private async runBuiltInTool(toolName: string, args: any, userId: string): Promise<unknown> {
     switch (toolName) {
       case "flowmind.files.read": {
         const fs = await import("fs/promises")
@@ -664,7 +648,7 @@ export class McpExecutor {
       case "flowmind.pipeline.trigger":
         throw new Error("flowmind.pipeline.trigger is not implemented")
       case "flowmind.email.send":
-        throw new Error("flowmind.email.send is not implemented")
+        return this.sendEmail(args, userId)
       case "flowmind.audio.transcribe":
         throw new Error("flowmind.audio.transcribe is not implemented")
       case "flowmind.image.generate":
@@ -676,9 +660,30 @@ export class McpExecutor {
 
   private async executeExternalTool(
     toolName: string,
-    _args: unknown,
+    args: unknown,
     _userId: string,
   ): Promise<{ success: boolean; data?: unknown; error?: string }> {
-    return { success: false, error: `Tool '${toolName}' is not implemented: no MCP server registered for it` }
+    const serverId = this.toolRouter.resolve(toolName)
+    if (!serverId) {
+      return { success: false, error: `Tool '${toolName}' is not implemented: no MCP server registered for it` }
+    }
+
+    const server = this.registry.getServer(serverId)
+    if (!server) {
+      return { success: false, error: `MCP server '${serverId}' is not registered` }
+    }
+    if (!server.enabled) {
+      return { success: false, error: `MCP server '${server.name}' is disabled` }
+    }
+
+    try {
+      const result = await this.connectionPool.callTool(server, toolName, (args ?? {}) as Record<string, unknown>)
+      if (!result.success) {
+        return { success: false, error: result.content }
+      }
+      return { success: true, data: { content: result.content, structuredContent: result.structuredContent } }
+    } catch (err) {
+      return { success: false, error: mcpErrorMessage(err) }
+    }
   }
 }

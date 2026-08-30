@@ -2,7 +2,7 @@ export type NodeType =
   | "cronTrigger" | "webhookTrigger" | "channelTrigger" | "manualTrigger" | "pollingTrigger"
   | "aiAgent" | "contentWriter" | "dataExtractor" | "classifier" | "summarizer" | "webResearcher" | "imageGenerator"
   | "ragRetrieve"
-  | "httpRequest" | "databaseQuery" | "sendEmail" | "sendMessage" | "codeExecute"
+  | "httpRequest" | "databaseQuery" | "sqliteQuery" | "sendEmail" | "sendMessage" | "codeExecute" | "transform" | "fileIo"
   | "condition" | "switch" | "parallelFork" | "merge" | "loop" | "wait"
   | "subPipeline"
   | "integrationNode"
@@ -171,7 +171,7 @@ export interface CredentialStore {
 export function kindForNodeType(type: NodeType): NodeKind {
   if (["cronTrigger", "webhookTrigger", "channelTrigger", "manualTrigger", "pollingTrigger"].includes(type)) return "trigger"
   if (["aiAgent", "contentWriter", "dataExtractor", "classifier", "summarizer", "webResearcher", "imageGenerator", "ragRetrieve"].includes(type)) return "ai"
-  if (["httpRequest", "databaseQuery", "sendEmail", "sendMessage", "codeExecute", "subPipeline", "openhumanMessage"].includes(type)) return "action"
+  if (["httpRequest", "databaseQuery", "sqliteQuery", "sendEmail", "sendMessage", "codeExecute", "transform", "fileIo", "subPipeline", "openhumanMessage"].includes(type)) return "action"
   if (["condition", "switch", "parallelFork", "merge", "loop", "wait", "humanApproval"].includes(type)) return "flow"
   return "integration"
 }

@@ -5,8 +5,12 @@ import { getDirectPredecessors } from "./graph"
 import { runAgentLoop, resolveDefaultOllamaModel, type AgentTool, type ProviderFacade, type CompletionRequest, type CompletionResult, type StreamCallbacks, type Message } from "@flowmind/llm-router"
 import { BlockedUrlError, fetchPublic } from "./network-guard"
 import { runCodeSandboxed, sanitizeEnv } from "./code-sandbox"
+import { transform as applyTransform } from "./transform"
+import { configuredFileRoot, resolveWithinRoot, assertWithinRoot } from "./file-root"
 
 import nodemailer from "nodemailer"
+import fs from "node:fs"
+import path from "node:path"
 
 const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL || "http://localhost:8001"
 
@@ -426,21 +430,58 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
     const to = resolveValue(node.config.to ?? "", exprCtx) as string
     const subject = resolveValue(node.config.subject ?? "", exprCtx) as string
     const body = resolveValue(node.config.body ?? "", exprCtx) as string
-    const smtpHost = process.env.SMTP_HOST || ""
-    const smtpUser = process.env.SMTP_USER || ""
-    const smtpPass = process.env.SMTP_PASS || ""
-    const smtpFrom = process.env.SMTP_FROM || "noreply@flowmind.ai"
+
+    // Per-user SMTP credential (provider type "smtp") takes precedence over env fallback.
+    let smtpConfig: { host: string; port: number; user: string; pass: string; from: string; secure: boolean } | null = null
+    try {
+      const creds = await context.credentialResolver?.getCredentialsByType("smtp")
+      const cred = creds?.[0]
+      if (cred) {
+        const c = cred.config as Record<string, unknown>
+        if (c && typeof c.host === "string" && c.host) {
+          smtpConfig = {
+            host: c.host,
+            port: c.port != null ? Number(c.port) : 587,
+            user: typeof c.user === "string" ? c.user : "",
+            pass: typeof c.pass === "string" ? c.pass : "",
+            from: typeof c.from === "string" ? c.from : "noreply@flowmind.ai",
+            secure: c.secure === true || c.secure === "true",
+          }
+        }
+      }
+    } catch {
+      smtpConfig = null
+    }
+
+    if (!smtpConfig) {
+      const host = process.env.SMTP_HOST || ""
+      const user = process.env.SMTP_USER || ""
+      const pass = process.env.SMTP_PASS || ""
+      if (host && user && pass) {
+        smtpConfig = {
+          host,
+          port: parseInt(process.env.SMTP_PORT || "587", 10),
+          user, pass,
+          from: process.env.SMTP_FROM || "noreply@flowmind.ai",
+          secure: process.env.SMTP_SECURE === "true",
+        }
+      }
+    }
 
     let sent = false
     let error = ""
-    if (smtpHost && smtpUser && smtpPass) {
+    if (!smtpConfig) {
+      error = "No SMTP configuration found (set SMTP_HOST/USER/PASS or add an 'smtp' provider credential)"
+    } else if (!to) {
+      error = "sendEmail requires a 'to' recipient"
+    } else {
       try {
         const transporter = nodemailer.createTransport({
-          host: smtpHost, port: parseInt(process.env.SMTP_PORT || "587", 10),
-          secure: process.env.SMTP_SECURE === "true",
-          auth: { user: smtpUser, pass: smtpPass },
+          host: smtpConfig.host, port: smtpConfig.port,
+          secure: smtpConfig.secure,
+          auth: smtpConfig.user ? { user: smtpConfig.user, pass: smtpConfig.pass } : undefined,
         })
-        await transporter.sendMail({ from: smtpFrom, to, subject, text: body })
+        await transporter.sendMail({ from: smtpConfig.from, to, subject, text: body })
         sent = true
       } catch (err) {
         error = String(err)
@@ -524,6 +565,137 @@ const actionRunners: Record<string, (node: PipelineNode, context: ExecutionConte
     }
 
     return { language, code, result: `[${language} execution simulated]`, json: { result: null } }
+  },
+  async sqliteQuery(node, context) {
+    const exprCtx = buildExpressionContext(context)
+    const query = resolveValue(node.config.query ?? "", exprCtx) as string
+    const file = resolveValue(node.config.file ?? "", exprCtx) as string
+    const configuredRoot = configuredFileRoot()
+
+    // SQLite is permitted only against an explicitly-provided file, and only read-only
+    // unless write access is explicitly enabled by the operator via PIPELINE_DB_ALLOW_WRITE.
+    const writeAllowed = process.env.PIPELINE_DB_ALLOW_WRITE === "true"
+    let dbPath: string
+    try {
+      dbPath = resolveWithinRoot(configuredRoot, file)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { query, file, rows: [], rowCount: 0, error: message, json: { query, rowCount: 0, rows: [], error: message } }
+    }
+
+    const trimmed = query.trim()
+    if (!trimmed) return { query, file, rows: [], rowCount: 0, error: "sqliteQuery requires a query", json: { query, rowCount: 0, rows: [], error: "no query" } }
+
+    const guardError = writeAllowed ? null : assertSafeReadOnlySql(trimmed)
+    if (guardError) {
+      return { query, file, rows: [], rowCount: 0, error: `${guardError} (writes require PIPELINE_DB_ALLOW_WRITE=true)`, json: { query, rowCount: 0, rows: [], error: guardError } }
+    }
+
+    if (!fs.existsSync(dbPath)) {
+      return { query, file, rows: [], rowCount: 0, error: `SQLite database file does not exist: ${file} (create it via PIPELINE_DB_ALLOW_WRITE=true)`, json: { query, rowCount: 0, rows: [], error: "db file not found" } }
+    }
+
+    try {
+      const { DatabaseSync } = await import("node:sqlite")
+      const db = new DatabaseSync(dbPath, { readOnly: !writeAllowed })
+      try {
+        const stmt = db.prepare(trimmed)
+        const fields = stmt.columns().map((c) => c.name)
+        const rows = stmt.all() as unknown[]
+        return {
+          query, file, rows, rowCount: rows.length, fields,
+          json: { query, rowCount: rows.length, rows },
+        }
+      } finally {
+        db.close()
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { query, file, rows: [], rowCount: 0, error: message, json: { query, rowCount: 0, rows: [], error: message } }
+    }
+  },
+  async transform(node, context) {
+    const exprCtx = buildExpressionContext(context)
+    const predecessorData = predecessorsInput(node, context)
+    const mode = (node.config.mode as string) ?? "map"
+    const mapping = node.config.mapping as Record<string, unknown> | undefined
+    const select = node.config.select as string[] | undefined
+    const rename = node.config.rename as Record<string, string> | undefined
+    const summaryCfg = node.config.summary as Record<string, Record<string, unknown>> | undefined
+    const inputExpr = node.config.input as string | undefined
+
+    let input: unknown = predecessorData
+    if (inputExpr) {
+      input = resolveValue(inputExpr, exprCtx)
+    } else {
+      // With a single predecessor, lift its output (preferring the `.json` payload)
+      // so transforms operate directly on the upstream data.
+      const keys = Object.keys(predecessorData)
+      if (keys.length === 1) {
+        const single = predecessorData[keys[0]!]
+        if (single && typeof single === "object" && "json" in (single as Record<string, unknown>)) {
+          input = (single as Record<string, unknown>).json
+        } else {
+          input = single
+        }
+      }
+    }
+
+    try {
+      const result = applyTransform({ mode: mode as never, input, mapping, select, rename, summary: summaryCfg })
+      return { mode, input, result, json: { mode, result } }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { mode, input, error: message, json: { mode, error: message } }
+    }
+  },
+  async fileIo(node, context) {
+    const exprCtx = buildExpressionContext(context)
+    const action = (node.config.action as string) ?? "read"
+    const file = resolveValue(node.config.file ?? "", exprCtx) as string
+    const encoding: BufferEncoding = ((node.config.encoding as string) ?? "utf-8") as BufferEncoding
+    const configuredRoot = configuredFileRoot()
+
+    let targetPath: string
+    try {
+      targetPath = resolveWithinRoot(configuredRoot, file)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { action, file, error: message, json: { action, error: message } }
+    }
+
+    try {
+      if (action === "read") {
+        if (!fs.existsSync(targetPath)) return { action, file, error: `File does not exist: ${file}`, json: { action, error: "file not found" } }
+        const raw = fs.readFileSync(targetPath, encoding)
+        const size = Buffer.byteLength(raw, "utf-8")
+        let parsed: unknown = raw
+        if (typeof raw === "string") {
+          try { parsed = JSON.parse(raw) } catch { parsed = raw }
+        }
+        return { action, file, size, data: parsed, json: { action, file, size, data: parsed } }
+      }
+      if (action === "write") {
+        const rawData = node.config.data
+        const data = resolveValue(rawData, exprCtx)
+        let serialized: string
+        if (typeof data === "string") {
+          serialized = data
+        } else if (data === undefined || data === null) {
+          serialized = ""
+        } else {
+          serialized = JSON.stringify(data)
+        }
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+        fs.writeFileSync(targetPath, serialized, encoding)
+        const size = Buffer.byteLength(serialized, "utf-8")
+        return { action, file, size, written: true, json: { action, file, size, written: true } }
+      }
+      return { action, file, error: `Unknown fileIo action: ${action}`, json: { action, error: `unknown action: ${action}` } }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { action, file, error: message, json: { action, error: message } }
+    }
   },
   async subPipeline(node, context) {
     const subPipelineId = (node.config.pipelineId as string) ?? ""
