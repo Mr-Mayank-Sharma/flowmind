@@ -1,0 +1,35 @@
+# Billing
+
+- Status: 🚧 (real Stripe integration + usage metrics in the service; router entry throws unless Stripe keys or dev mock are configured, and no Stripe keys or mock are currently set)
+- Purpose: Charge for workspace tiers, sync subscriptions from Stripe webhooks, expose usage limits per tier, and let org admins manage team seats.
+- User: Billing-service callers (`billing.*` router) and org admins. Requires a configured Stripe environment.
+- Input: `CheckoutSessionInput { userId, tier, orgId?, quantity? }`, webhook `rawBody` + `signature`, `TeamSeatInput { orgId, quantity }`, `userId` for usage metrics.
+- Processing / Business Logic:
+  - Service: `packages/billing/src/index.ts` (`BillingService` export).
+  - `BillingRouter` (`apps/api/src/routers/billing.ts` line 10) throws `INTERNAL_SERVER_ERROR "Billing is not configured. Contact the administrator."` unless `process.env.STRIPE_SECRET_KEY` is set, or `ENABLE_DEV_BILLING_MOCK === "true"` in a non-production environment. The router also guards org-member management behind `"Only org admins can manage members"`.
+  - Checkout: `createCheckoutSession` looks up the user, blocks downgrades (via `canUpgrade` from `packages/billing/src/tiers.ts`), requires a `STRIPE_PRICE_<TIER>` env per tier (Enterprise requires custom pricing), and creates a Stripe subscription checkout with `metadata { userId, tier, orgId }`.
+  - Webhooks: `handleStripeWebhook` verifies `WEBHOOK_SECRET`, then handles `checkout.session.completed` (syncs subscription + stores `stripeId` on user), `customer.subscription.updated`, `customer.subscription.deleted` (downgrade to FREE), and `invoice.payment_failed` (creates a `Notification` of type `PAYMENT_FAILED`).
+  - Portal: `createPortalSession` returns a Stripe billing portal URL for the user's Stripe customer.
+  - Team seats: `manageTeamSeats` loads the org + owner subscription, enforces `maxTeamSeats` from the tier config and current member count, then updates the Stripe subscription quantity.
+  - Usage: `getUsageMetrics` counts chats (sessions in last 30 days), pipelines, cron jobs, skills, MCP tokens, knowledge storage, and compares against `getTierConfig` limits. `recordUsage`/`getUsageAggregation` persist/aggregate `UsageRecord` rows monthly.
+  - Invoices: `getInvoices` lists Stripe invoices for a user's customer.
+- Database:
+  - `Subscription` (userId unique, stripeId, tier, status, currentPeriodStart/End, cancelAtPeriodEnd), `UsageRecord` (subjectType user|org, subjectId, metric, quantity, periodStart/End, metadata), `Notification` (for payment failures). User has `stripeId` + `tier`.
+- API:
+  - `billing.checkout`, `billing.success`(verified), `billing.cancel`, `billing.webhook`, `billing.portal`, `billing.usage`, `billing.invoices`, `billing.manageTeamSeats`, `billing.getUsage`.
+- Frontend:
+  - `apps/web/src/app/billing/page.tsx` (billing UI).
+- Output: Stripe checkout session URL, synced `Subscription` rows, usage limit objects, and payment-failed notifications.
+- Dependencies: `stripe` (`apiVersion 2024-04-10`), `@flowmind/shared` `Tier`, `getTierConfig`/`canUpgrade` in `packages/billing/src/tiers.ts`, `@flowmind/db`.
+- Current Status:
+  - Full service implementation is real but disabled at the router gate: the workspace runs without billing active (no Stripe keys, dev mock not enabled).
+  - Tier config with per-tier feature limits (chats/month, storage, pipeline nodes, cron jobs, skills, channels, MCP connections, max seats) exists in `packages/billing/src/tiers.ts`.
+  - Usage counting is straightforward (row counts), not metered billing.
+- Known Issues:
+  - `recordUsage` uses `metadata as any` (loose typing) and requires subject-level tier checks that are not enforced downstream.
+  - `manageTeamSeats` takes the owner subscription by finding the first OWNER member — an org with multiple OWNERs is ambiguous.
+  - Downgrade-via-checkout is blocked, but no re-trigger of the customer portal is surfaced in the router.
+- Future Improvements:
+  - Enable stripe or the dev-mock flag deliberately in deployment and verify the full webhook loop.
+  - Replace row-count usage with metered record aggregation for chat/pipeline/API usage.
+  - Add subscription cancellation with future-effective downgrade dates.

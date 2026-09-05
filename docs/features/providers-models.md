@@ -1,0 +1,36 @@
+# Providers & Models
+
+- Status: ✅ (Ollama browse/pull/delete + env-based cloud provider availability are real; cloud inference and provider credential storage are partially wired)
+- Purpose: Let users see which LLM providers and models are available, pull/delete local Ollama models, and let chat/pipelines select a provider.
+- User: Any signed-in user.
+- Input: For model ops — `name`. For provider listing — none (reads env). For chat — `model`/`provider` overrides passed to `chat.sendMessage`.
+- Processing / Business Logic:
+  - Router: `apps/api/src/routers/models.ts`.
+    - `list`: `GET {OLLAMA_BASE_URL}/api/tags` (15s timeout) mapped to name/size/modified/digest/params/quant/family; empty array on failure.
+    - `getProviders`: static provider table (`ollama`, `openai`, `anthropic`, `google`, `groq`, `deepseek`, `openrouter`, `together`, `mistral`) flagged `available` by the presence of `*_API_KEY`; Ollama is marked available + `modelCount` from `/api/tags`.
+    - `pullModel`: `POST /api/pull` with `stream: true`, 10-min timeout, parses progress lines and returns `{ status, progress }`.
+    - `deleteModel`: `DELETE /api/delete` (10s timeout).
+    - `searchModels`: filters `/api/tags` by a query substring.
+    - `getRuntimeHealth`: pings Ollama root (3s timeout).
+  - Provider runtime: `packages/llm-router/src/engine.ts` — `LLMEngine.initProviders` builds provider facades from env keys (openai, anthropic, google, groq, deepseek, openrouter, together, mistral, azure-openai, perplexity, deepinfra, cerebras, xai, cohere, cloudflare, venice-ai, alibaba, ollama). The engine is a singleton; `addProvider`/`getProvider`/`getFallback` drive chat selection.
+  - Credential storage: `ProviderCredential` model exists in the schema; `apps/api/src/index.ts` loads provider credentials from the DB before chat dispatch (fallback to env). Cloud default models (`CLOUD_DEFAULT_MODELS`) are used when no explicit model is set.
+  - Provider metadata: `packages/provider-registry/src/index.ts` ships built-in provider/model metadata (capabilities like `toolCall`, `streaming`, `vision`); `engine.ts` may reference this for capability selection.
+- Database:
+  - `ProviderCredential` (provider, apiKey stored, userId optional) in `packages/db/prisma/schema.prisma`.
+- API:
+  - `models.list`, `models.getProviders`, `models.pullModel`, `models.deleteModel`, `models.searchModels`, `models.getRuntimeHealth`.
+- Frontend:
+  - Model selector in chat (`apps/web/src/components/chat/model-selector.tsx`) and pipeline AI node inspector populate from `models.list`.
+- Output: Provider availability map, local model catalogs, and pull progress; selection flows into `chat.sendMessage` and `aiAgent`/`aiNode` runners.
+- Dependencies: `@flowmind/llm-router` (engine + providers), `@flowmind/provider-registry`, Ollama HTTP API.
+- Current Status:
+  - Ollama integration is real and verified (browse/pull/delete/health).
+  - Cloud providers are wired at the facade level but their keys come from env in most deployments; per-user `ProviderCredential` rows are loaded by `apps/api/src/index.ts`.
+- Known Issues:
+  - `models.getProviders` only lists 9 providers while the engine supports ~18; the router table is not kept in sync.
+  - `ProviderCredential` has no UI in `apps/web`; users cannot add provider keys from the app yet.
+  - No model-capability filtering is exposed to the model selector.
+- Future Improvements:
+  - Drive `models.*` from `@flowmind/provider-registry` so the UI and engine stay in sync.
+  - Add a provider-credentials settings page and per-model capability badges.
+  - Make `pullModel` cancellable and stream progress to the UI.

@@ -1,0 +1,35 @@
+# Multi-Tenancy / Organizations
+
+- Status: 🚧 (user-level scoping everywhere + org/group authorization in host router are real; cross-tenant access returns 404, not a generic 403; org model exists but is not fully wired to every router)
+- Purpose: Isolate user data across the workspace, let group owners/admins manage members and pipelines, and bind host clients to groups.
+- User: Any signed-in user; group owners/admins for group mutations.
+- Input: `userId` from auth context on every protected probe; group/org operations take `groupId`/`orgId`/member emails.
+- Processing / Business Logic:
+  - Every `protectedProcedure` scopes its queries with `where: { userId: ctx.userId ?? undefined }` (chat, context, jobs, skills, tools, knowledge, mcp, pipeline runs, etc.). Cross-user reads are prevented by passing the caller's id everywhere; for single-row lookups a mismatch throws `NOT_FOUND`.
+  - Group model: `apps/api/src/routers/host.ts` — `host.group.list`, `host.group.create`, `host.group.get`, `host.group.members/addMember/removeMember/updateMemberRole` (owner/admin checks: `"Only group owners/admins can add members"`), `host.group.connectTokens/createConnectToken`, `host.group.publishPipelines` (owner/admin), `host.dashboard`, and `host.approvals/reviewApproval` (owner/admin review of proposals).
+  - Membership is derived from `userGroupRoles` (roles `OWNER` / `ADMIN` / `MEMBER`). All group mutations call `getGroupWithMembership`, which hard-fails (404) when the caller is not a member, and role-gates the rest.
+  - Pipeline scoping: `apps/api/src/routers/pipeline.ts` `getById` verifies `pipeline.userId === ctx.userId` or, for group pipelines, that the caller belongs to `pipeline.hostGroupId`'s group; the SSE `/api/pipeline/stream/:runId` endpoint re-uses the same check.
+  - Org layer: `Org`/`OrgMember` exist in the schema; `settings.ts` (line 101 `"Org admin access required"`), `console.ts` (line 193) and `billing.ts` (line 128 `"Only org admins can manage members"`) enforce org-admin on org operations. Group (`host.*`) and org (`settings.*`) are separate hierarchies today.
+  - Host clients (device-level) get group access via `HostClient` rows and `host-auth.ts` (`hashConnectToken`, `signHostClientToken`) which validates connect tokens and issues host-client JWTs.
+- Database:
+  - `User` (userId scoping), `Group` + `UserGroupRole` (membership), `HostClient`, `HostGroup` fields on pipeline/knowledge, `Org` + `OrgMember`, and `Subscription`/`UsageRecord` with `orgId`/`subjectType`.
+- API:
+  - `host.group.{list,create,get,members,addMember,removeMember,updateMemberRole,connectTokens,publishPipelines}`, `host.approvals.{list,reviewApproval}`, `host.upsertKnowledge/deleteKnowledge`, `host.client.searchContext`.
+  - Org-admin guarded: `settings.*` org ops, `console.*` org ops, `billing.manageTeamSeats`.
+- Frontend:
+  - `apps/web/src/app/host/` (host/groups UI), `apps/web/src/app/settings/` (org settings), `apps/web/src/app/agents/` (agents with group binding).
+- Output: Group memebership records, host client connections, group-scoped pipelines/knowledge/agents, org member management.
+- Dependencies: `@flowmind/db`, middleware `userGroupRoles` lookup in `apps/api/src/middleware/trpc.ts` / host session helpers.
+- Current Status:
+  - User-level isolation is enforced everywhere (missing ownership yields 404).
+  - Group scoping is real for pipelines, knowledge, connect tokens and approvals.
+  - Org scoping is only partially wired (settings/console/billing); the remaining routers (chat, tools, mcp, jobs) are user-scoped only.
+  - Cross-tenant data leakage is mitigated by 404ing on foreign ids, but error distinctions between "not found" and "exists but not yours" are collapsed.
+- Known Issues:
+  - `host.group.create` grants the creator OWNER via `userGroupRoles`; adding a member requires the member's user to already exist.
+  - `HostClient` auth flows are separate from the browser session; switching between them can leave stale group context.
+  - Org features (teams, seats) only apply when billing is configured; without Stripe the org layer does not enforce seat counts.
+- Future Improvements:
+  - Route remaining routers through org/group resolution (org-scoped chat/context/mcp).
+  - Add org invitations and role migration from group to org.
+  - Centralize tenancy in middleware so a foreign id returns a consistent 404 and audit logs record access attempts.

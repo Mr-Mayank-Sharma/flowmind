@@ -1,0 +1,34 @@
+# Skills
+
+- Status: 🚧 (sandboxed JS skill execution + install/publish are real; LSP diagnostics intentionally return "not supported")
+- Purpose: Let users install, author and run small sandboxed JavaScript/TypeScript "skills", usable directly via the skills API and as pipeline `skill.<name>` nodes.
+- User: Any signed-in user. Marketplace skills are public.
+- Input: A `SkillManifestSchema` (`packages/skill-engine/src/skill-spec.ts`) — name, description, runtime (`sandboxed-js` | `sandboxed-ts` | `native`), version, tags — plus `code` for publish; an `inputs` record for run.
+- Processing / Business Logic:
+  - Registry/router: `apps/api/src/routers/skills.ts` (`list`, `search`, `getById`, `install`, `publish`, `run`, `delete`, `versions`).
+  - `install` copies a `MarketplaceSkill` into a user-owned `Skill` (upsert by name), bumps downloads. `publish` creates/updates a `MarketplaceSkill` (author-guarded) and appends a `SkillVersion`.
+  - `run` executes only `sandboxed-js` skills via `SkillEngine.execute`; other runtimes return `{ output: "Native runtime not supported via API", success: false }`.
+  - Engine: `packages/skill-engine/src/index.ts` runs user code in an `isolated-vm` isolate. `SkillEngine.execute` loads the skill by id, sandboxes execution, and returns `{ output, durationMs, success }`.
+  - Pipeline nodes: `packages/pipeline-engine/src/runners.ts` `getRunner` dispatches `skill.<name>` node types to `SkillEngine`.
+  - Tool surface: `apps/api/src/routers/tools.ts` treats user skills as togglable `builtinTools` entries (list/execute/toggle/test), mapping enablement onto `Skill.isActive`.
+  - LSP: `packages/lsp/src/index.ts` throws `"LSP diagnostics are not supported in this deployment"` — honest capability denial.
+- Database:
+  - `Skill` (user-owned: `userId`/`groupId`, `name`, `description`, `triggerPattern`, `code`, `version`, `successRate`/`successCount`/`useCount`, `isActive`, `hostGroupId`).
+  - `MarketplaceSkill` (public: `name` unique, `manifest` Json, `code`, `version`, `tags`, `downloads`/`ratingAvg`/`ratingCount`), `SkillVersion`, `SkillReview`.
+- API:
+  - `skills.*`, plus `tools.list/execute/toggle/test` for the tool-surface mapping.
+- Frontend:
+  - `apps/web/src/app/tools/` and `apps/web/src/app/tools-v2/` tool management UIs (tool/skill enablement).
+- Output: A sandboxed execution result (`{ output, success, durationMs }`), persisted user installs, and marketplace skill entries.
+- Dependencies: `isolated-vm`, `@flowmind/skill-engine`, `@flowmind/pipeline-engine`. See `docs/skill-development.md` for the skill spec.
+- Current Status:
+  - Only JavaScript/TypeScript sandboxed execution is real. `runtime: "native"` is a declared enum value but has no executor (honest "Native runtime not supported via API").
+  - LSP diagnostics are not supported and explicitly raise that error.
+  - `Skill.successRate/successCount` are tracked in the schema but not incremented by the executors surveyed.
+- Known Issues:
+  - `SkillEngine.execute` in `skills.run` uses `skill.id` as the engine key for marketplace skills; local `Skill` runs in `tools.execute` use the local skill id — both paths work via different lookups.
+  - Sandbox permits are conservative; file/network access for skills requires additional wiring.
+- Future Improvements:
+  - Implement a `native` runtime executor or remove the enum value.
+  - Wire LSP diagnostics to a real analyzer.
+  - Track success/usage metrics and surface them in the tools UI.

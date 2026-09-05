@@ -1,0 +1,43 @@
+# Pipelines
+
+- Status: 🚧 (creation / trigger / async run / streaming / cancel & delete are real; parallel execution and several runtime semantics are stubs)
+- Purpose: Let users visually build acyclic workflows ("pipelines") as node graphs, persist them, trigger runs, and observe per-node execution streaming to the UI.
+- User: Any signed-in user. Also group members for group-scoped pipelines.
+- Input: A `graph` (nodes + edges), name, optional description and workflow settings. Triggered with an optional `input` payload and `settings`.
+- Processing / Business Logic:
+  - Canvas builder: `apps/web/src/components/pipeline/pipeline-canvas.tsx` (React Flow), `node-palette.tsx`, `inspector-panel.tsx`, `custom-nodes.tsx`, `pipeline-toolbar.tsx`, `runs-panel.tsx`, `template-picker.tsx`, `apps/web/src/lib/pipeline-templates.ts`.
+  - Node catalog: `apps/web/src/lib/pipeline-node-config.ts` maps engine types to visual/inner nodes. 31 runner kinds live in `packages/pipeline-engine/src/runners.ts` across `triggerRunners`, `aiRunners`, `actionRunners`, `flowRunners`, `integrationRunners`.
+  - Routing: `apps/api/src/routers/pipeline.ts`. `create` persists the graph Json; `update` snapshots the prior graph into `versionHistory` (capped at 50) and increments `version`; `getVersionHistory` / `restoreVersion` manage rollback.
+  - Trigger: `pipeline.trigger` creates a `PipelineRun` with status `RUNNING`, registers an `AbortController` in the active-runs registry, and fires `executeRunBackground` (fire-and-forget) which constructs a `PipelineEngine` and streams node events to a run emitter.
+  - Engine: `packages/pipeline-engine/src/engine.ts`. `execute` validates the graph, builds a topological execution plan (`buildExecutionPlan` in `graph.ts`), and walks `plan.executionOrder` sequentially. Per-node: `executeNodeWithRetry` honours `node.retryOnFail` / `node.maxRetries` with exponential backoff (`min(1000*2^(attempt-1), 10000)`); `node.continueOnFail` lets a failing node continue the run. `humanApproval` nodes pause the run with status `awaiting_approval` unless an override/decision is provided.
+  - Runners: `packages/pipeline-engine/src/runners.ts` implements each node type. `getRunner` also dispatches `skill.<name>` skill nodes to `@flowmind/skill-engine`.
+  - Streaming: `apps/api/src/services/run-emitters.ts` buffers events; the raw SSE endpoint `GET /api/pipeline/stream/:runId` in `apps/api/src/index.ts` replays the buffer and live-forwards `node` / `done` / `error` events. Tenant scoping mirrors the `pipeline.getById` group check.
+  - Async registry & recovery: `apps/api/src/services/active-runs.ts` holds live `AbortController`s (`isRunActive`); `apps/api/src/services/run-recovery.ts` marks orphaned `RUNNING` runs as `FAILED` at boot and every 5 minutes.
+  - Batch: `pipeline.batchTrigger` runs up to 4 concurrent workers over up to 100 inputs; `getBatchStatus` reports aggregate progress.
+- Database:
+  - `Pipeline` (graph Json, version, versionHistory Json, category, tags, runCount, lastRunAt, avgDurationMs, hostGroupId/hostPipelineId/hostSource), `PipelineRun` (status, input/output Json, costCents, tokensIn/tokensOut, startedAt/completedAt), `RunLog` (nodeId, nodeType, input/output Json, error, duration, tokens, costCents). Schema in `packages/db/prisma/schema.prisma`. `PipelineRun.logs` and `RunLog` cascade-delete with the run.
+  - Delete cascade in `pipeline.delete` uses a transaction to also remove associated `MarketplaceFlow`s (`flowClone`, `flowExecution`, `marketplaceFlow`), then `pipelineRun`s, then the pipeline itself.
+- API:
+  - `pipeline.list / create / update / delete / getById / getVersionHistory / restoreVersion / trigger / executeNode / validate / simulate / loadOptions / getRuns / cancelRun / resume / getRunLogs / batchTrigger / getBatchStatus / exportPipeline / importPipeline`, plus marketplace procs (`listMarketplace`, `getMarketplaceById`, `publishToMarketplace`, `cloneFromMarketplace`, `marketplaceCategories`).
+- Frontend:
+  - `apps/web/src/app/pipelines/page.tsx`, `apps/web/src/app/pipelines/[id]/page.tsx`, components in `apps/web/src/components/pipeline/*`, `apps/web/src/lib/api/pipeline.ts`.
+- Output: A persisted `PipelineRun` with `output`, per-node `RunLog` rows, SSE `node`/`done`/`error` events, and updated pipeline run counters.
+- Dependencies: `@flowmind/pipeline-engine` (engine, runners, graph, expressions, code-sandbox, network-guard, file-root), `@flowmind/provider-registry`, `@flowmind/context-engine` (RAG in `ragRetrieve`), `@flowmind/skill-engine` (skill nodes), `@flowmind/billing` (usage). See `docs/pipeline-authoring.md` for node/expression reference.
+- Current Status (honest semantics):
+  - Execution is **strictly sequential** in topological order; `executionOrder: "parallel"` is accepted in settings but ignored by the engine.
+  - `parallelFork` only emits branch descriptors (`branches: [{ branchIndex, item, status: "pending" }]`); it does not run branches concurrently.
+  - `loop` sets `$loop.index/item/total` variables but does not re-run downstream nodes per iteration.
+  - `webhookTrigger` is client-side only (it just returns the configured path; no real webhook binding).
+  - `humanApproval` returns `status: "awaiting_approval"` unless a `requestApproval` callback or `approvalOverrides` is supplied. In `executeRunBackground` the callback is a stub that immediately returns `{ approved: false }`; the `resume` procedure re-runs the whole graph with the decisions applied.
+  - `subPipeline` requires a `subPipelineRunner` which is not provided by the API, so sub-pipeline nodes error with "not available".
+  - `databaseQuery` is read-only (guarded by `assertSafeReadOnlySql`); custom connection strings are rejected.
+  - `codeExecute` uses isolated-vm; disabled when `PIPELINE_CODE_EXECUTE_ENABLED === "false"`.
+- Known Issues:
+  - `cancelRun` fixes a previously-broken cancel: it flips the run to `CANCELLED`, aborts the controller, and emits a `done` event; the background loop checks the status again when returning.
+  - `resume` re-runs from the top of the graph rather than resuming at the paused node; it is labelled AWAITING_APPROVAL → re-trigger, so approval semantics are approximate.
+  - `executeNode` (`pipeline.executeNode`) validates the graph and runs a single node, but does not hydrate precursor inputs (it uses an empty context).
+- Future Improvements:
+  - Honest parallel scheduling for `parallelFork`/`executionOrder: "parallel"`.
+  - True loop re-execution of downstream subgraphs.
+  - A real webhook listener binding `webhookTrigger` paths.
+  - Persistent human-approval resume at the exact paused node.

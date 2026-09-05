@@ -1,0 +1,34 @@
+# Knowledge / RAG
+
+- Status: ✅ (real Qdrant-backed vector search with in-memory fallback; Python agent-runtime embedding indexing)
+- Purpose: Give chat and pipelines retrieval-augmented context: documents are chunked, embedded, indexed, and searched by relevance.
+- User: Any signed-in user; group-scoped knowledge is available to group members via the host/group layer.
+- Input: For indexing — a document (`name`, `type` in PDF/TXT/MD/CSV/JSON, optional `content`). For search — a `query` string, `topK`, optional `filters`.
+- Processing / Business Logic:
+  - API router: `apps/api/src/routers/knowledge.ts` — `list`, `getById`, `create`, `delete`, `uploadDocument`, `deleteDocument`, `search`.
+  - Index path (`uploadDocument`): creates a `KnowledgeDocument` (status INDEXING), bumps `KnowledgeBase` counters, then (if content is present) calls the agent runtime `POST /knowledge/index` (`packages/agent-runtime/src/main.py`) which chunks and embeds into Qdrant; on success the doc is marked INDEXED and the base READY, on failure ERROR.
+  - Delete path: deletes the document row, calls `POST /knowledge/delete`, and decrements counters.
+  - Search path: calls `POST /knowledge/search` (vector search via Qdrant). On failure, falls back to a Prisma `contains` scan of user documents with a heuristic score (0.9 exact match / 0.7 substring) and `extractSnippet` context windowing.
+  - Chat augmentation: `ChatService` (`apps/api/src/services/ChatService.ts`) prefixes up to 3 context chunks (`ContextEngine.search`) onto the user message before the agent loop.
+  - Pipeline RAG: `ragRetrieve` runner (`packages/pipeline-engine/src/runners.ts`) invokes the injected `ragSearch` callback (wired in `executeRunBackground` with group scoping).
+  - ContextEngine: `packages/context-engine/src/index.ts` — `ContextEngine` talks to Qdrant (`context_chunks` collection, 384-dim cosine vectors, `all-minilm` embeddings via Ollama). If Qdrant connection fails at boot it flips to `memoryMode` (in-process cosine search). `index`/`search`/`delete` are tenant-filtered by `userId` (+ optional `groupId`).
+- Database:
+  - `KnowledgeBase` (`model` default `nomic-embed-text`, `status` READY/INDEXING/ERROR, `totalDocs`, `totalChunks`, `totalSize` BigInt, `hostGroupId`), `KnowledgeDocument` (`type`, `size`, `chunks`, `status`, `content`). Cascade delete with the base.
+  - `Memory` model exists for episodic memory but is not written by the index path described above.
+- API:
+  - `knowledge.*` router; `host.upsertKnowledge` / `host.deleteKnowledge` for group knowledge; `host.client.searchContext` for host clients.
+- Frontend:
+  - `apps/web/src/app/knowledge/page.tsx` (knowledge base UI).
+- Output: Indexed embeddings in Qdrant (or memory), search results `{ id, content, kb, score, doc }`, and augmented context for chat/pipelines.
+- Dependencies: `@flowmind/context-engine`, `@qdrant/js-client-rest`, Ollama embedding endpoint, Python agent runtime (`packages/agent-runtime/src/main.py`).
+- Current Status:
+  - Qdrant search is real (verified). A memory fallback exists but is in-process only (lost on restart).
+  - The knowledge router also delegates to the Python runtime; if that runtime is down, search falls back to DB substring scanning but indexing errors out.
+- Known Issues:
+  - There are **two** indexing paths (knowledge router → agent-runtime RAG store, and `ContextEngine.index` used by `host.upsertKnowledge` / pipeline RAG) that can diverge in collection/namespace; `ChatService` uses the engine path while `knowledge.*` uses the Python path.
+  - `KnowledgeDocument.content` is stored in Postgres; `totalChunks` is never updated by the current index path.
+  - `search`'s fallback scoring is heuristic and does not use embeddings.
+- Future Improvements:
+  - Unify the two RAG namespaces (agent-runtime store vs `ContextEngine`).
+  - Populate `totalChunks`, support PDF parsing in-process, and add re-embedding on document update.
+  - Use provider-registry embedding flexibility (e.g. configurable embedding model per base).

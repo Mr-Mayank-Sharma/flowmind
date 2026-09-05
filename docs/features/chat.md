@@ -1,0 +1,35 @@
+# Chat
+
+- Status: ✅ (core path verified with real Ollama inference; cloud providers wired but untested)
+- Purpose: Provide a conversational AI assistant that uses tools to accomplish tasks, with streaming responses during inference.
+- User: Any signed-in user. Access via the `ChatLayout` at `apps/web/src/app/chat/page.tsx`.
+- Input: A user message (`content`), an optional `model`, optional `files`, and an optional `tools` allowlist. Sent from the chat UI through `chat.sendMessage`.
+- Processing / Business Logic:
+  - Frontend: `apps/web/src/hooks/chat-store.ts` (Zustand store) orchestrates a turn. It optimistically appends a user message plus an empty assistant bubble, then opens the SSE stream and fires the tRPC mutation in parallel (`Promise.allSettled`).
+  - API entry: `apps/api/src/routers/chat.ts` → `chat.sendMessage` mutation. It verifies the session belongs to the caller, creates a `BufferedEmitter` for the session, then calls `ChatService.sendMessageWithAgentLoop` (`apps/api/src/services/ChatService.ts`).
+  - `ChatService` enriches the user message with up to 3 context chunks from the `ContextEngine` (`apps/api/src/services/context-engine.ts`), selects a provider (openai → anthropic → ollama, then fallback to the first configured), resolves a model (Ollama default or a cloud default in `CLOUD_DEFAULT_MODELS`), builds the tool surface via `buildChatTools`, and runs `runAgentLoop` from `packages/llm-router/src/agent-loop.ts`.
+  - Agent loop protocol (`packages/llm-router/src/agent-loop.ts`): the model returns either `CALL_TOOL: name(args)` or `FINAL_ANSWER: text` (regexes `TOOL_USE_PATTERN` / `FINAL_ANSWER_PATTERN`). Tool results are fed back as a hidden user message. Each iteration calls `onStep` so the frontend can stream `thought` / `tool_call` / `tool_result` events.
+  - Tool surface: `buildChatTools` filters the global `toolRegistry` to `NON_DESTRUCTIVE_TOOLS` (`read`, `grep`, `glob`, `webfetch`, `websearch`, `http_request`, `todowrite`) and merges MCP tools from `listMcpAgentToolsForUser` (`apps/api/src/services/mcp-client.ts`).
+  - Failover: if the agent loop throws, `sendMessageWithAgentLoop` falls back to `callAgentRuntimeWithRetry`, which calls the Python agent runtime (`POST /chat/send` at `AGENT_RUNTIME_URL`) guarded by a `CircuitBreaker(3, 30s)`.
+- Database:
+  - `Session` (title, summary, embedding) and `Message` (`role`, `content`, `error`, `toolCalls` Json, `toolResults` Json, `model`, `provider`, `tokensIn`, `tokensOut`, `duration`) in `packages/db/prisma/schema.prisma`. Messages cascade-delete with their session.
+- API:
+  - `chat.createSession`, `chat.getSessions` (cursor paginated), `chat.getSession`, `chat.deleteSession`, `chat.searchSessions`, `chat.sendMessage` (routers/chat.ts).
+  - Raw SSE endpoint `GET /api/chat/stream/:sessionId` in `apps/api/src/index.ts` (auth via `Authorization: Bearer <jwt>` or `?token=` outside production).
+- Frontend:
+  - `apps/web/src/components/chat/*` (`chat-layout`, `chat-area`, `chat-input`, `message-bubble`, `model-selector`, `session-list`).
+  - `apps/web/src/lib/api/chat.ts` wraps the tRPC procedures.
+  - `chat-store.ts` holds the streaming state, a 90s stream timeout (`MAX_STREAM_DURATION`), error bubbles (`message.error`), and a trailing-buffer fix (SSE chunks split across `\n\n` boundaries are buffered and flushed).
+- Output: An assistant message persisted to `Message`, streamed to the UI as SSE events, and rendered in `message-bubble` (with tool-call cards when `toolCalls` are present).
+- Dependencies: `@flowmind/llm-router` (agent loop + providers), `@flowmind/tool-system` (registry), `@flowmind/context-engine` (RAG context), agent-runtime (fallback path, `packages/agent-runtime`), Ollama or a cloud provider.
+- Current Status:
+  - Real Ollama inference is verified end-to-end (agent loop with local model). Cloud providers (`openai`/`anthropic`/`google`/etc.) are wired in `llm-router` but not verified in this deployment.
+  - The legacy `callAgentRuntime` path is a separate, older flow; it is exercised only as a failover for the agent loop.
+- Known Issues:
+  - `Message.toolResults` is written to the schema but never populated by the current save path (only `toolCalls` surfaces through the stream / store).
+  - `getContextEngine()` used by `ChatService` is not the same instance the pipeline/health path uses; context engine fallback can differ.
+  - Stream cancellation (`stopStreaming`) aborts the fetch, but the LLM provider call in `runAgentLoop` has no `signal` wired from the client, so server-side work may continue briefly.
+- Future Improvements:
+  - Persist richer tool-call metadata to `toolCalls`/`toolResults` on the assistant message.
+  - Wire `AbortSignal` through `runAgentLoop` to cancel server work on client stop.
+  - Add message authoring/regeneration and per-message model overrides.

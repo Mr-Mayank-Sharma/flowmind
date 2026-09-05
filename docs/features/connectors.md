@@ -1,0 +1,37 @@
+# Connectors
+
+- Status: 🚧 (inbound webhook ingestion + agent-runtime forwarding are real; outbound pipeline integration runners vary — HTTP/Database/Slack/SMTP are implemented, email/image/webhook connectors are stubbed or simulated)
+- Purpose: Bring external events into the workspace (Telegram, Slack, Discord, WhatsApp, generic webhooks) and let pipelines talk back out (HTTP, DB, Slack, email, image gen).
+- User: External services (inbound webhooks, verified by secret) and pipeline authors (outbound runners).
+- Input:
+  - Inbound: `webhooks.ingest/telegram/slack/discord/whatsapp` with a raw platform payload + optional `secret`; payload shapes are platform-specific (`message.text`, `event.text`, `content`, WhatsApp `entry[0].changes[0].value` envelope).
+  - Outbound: a node spec with `type: "httpRequest" | "databaseQuery" | "slackMessage" | "sendEmail" | "imageGenerate" | "webhook"` and its inputs.
+- Processing / Business Logic:
+  - Inbound (`apps/api/src/routers/webhooks.ts`): each channel's procedure extracts text/userId/channelId via `extractText`, verifies the shared/channel secret (`CHANNEL_SECRET_ENV` + `verifyChannelSecret`; in production a missing secret rejects — `ALLOW_UNVERIFIED_WEBHOOKS` overrides), and forwards to the agent runtime `POST /webhook/ingest` with a 5s timeout. Slack URL-verification `challenge` is answered directly. Failures surface `BAD_GATEWAY`.
+  - Outbound (`packages/pipeline-engine/src/runners.ts`, integration runners):
+    - `httpRequest` — real fetch with headers/body/timeout.
+    - `databaseQuery` — real read-only SQL via `assertSafeReadOnlySql`; rejects custom connection strings.
+    - `slackMessage` — real Slack webhook POST via `SLACK_WEBHOOK_URL`.
+    - `sendEmail` — real SMTP send through `sendMail` (`apps/api/src/lib/mailer.ts`) when SMTP is configured.
+    - `imageGenerate` — simulated; returns a placeholder result (Stable Diffusion not wired).
+    - `webhook` — fire-and-forget POST to a user-provided URL (no signature support).
+  - Webhook trigger node (`webhookTrigger`) — client-side only; returns the configured path without binding a real listener.
+- Database: none for inbound; `CronJob.channel` / pipeline graphs reference connector targets.
+- API:
+  - Inbound: `webhooks.{ingest,telegram,slack,discord,whatsapp}`.
+  - Outbound: pipeline node runners (no separate HTTP API).
+- Frontend:
+  - `apps/web/src/components/pipeline/custom-nodes.tsx` (connector nodes), `apps/web/src/lib/pipeline-node-config.ts` (integration node kinds).
+- Output: Platform payloads delivered to agent runtime `/webhook/ingest`; pipeline connector nodes produce their side-effect (HTTP response, DB rows, Slack message, email, placeholder image) and outputs for downstream nodes.
+- Dependencies: `@flowmind/pipeline-engine` runners, `sendMail`, agent runtime webhook ingest (`packages/agent-runtime`).
+- Current Status:
+  - Inbound ingestion is real for 4 channels + generic, verified by secret, forwarded to the runtime.
+  - Outbound: HTTP / DB (read-only) / Slack / SMTP are real; image generation is simulated; inbound webhook *trigger* nodes are not bound.
+- Known Issues:
+  - Channel secrets are single env vars per channel, not per-user tokens, so any user can hit the generic endpoint with the shared secret.
+  - WhatsApp media is extracted (`media`) but not downloaded/embedded by the current ingest path.
+  - `webhookTrigger` appears in the node palette but does not listen on the path.
+- Future Improvements:
+  - Bind real HTTP listeners for `webhookTrigger` paths per pipeline.
+  - Give each inbound channel a signed, per-user secret and replay support.
+  - Implement actual image generation and webhook-signature verification for outbound connectors.

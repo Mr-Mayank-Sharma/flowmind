@@ -1,0 +1,35 @@
+# Authentication
+
+- Status: ✅ (JWT + password + SSO are real; MFA/webauthn and SAML are declared in the router surface but not verified end-to-end)
+- Purpose: Sign users in and out of the workspace with email/password, Google or GitHub OAuth, and issue short-lived JWTs with refresh tokens.
+- User: Any visitor (register/login) or signed-in user (refresh, logout).
+- Input: For register — `email`, `password` (min 8), optional `name`. For login — `email`, `password`. For OAuth — provider name + redirect code/state. For refresh — `refreshToken`.
+- Processing / Business Logic:
+  - Router: `apps/api/src/routers/auth.ts` (522 lines).
+  - `register`: checks email uniqueness (CONFLICT error), hashes with `bcrypt.hash(password, 12)`, creates the `User`, and returns `{ user, token, refreshToken }`.
+  - `login`: rate-limits by `IP:email` via the state store (`auth:attempts:*`, 5 attempts / 15 min window, `MAX_LOGIN_ATTEMPTS`, `LOGIN_WINDOW_MS`); verifies `passwordHash` with `bcrypt.compare`; issues a 15-minute access token and 7-day refresh token.
+  - OAuth: `auth.oauthStart` generates a cryptographically-random state stored in `auth:sso:<state>` with a 600s TTL; redirects to Google/GitHub (`SSO_CLIENTS`). `auth.oauthCallback` verifies state + provider, exchanges the code for an access token, fetches the user profile, upserts the `User` (linking by `oauth_provider`/`oauth_id` or by email), and issues tokens.
+  - `refresh`: validates the refresh token and issues a new access token. `logout` revokes the session server-side.
+  - The router also exposes `mfa.setup/verify` and `saml.metadata/assert` surfaces with a stub/not-implemented path; these have schema endpoints but no production SAML stack.
+  - Token signing uses `JWT_SECRET` from `apps/api/src/lib/jwt-secret.ts` (random secret generated at runtime when not set). State/attempt storage is via `getStateStore()` in `apps/api/src/lib/redis.ts` (Redis when configured, in-memory fallback otherwise).
+- Database:
+  - `User` (email, passwordHash, name, oauth providers, stripeId, tier) in `packages/db/prisma/schema.prisma`.
+  - `Session` rows are created for chat use and store the user link (`userId`).
+- API:
+  - `auth.register`, `auth.login`, `auth.refresh`, `auth.logout`, `auth.oauthStart`, `auth.oauthCallback` (+ declared `auth.mfa.setup`, `auth.mfa.verify`, `auth.saml.metadata`, `auth.saml.assert`).
+- Frontend:
+  - `apps/web/src/app/login/page.tsx`, `apps/web/src/app/register/page.tsx` (Next.js pages using the tRPC client). `middleware.ts` protects routes that require authentication.
+- Output: `{ token, refreshToken }` on success; tokens are sent on subsequent calls via `Authorization: Bearer`.
+- Dependencies: `jsonwebtoken`, `bcryptjs`, `getStateStore` (Redis/memory), `sendMail` for password reset (`apps/api/src/lib/mailer.ts`, SMTP-gated).
+- Current Status:
+  - Passwords havehes with bcrypt cost 12 (real).
+  - SSO state TTL and login attempt windows are enforced.
+  - `refresh` does not rotate the refresh token (single 7d JWT).
+- Known Issues:
+  - `logout` only deletes the session row for the current `userId`; refresh tokens remain valid until they expire (no token-blacklist).
+  - Access token expiry is 15m; the chat SSE stream validates the same JWT, so long-lived streams can outlive the token (the frontend refreshes and retries).
+  - OAuth upsert by email can overwrite a password user's `oauth_*` fields if the email collides (identity linking is permissive).
+- Future Improvements:
+  - Add refresh-token rotation + blacklist on logout.
+  - Complete SAML and TOTP/webauthn MFA (currently declared but not wired).
+  - Add account recovery/email verification flows.

@@ -1,0 +1,33 @@
+# Agent Loop
+
+- Status: ✅ (engine + protocol verified with real Ollama; provider surface broad but not all verified)
+- Purpose: Drive a chat/pipeline agent that can call tools in a ReAct-style loop until it produces a final answer.
+- User: The chat assistant (`ChatService`) and pipeline `aiAgent` nodes.
+- Input: `AgentLoopOptions` — a `ProviderFacade`, `model`, `systemPrompt`, `userMessage`, an array of `AgentTool`s, optional `maxIterations` (default 25), `maxTokens` (default 4096), an `onStep` callback and an optional `AbortSignal`.
+- Processing / Business Logic:
+  - Entry point: `runAgentLoop` in `packages/llm-router/src/agent-loop.ts`.
+  - It builds a system prompt that instructs the model to answer only with `CALL_TOOL: name(jsonArgs)` or `FINAL_ANSWER: text`, listing every available tool (`buildToolList`).
+  - Loop: for each iteration the provider is asked for a completion; the response is scanned with `TOOL_USE_PATTERN` (`^CALL_TOOL:\s*(\w+)\s*\(([\s\S]*)\)\s*$`) and `FINAL_ANSWER_PATTERN` (`^FINAL_ANSWER:\s*([\s\S]*)$`).
+  - Tool call: args are JSON-parsed (falling back to `{ input: raw }`); the tool is looked up in `toolMap` and executed. Unknown tools produce `[Tool "x" not found. Available: ...]`. Tool results are truncated to 2000 chars and fed back as a hidden user message `[Tool <name> result]: ...`.
+  - Final answer: when `FINAL_ANSWER:` matches, the result is returned with the response, iteration count, an ordered `steps[]` list and token usage.
+  - Termination: max iterations leads to a `[Max iterations (25) reached]` truncated response.
+  - Errors: provider failures abort the loop with an `[LLM error: ...]` throw; tool execution errors are captured into the result text and returned to the model.
+- Database: none directly (persisted indirectly via the caller, e.g. `Message` for chat).
+- API:
+  - Called by `ChatService.sendMessageWithAgentLoop` (`apps/api/src/services/ChatService.ts`).
+  - Called by the pipeline `aiAgent` runner via `reactAgentLoop` (`packages/pipeline-engine/src/runners.ts`), which wraps an `LLMProvider` in `wrapLLMAsProvider` and supplies 4 pipeline-local tools (`webSearch`, `calculator`, `currentTime`, `readFile` — the last is a simulated stub).
+- Frontend: `chat-store.ts` consumes `onStep`-driven SSE events (`thought`, `tool_call`, `tool_result`, `done`).
+- Output: `AgentLoopResult { response, iterations, steps, usage }`, surfaced to UI or stored as the assistant reply.
+- Dependencies: `@flowmind/llm-router` providers (`engine.ts`, `providers/*`), `@flowmind/tool-system` (via `ChatService.buildChatTools`), `@flowmind/mcp-executor` (MCP tools merged in `mcp-client.ts`).
+- Current Status:
+  - The text protocol is real and verified against Ollama (CALL_TOOL/FINAL_ANSWER parsing and tool-result feedback).
+  - Cloud providers are wired in `LLMEngine.initProviders` (`openai`, `anthropic`, `google`, `groq`, `deepseek`, `openrouter`, `together`, `mistral`, `azure-openai`, `perplexity`, `deepinfra`, `cerebras`, `xai`, `cohere`, `cloudflare`, `venice-ai`, `alibaba`, plus `ollama`) but not all are verified in this deployment.
+  - Tool result truncation is hard-coded to 2000 chars in `buildToolResultBlock` and again in the loop (`toolResult.slice(0, 2000)`).
+- Known Issues:
+  - The agent loop only handles a single `CALL_TOOL` per turn (single-regex capture), not multi-tool calls.
+  - Arg parsing is permissive (bare text becomes `{ input }`), which can produce surprising tool inputs.
+  - No `AbortSignal` wiring from the chat client, so a stop does not cancel server-side provider calls.
+- Future Improvements:
+  - Support multiple tool calls per iteration and native tool-calling mode for providers that support it.
+  - Allow per-iteration backpressure and configurable, streaming tool results.
+  - Route through the provider-registry's capability metadata (`toolCall`, etc.) to pick providers that support tooling.

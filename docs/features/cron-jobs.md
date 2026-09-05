@@ -1,0 +1,31 @@
+# Cron Jobs
+
+- Status: ✅ (real node-cron scheduler with create/update/delete/toggle; 20-job limit; next-run estimation is rough)
+- Purpose: Schedule pipeline runs on a 5-field cron expression and persist the job + next run time.
+- User: Any signed-in user (per-user jobs).
+- Input: `name`, `expression` (5-field cron validated by `cron.validate`), `pipelineId`, optional `channel`.
+- Processing / Business Logic:
+  - Router: `apps/api/src/routers/jobs.ts`.
+  - `create`: validates the expression (rejects with `CRON_SCHEMA_HELP` message), verifies the pipeline belongs to the user (404 otherwise), enforces a 20-job cap per user (`"Cron job limit reached. Upgrade your plan for more scheduled jobs."`), estimates `nextRunAt` with an inline 5-part parser, persists the `CronJob`, then dynamic-imports `reschedule` from `apps/api/src/services/cron-scheduler.ts` and registers the recurring task.
+  - `update`: validates any new expression, recomputes `nextRunAt`, and reschedules/unschedules based on `isActive`.
+  - `delete`: `unschedule(id)` then deletes the row.
+  - `toggle`: flips `isActive` and reschedules/unschedules.
+  - Scheduler: `apps/api/src/services/cron-scheduler.ts` manages a module-level map of node-cron `ScheduledTask`s keyed by job id. `reschedule(jobId, expression, pipelineId)` clears any previous task and creates a new `cron.schedule(expression, ...)` that loads the pipeline graph and calls the pipeline engine synchronously (via a version of the same `executeRunBackground`-style run used for manual triggers). `computeNextRun` also exists in that file for next-run estimation.
+- Database:
+  - `CronJob` (userId, name, expression, pipelineId, channel, nextRunAt, isActive, lastRunAt?, runCount?) in `packages/db/prisma/schema.prisma`.
+- API:
+  - `jobs.list`, `jobs.getById`, `jobs.create`, `jobs.update`, `jobs.delete`, `jobs.toggle`.
+- Frontend:
+  - `apps/web/src/app/jobs/page.tsx` (jobs UI).
+- Output: A persisted `CronJob`, a live node-cron schedule while the server runs, and pipeline runs triggered on schedule.
+- Dependencies: `node-cron`, `@flowmind/pipeline-engine`, `apps/api/src/services/cron-scheduler.ts`.
+- Current Status:
+  - Schedule/unschedule is real and verified in the scheduler service.
+  - Jobs are process-memory only: they are registered on `reschedule`, so a server restart drops schedules unless jobs are re-registered at boot. (A boot-time `reschedule` loop over DB jobs is not present.)
+- Known Issues:
+  - `nextRunAt` estimation only handles `*` and `*/n` for the minute field; other expressions (e.g. `0 7 * * *`) get a broad estimate or `null`, and the estimate is not re-run after scheduling.
+  - Cron payloads target the pipeline at schedule time; if the pipeline graph changes between create and fire, the new graph is used (no snapshotting at schedule creation).
+  - Only the minute-level part of the expression drives `nextRunAt`; hour/day fields are ignored by the estimate.
+- Future Improvements:
+  - Re-hydrate schedules from the DB at boot, and compute accurate next-run via a cron parser library.
+  - Add run history and per-schedule status (last trigger, next trigger) to the UI.

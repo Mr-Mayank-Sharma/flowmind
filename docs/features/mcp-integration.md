@@ -1,0 +1,31 @@
+# MCP Integration
+
+- Status: ✅ (real MCP client across stdio / streamable-http / SSE, verified against the in-repo demo server and live e2e)
+- Purpose: Let users register external MCP servers (stdio, streamable-http, SSE) whose tools are exposed to the chat agent loop and to the `mcp.*` router, with tenant scoping and security guards.
+- User: Any signed-in user (per-user servers + per-user tokens). Tenants are isolated by `userId`.
+- Input: A server definition (`name`, `transport`, `command`+`args` for stdio, or `baseUrl`+`headers` for remote), plus optional OAuth tokens per provider.
+- Processing / Business Logic:
+  - API router: `apps/api/src/routers/mcp.ts`. `mcp.servers.create/update/delete/test/tools/callTool` call `validateServerInput`, which for stdio runs `assertCommandAllowed` (allowlist) and for remote runs `assertMcpRemoteUrl` (SSRF blocklist). `mcp.*` top-level handles OAuth token storage (`mcpToken` model) and built-in tool listing.
+  - Connection layer: `@flowmind/mcp-executor` (`McpExecutor`, `McpConnectionPool`, `McpServerRegistry`, `McpToolRouter`). Transport mapping via `TRANSPORT_MAP` in `apps/api/src/services/mcp-client.ts`.
+  - Registry service: `apps/api/src/services/mcp-client.ts` owns the singleton `mcpRegistry`, `mcpConnectionPool`, and `mcpToolRouter`. `listUserMcpServers` / `getUserMcpServer` enforce per-user scoping.
+  - Agent tool merge: `listMcpAgentToolsForUser` discovers every enabled, reachable server, registers each tool with `mcpToolRouter`, and exposes each as an `AgentTool` whose `execute` calls `mcpConnectionPool.callTool`. A failing server is skipped (never faked) and its `lastError` is persisted via `recordServerOutcome`.
+  - OAuth: `executor.initiateOAuthFlow` / `handleOAuthCallback` (with PKCE where supported) store tokens through the `mcpToken` model with refresh support (`tokenStore.refreshToken`).
+- Database:
+  - `McpServer` (`transport`, `command`, `args` Json, `baseUrl`, `headers` Json, `enabled`, `lastError`, `lastConnectedAt`, `lastToolCount`) cascade-deletes with the user.
+  - `McpToken` (`provider`, `accessToken`, `refreshToken`, `scope`, `expiresAt`, `isActive`, optional `orgId`/`userId`).
+- API:
+  - `mcp.list / create / delete / toggle / providers / tools / oauthInitiate / oauthCallback / execute`, and `mcp.servers.{list,create,update,delete,test,tools,callTool}`.
+- Frontend:
+  - `apps/web/src/app/mcp/page.tsx` (MCP management UI).
+- Output: MCP tools discoverable and callable from the chat agent loop and the `mcp.execute` / `mcp.servers.callTool` procedures; server health (`lastConnectedAt`, `lastToolCount`, `lastError`) persisted.
+- Dependencies: `@flowmind/mcp-executor`, `@flowmind/llm-router` (`AgentTool`), `@flowmind/db` (`McpServer`, `McpToken`). See `docs/mcp-integration-spec.md` for the detailed spec.
+- Current Status:
+  - stdio / streamable-http / SSE transports are supported and verified against the in-repo demo server plus live e2e (per the inventory).
+  - Security tokens: stdio command allowlist (`assertCommandAllowed`) and remote URL blocklist (`assertMcpRemoteUrl`) are enforced at create/update/test.
+- Known Issues:
+  - MCP tools are pulled live on each agent loop invocation (`listMcpAgentToolsForUser` calls `listTools` per server), which can be slow for many servers; there is no per-user tool cache.
+  - The `mcpToken.expiresAt` handling for OAuth relies on provider returns; PKCE is provider-dependent.
+- Future Improvements:
+  - Cache discovered tools per server with a TTL and revalidate lazily.
+  - Add org-scoped shared MCP servers in addition to per-user.
+  - Surface a graph/node `mcpCall` type for pipelines.
