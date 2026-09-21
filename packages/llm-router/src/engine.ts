@@ -18,8 +18,6 @@ export interface LLMConfig {
   deepseekKey?: string
   openrouterKey?: string
   togetherKey?: string
-  githubCopilotKey?: string
-  awsBedrockKey?: string
   azureOpenAIKey?: string
   azureEndpoint?: string
   mistralKey?: string
@@ -38,6 +36,48 @@ const defaultFactories: Record<string, ProviderFactory> = {
   openai: (key, baseUrl) => createOpenAIProvider({ apiKey: key, baseUrl }),
   anthropic: (key) => createAnthropicProvider(key),
   google: (key) => createGoogleProvider(key),
+}
+
+// Bridges the callback-based stream API to an async generator. Chunks are
+// pushed here by onChunk and pulled by the generator, so the provider is
+// called exactly once per stream.
+class AsyncChunkQueue {
+  private items: CompletionChunk[] = []
+  private waiters: Array<() => void> = []
+  private finished = false
+  private failure: Error | undefined
+
+  push(chunk: CompletionChunk): void {
+    this.items.push(chunk)
+    this.wakeWaiter()
+  }
+
+  finish(): void {
+    this.finished = true
+    this.wakeWaiter()
+  }
+
+  fail(error: Error): void {
+    this.failure = error
+    this.finished = true
+    this.wakeWaiter()
+  }
+
+  private wakeWaiter(): void {
+    const waiter = this.waiters.shift()
+    waiter?.()
+  }
+
+  // Returns the next chunk, or undefined once the stream is finished.
+  // Throws the stream error when the provider reported one.
+  async next(): Promise<CompletionChunk | undefined> {
+    while (true) {
+      if (this.items.length > 0) return this.items.shift()
+      if (this.failure) throw this.failure
+      if (this.finished) return undefined
+      await new Promise<void>((resolve) => this.waiters.push(resolve))
+    }
+  }
 }
 
 export class LLMEngine {
@@ -135,60 +175,79 @@ export class LLMEngine {
 
   async *streamAsync(req: CompletionRequest): AsyncGenerator<CompletionChunk, CompletionResult, undefined> {
     const provider = this.resolveProvider(req)
-    let resolveResult: ((r: CompletionResult) => void) | undefined
-    let rejectResult: ((e: Error) => void) | undefined
-    const resultPromise = new Promise<CompletionResult>((resolve, reject) => {
-      resolveResult = resolve
-      rejectResult = reject
-    })
+
+    // Chunks flow from onChunk into a queue that this generator drains,
+    // so the provider is invoked exactly once (the old code called
+    // provider.stream() twice, doubling API usage and risking empty output).
+    const queue = new AsyncChunkQueue()
+    let settledResult: CompletionResult | undefined
 
     const callbacks: StreamCallbacks = {
-      onChunk: (chunk) => { /* yield is handled below via generator */ },
-      onDone: (result) => resolveResult?.(result),
-      onError: (error) => rejectResult?.(error),
+      onChunk: (chunk) => queue.push(chunk),
+      onDone: (result) => {
+        settledResult = result
+        queue.finish()
+      },
+      onError: (error) => queue.fail(error),
     }
 
-    const streamPromise = provider.stream(req, callbacks).then((result) => {
-      resolveResult?.(result)
-      return result
-    }).catch((e) => {
-      rejectResult?.(e)
-      throw e
+    const streamPromise = provider.stream(req, callbacks)
+    // A rejection that never reached onError (e.g. the fetch itself failed)
+    // must still unblock the queue, otherwise the generator waits forever.
+    streamPromise.catch((error: unknown) => {
+      queue.fail(error instanceof Error ? error : new Error(String(error)))
     })
 
-    // Can't easily yield from callbacks in async generator
-    // For now, collect chunks and yield after
-    const chunks: CompletionChunk[] = []
-    const wrappedCallbacks: StreamCallbacks = {
-      onChunk: (chunk) => { chunks.push(chunk) },
-      onDone: (result) => resolveResult?.(result),
-      onError: (error) => rejectResult?.(error),
-    }
-
-    provider.stream(req, wrappedCallbacks).then((r) => resolveResult?.(r)).catch((e) => rejectResult?.(e))
-
-    for (const chunk of chunks) {
+    while (true) {
+      const chunk = await queue.next()
+      if (chunk === undefined) break
       yield chunk
     }
 
-    return resultPromise
+    // onDone normally supplies the result; awaiting the promise also
+    // surfaces HTTP failures that never reached the callbacks.
+    return (await streamPromise) ?? settledResult!
   }
 
   private resolveProvider(req: CompletionRequest): ProviderFacade {
     if (req.provider) {
-      const p = this.providers.get(req.provider)
-      if (p) return p
+      const explicit = this.providers.get(req.provider)
+      if (explicit) return explicit
     }
 
     if (req.model) {
-      for (const p of this.providers.values()) {
-        if (p.id === "openai") return p // default
-      }
+      const matched = this.matchModelToProvider(req.model)
+      if (matched) return matched
     }
 
     const first = this.providers.values().next().value
     if (!first) throw new Error("No LLM providers configured. Set at least one API key.")
     return first
+  }
+
+  // Picks the provider most likely to serve a model name. The old code
+  // always returned "openai" whenever a model was set, even if only
+  // Ollama or Anthropic was configured. Unknown names fall through so the
+  // caller gets the first configured provider instead of a wrong one.
+  private matchModelToProvider(model: string): ProviderFacade | undefined {
+    const normalized = model.toLowerCase()
+    const rules: Array<[RegExp, string]> = [
+      [/^gpt-/, "openai"],
+      [/^o[1-9](-|$)/, "openai"],
+      [/^chatgpt-/, "openai"],
+      [/^claude-/, "anthropic"],
+      [/^gemini-/, "google"],
+      [/^command(-|$)/, "cohere"],
+      [/^deepseek-/, "deepseek"],
+      [/^llama|^qwen|^mistral|^gemma|^phi|^tinyllama|^mxbai|^nomic/, "ollama"],
+    ]
+    for (const [pattern, providerId] of rules) {
+      if (pattern.test(normalized)) {
+        const provider = this.providers.get(providerId)
+        if (provider) return provider
+      }
+    }
+    return undefined
   }
 }
 

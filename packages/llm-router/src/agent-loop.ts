@@ -1,4 +1,4 @@
-import type { CompletionRequest, CompletionResult, ProviderFacade, ContentBlock } from "./types"
+import type { CompletionRequest, CompletionResult, ProviderFacade, ContentBlock, Message, ToolDefinition } from "./types"
 
 function extractTextContent(content: string | ContentBlock[]): string {
   if (typeof content === "string") return content
@@ -91,6 +91,14 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   let totalPromptTokens = 0
   let totalCompletionTokens = 0
 
+  // Declare tools to the model in the provider-native format. Providers
+  // that support structured tool calls (OpenAI-compatible APIs) will use
+  // them; the regex protocol below remains the fallback for others.
+  const toolDefinitions: ToolDefinition[] = tools.map((t) => ({
+    type: "function",
+    function: { name: t.name, description: t.description, parameters: t.parameters },
+  }))
+
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     if (signal?.aborted) {
       throw new Error("Agent loop aborted")
@@ -101,6 +109,8 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       messages: [...messages],
       maxTokens,
       temperature: 0.7,
+      tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
+      tool_choice: toolDefinitions.length > 0 ? "auto" : undefined,
     }
 
     let result: CompletionResult
@@ -124,6 +134,51 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     if (finalMatch) {
       const answer = finalMatch[1]!.trim()
       return buildResult(model, userMessage, systemPrompt, answer, iteration + 1, allSteps, totalPromptTokens, totalCompletionTokens)
+    }
+
+    // Native tool calling path: the provider emitted structured tool calls
+    // (OpenAI-compatible APIs). Execute each call and feed the results back
+    // with tool_call_id so the model can continue the conversation.
+    const nativeToolCalls = result.message.tool_calls ?? []
+    if (nativeToolCalls.length > 0) {
+      const toolResultMessages: Message[] = []
+      for (const toolCall of nativeToolCalls) {
+        const toolName = toolCall.function.name
+        const rawArgs = toolCall.function.arguments
+
+        let toolArgs: Record<string, unknown>
+        try {
+          toolArgs = JSON.parse(rawArgs || "{}")
+        } catch {
+          toolArgs = { input: rawArgs }
+        }
+
+        onStep?.({ type: "tool_call", content: `${toolName}(${rawArgs})`, toolName, toolArgs })
+        allSteps.push({ type: "tool_call", content: `${toolName}(${rawArgs})`, toolName, toolArgs })
+
+        let toolResult: string
+        const tool = toolMap.get(toolName)
+        if (tool) {
+          try {
+            toolResult = await tool.execute(toolArgs)
+          } catch (err) {
+            toolResult = `[Tool ${toolName} error: ${err instanceof Error ? err.message : String(err)}]`
+          }
+        } else {
+          const available = Array.from(toolMap.keys()).join(", ")
+          toolResult = `[Tool "${toolName}" not found. Available: ${available}]`
+        }
+
+        const truncatedResult = toolResult.slice(0, 2000)
+        onStep?.({ type: "tool_result", content: truncatedResult, toolName })
+        allSteps.push({ type: "tool_result", content: truncatedResult, toolName })
+
+        toolResultMessages.push({ role: "tool", tool_call_id: toolCall.id, content: buildToolResultBlock(toolName, toolResult) })
+      }
+
+      messages.push({ role: "assistant", content: response, tool_calls: nativeToolCalls })
+      messages.push(...toolResultMessages)
+      continue
     }
 
     const toolMatch = response.match(TOOL_USE_PATTERN)

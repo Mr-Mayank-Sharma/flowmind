@@ -217,4 +217,77 @@ describe("runAgentLoop", () => {
     expect(result.response).toBe("")
     expect(result.iterations).toBe(1)
   })
+
+  it("uses native tool calls when the provider emits them", async () => {
+    const readTool = mockTool("read", async () => "file contents here")
+    const nativeCall: CompletionResult = {
+      message: {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "call_1", type: "function", function: { name: "read", arguments: '{"path": "./test.txt"}' } },
+        ],
+      },
+      model: "mock-model",
+      provider: "mock",
+      finish_reason: "tool_calls",
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }
+
+    const provider = createMockProvider([
+      nativeCall,
+      textResult("FINAL_ANSWER: The file contains: file contents here"),
+    ])
+
+    const result = await runAgentLoop({
+      provider,
+      model: "mock-model",
+      systemPrompt: "",
+      userMessage: "read ./test.txt and summarize",
+      tools: [readTool],
+    })
+
+    expect(result.response).toBe("The file contains: file contents here")
+    expect(result.iterations).toBe(2)
+    expect(result.steps[1]!.type).toBe("tool_call")
+    expect(result.steps[1]!.toolName).toBe("read")
+    expect(result.steps[1]!.toolArgs).toEqual({ path: "./test.txt" })
+    expect(result.steps[2]!.content).toBe("file contents here")
+  })
+
+  it("passes tool definitions to the provider request", async () => {
+    const readTool = mockTool("read")
+    const provider = createMockProvider([textResult("FINAL_ANSWER: done")])
+    const completeSpy = vi.spyOn(provider, "complete")
+
+    await runAgentLoop({
+      provider,
+      model: "mock-model",
+      systemPrompt: "",
+      userMessage: "read a file",
+      tools: [readTool],
+    })
+
+    const sentRequest = completeSpy.mock.calls[0]![0] as CompletionRequest
+    expect(sentRequest.tools).toHaveLength(1)
+    expect(sentRequest.tools![0]!.function.name).toBe("read")
+    expect(sentRequest.tool_choice).toBe("auto")
+  })
+
+  it("omits tools from the request when no tools are provided", async () => {
+    const provider = createMockProvider([textResult("FINAL_ANSWER: done")])
+    const completeSpy = vi.spyOn(provider, "complete")
+
+    await runAgentLoop({
+      provider,
+      model: "mock-model",
+      systemPrompt: "",
+      userMessage: "hello",
+      tools: [],
+    })
+
+    const sentRequest = completeSpy.mock.calls[0]![0] as CompletionRequest
+    expect(sentRequest.tools).toBeUndefined()
+    expect(sentRequest.tool_choice).toBeUndefined()
+  })
 })
