@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
 import { prisma } from "@flowmind/db";
 import { PipelineEngine } from "@flowmind/pipeline-engine";
-import type { LLMProvider, PipelineGraph, WorkflowSettings, ApprovalDecision } from "@flowmind/pipeline-engine";
+import type { LLMProvider, PipelineGraph, WorkflowSettings, ApprovalDecision, SubPipelineRunner, ExecutionContext } from "@flowmind/pipeline-engine";
 import { buildLLMProvider, normalizeGraph } from "../lib/llm-factory";
 import { getRunEmitter, cleanupRunEmitter } from "../services/run-emitters";
 import { getContextEngine } from "../services/context-engine";
@@ -75,10 +75,10 @@ async function executeRunBackground(params: ExecuteRunParams): Promise<void> {
   const engineWithStatus = new PipelineEngine({
     llm: getLLM(),
     ragSearch,
-    requestApproval: async () => {
-      // No interactive approval channel wired to the run yet: pause the run.
-      return { approved: false, note: "Run paused awaiting manual approval" };
-    },
+    subPipelineRunner: buildSubPipelineRunner({ userId: params.userId, groupId: params.groupId }),
+    // No requestApproval callback: the humanApproval runner then reports
+    // status "awaiting_approval" and the engine pauses the run honestly.
+    // Resume decisions are supplied later via approvalOverrides.
     onNodeStatus: async (event) => {
       const emitter = getRunEmitter(params.runId);
       emitter.emit("node", {
@@ -173,6 +173,72 @@ async function executeRunBackground(params: ExecuteRunParams): Promise<void> {
     unregisterActiveRun(params.runId);
     setTimeout(() => cleanupRunEmitter(params.runId), 60_000).unref?.();
   }
+}
+
+const MAX_SUB_PIPELINE_DEPTH = 5;
+
+// Builds the subPipelineRunner the pipeline engine uses when a subPipeline node
+// runs. Each nested pipeline is executed as its own run with the same tenant
+// scoping (ragSearch) and a recursion-depth guard to prevent runaway nesting.
+function buildSubPipelineRunner(params: { userId: string; groupId: string | null }): SubPipelineRunner {
+  const runSubPipeline = async (pipelineId: string, input: unknown, parentContext: ExecutionContext) => {
+    const depth = (parentContext.variables["$subPipelineDepth"] as number) ?? 0;
+    if (depth >= MAX_SUB_PIPELINE_DEPTH) {
+      throw new Error(`Sub-pipeline nesting too deep (max ${MAX_SUB_PIPELINE_DEPTH})`);
+    }
+
+    const sub = await prisma.pipeline.findUnique({ where: { id: pipelineId } });
+    const memberOf = sub?.groupId ? (await userGroupRoles(params.userId)).has(sub.groupId) : false;
+    if (!sub || (sub.userId !== params.userId && !memberOf)) {
+      throw new Error(`Sub-pipeline not found or not accessible: ${pipelineId}`);
+    }
+
+    const run = await prisma.pipelineRun.create({
+      data: { pipelineId, status: "RUNNING", input: (input ?? {}) as any, startedAt: new Date() },
+    });
+    const runEmitter = getRunEmitter(run.id);
+    runEmitter.clearBuffer();
+    const abortController = new AbortController();
+    registerActiveRun(run.id, abortController);
+
+    const ragSearch = async (q: { text: string; topK?: number; filters?: Record<string, unknown> }) => {
+      if (params.groupId) {
+        return getContextEngine().search({
+          text: q.text, userId: `group:${params.groupId}`, groupId: params.groupId, topK: q.topK ?? 5, filters: q.filters,
+        });
+      }
+      return getContextEngine().search({ text: q.text, userId: params.userId, topK: q.topK ?? 5, filters: q.filters });
+    };
+
+    try {
+      const engine = new PipelineEngine({
+        llm: getLLM(),
+        ragSearch,
+        subPipelineRunner: { run: runSubPipeline },
+        initialVariables: { ...parentContext.variables, $subPipelineDepth: depth + 1 },
+      });
+      const result = await engine.execute(run.id, pipelineId, normalizeGraph(sub.graph), input ?? {}, undefined, abortController.signal);
+      const finalStatus = result.status === "success" ? "SUCCESS" as const : result.status === "awaiting_approval" ? "AWAITING_APPROVAL" as const : "FAILED" as const;
+      await prisma.pipelineRun.update({
+        where: { id: run.id },
+        data: { status: finalStatus, output: result as any, completedAt: new Date() },
+      });
+      runEmitter.emit("done", { status: finalStatus, outputs: result.outputs, durationMs: result.durationMs });
+      return result;
+    } catch (err: any) {
+      await prisma.pipelineRun.update({
+        where: { id: run.id },
+        data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
+      });
+      runEmitter.emit("error", { message: err.message });
+      throw err;
+    } finally {
+      unregisterActiveRun(run.id);
+      setTimeout(() => cleanupRunEmitter(run.id), 60_000).unref?.();
+    }
+  };
+
+  return { run: runSubPipeline };
 }
 
 export const pipelineRouter = router({
@@ -533,43 +599,58 @@ export const pipelineRouter = router({
       const approvalOverrides: Record<string, { approved: boolean; note?: string }> = {};
       for (const d of input.decisions) approvalOverrides[d.nodeId] = { approved: d.approved, note: d.note };
 
-      const resumeRun = await ctx.prisma.pipelineRun.create({
-        data: {
-          pipelineId: paused.pipelineId,
-          status: "RUNNING",
-          input: (paused.input ?? {}) as any,
-          startedAt: new Date(),
-        },
+      // The paused run's stored error carries the node id in its trailing
+      // parenthesis, e.g. 'Execution paused awaiting approval at node "Review" (node-123)'.
+      const pausedOutput = (paused.output ?? {}) as any;
+      const pausedNodeId = (pausedOutput?.error as string | undefined)?.match(/\(([^)]+)\)$/)?.[1];
+
+      // Reuse the SAME run record so history stays one run, and resume at the
+      // exact paused node with its prior outputs preloaded. Nodes before the
+      // pause are skipped (not re-executed).
+      await ctx.prisma.pipelineRun.update({
+        where: { id: paused.id },
+        data: { status: "RUNNING", startedAt: new Date() },
       });
-      const runEmitter = getRunEmitter(resumeRun.id);
+      const runEmitter = getRunEmitter(paused.id);
       runEmitter.clearBuffer();
 
       const abortController = new AbortController();
-      registerActiveRun(resumeRun.id, abortController);
+      registerActiveRun(paused.id, abortController);
 
       try {
         const graph = normalizeGraph(paused.pipeline.graph);
-        const engineWithStatus = new PipelineEngine({ llm: getLLM(), approvalOverrides });
-        const result = await engineWithStatus.execute(resumeRun.id, paused.pipelineId, graph, paused.input ?? {}, undefined, abortController.signal);
+        const engineWithStatus = new PipelineEngine({
+          llm: getLLM(),
+          approvalOverrides,
+          resumeFrom: pausedNodeId,
+          initialOutputs: (pausedOutput?.outputs ?? []) as any[],
+        });
+        const result = await engineWithStatus.execute(paused.id, paused.pipelineId, graph, paused.input ?? {}, undefined, abortController.signal);
 
-        const finalStatus = result.status === "success" ? "SUCCESS" as const : result.status === "awaiting_approval" ? "AWAITING_APPROVAL" as const : "FAILED" as const;
+        const finalStatus = result.status === "success"
+          ? "SUCCESS" as const
+          : result.status === "awaiting_approval" && result.error?.startsWith("Approval denied")
+            ? "FAILED" as const
+            : result.status === "awaiting_approval"
+              ? "AWAITING_APPROVAL" as const
+              : "FAILED" as const;
         await ctx.prisma.pipelineRun.update({
-          where: { id: resumeRun.id },
+          where: { id: paused.id },
           data: { status: finalStatus, output: result as any, completedAt: new Date() },
         });
         runEmitter.emit("done", { status: finalStatus, outputs: result.outputs, durationMs: result.durationMs });
-        setTimeout(() => cleanupRunEmitter(resumeRun.id), 60_000).unref?.();
-        return { runId: resumeRun.id, status: finalStatus, outputs: result.outputs, durationMs: result.durationMs };
+        setTimeout(() => cleanupRunEmitter(paused.id), 60_000).unref?.();
+        return { runId: paused.id, status: finalStatus, outputs: result.outputs, durationMs: result.durationMs };
       } catch (err: any) {
         await ctx.prisma.pipelineRun.update({
-          where: { id: resumeRun.id },
+          where: { id: paused.id },
           data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
         });
         runEmitter.emit("error", { message: err.message });
-        setTimeout(() => cleanupRunEmitter(resumeRun.id), 60_000).unref?.();
+        setTimeout(() => cleanupRunEmitter(paused.id), 60_000).unref?.();
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err.message ?? "Pipeline resume failed" });
       } finally {
-        unregisterActiveRun(resumeRun.id);
+        unregisterActiveRun(paused.id);
       }
     }),
 

@@ -12,13 +12,15 @@
     "@flowmind/llm-router": "workspace:*",
     "@flowmind/provider-registry": "workspace:*",
     "@flowmind/skill-engine": "workspace:*",
-    "isolated-vm": "^7.0.0"
+    "isolated-vm": "^7.0.0",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.1",
-    "nodemailer": "^9.0.3",
     "@types/pg": "^8.11.0",
+    "nodemailer": "^9.0.3",
     "pg": "^8.11.0",
     "smtp-server": "^3.13.0",
     "typescript": "^5.4.0",

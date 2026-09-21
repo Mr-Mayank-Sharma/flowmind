@@ -104,6 +104,12 @@ export interface ExecutionContext {
   ragSearch?: RAGSearchFn
   requestApproval?: ApprovalRequester
   approvalOverrides?: Record<string, ApprovalDecision>
+  /**
+   * Executes a subset of the graph (by node id) in topological order using the
+   * same shared context. Used by `loop` and `parallelFork` runners to re-run
+   * their downstream subgraph once per iteration/branch. Injected by the engine.
+   */
+  executeSubgraph?: (nodeIds: string[], extraVars?: Record<string, unknown>) => Promise<Map<string, NodeOutput>>
 }
 
 export interface CredentialResolver {

@@ -1,7 +1,7 @@
 import type { PipelineNode, ExecutionContext, NodeRunner, NodeOutput } from "./types"
 import { resolveValue, buildExpressionContext } from "./expressions"
 import { kindForNodeType } from "./types"
-import { getDirectPredecessors } from "./graph"
+import { getDirectPredecessors, getDownstreamNodes } from "./graph"
 import { runAgentLoop, resolveDefaultOllamaModel, type AgentTool, type ProviderFacade, type CompletionRequest, type CompletionResult, type StreamCallbacks, type Message } from "@flowmind/llm-router"
 import { BlockedUrlError, fetchPublic } from "./network-guard"
 import { runCodeSandboxed, sanitizeEnv } from "./code-sandbox"
@@ -754,17 +754,53 @@ const flowRunners: Record<string, (node: PipelineNode, context: ExecutionContext
       itemList = Array.isArray(items) ? items : [items]
     }
 
-    const branches = itemList.map((item, idx) => ({
-      branchIndex: idx,
-      item,
-      status: "pending" as const,
-    }))
+    // Downstream nodes are owned by this fork: each branch re-runs them with
+    // its own $branch.item, so branches truly execute in parallel.
+    const downstreamIds = getDownstreamNodes(node.id, context.graph).map((n) => n.id)
+
+    if (downstreamIds.length === 0) {
+      // No downstream to parallelize: keep the descriptor shape for compat.
+      const branches = itemList.map((item, idx) => ({
+        branchIndex: idx,
+        item,
+        status: "pending" as const,
+      }))
+      return {
+        forked: true,
+        branchCount: branches.length,
+        branches,
+        json: { forked: true, branchCount: branches.length, items: itemList },
+      }
+    }
+
+    const serialize = (map: Map<string, NodeOutput>): Record<string, unknown> => {
+      const out: Record<string, unknown> = {}
+      for (const [key, value] of map) out[key] = value.output
+      return out
+    }
+
+    // Run every branch concurrently; a failed branch is reported in its own
+    // entry instead of failing the whole fork (other branches still complete).
+    const settled = await Promise.allSettled(
+      itemList.map(async (item, idx) => {
+        context.variables["$branch.index"] = idx
+        context.variables["$branch.item"] = item
+        const outputs = await context.executeSubgraph!(downstreamIds)
+        return { branchIndex: idx, item, status: "completed" as const, outputs: serialize(outputs) }
+      }),
+    )
+
+    const branches = settled.map((result, idx) => {
+      if (result.status === "fulfilled") return result.value
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason)
+      return { branchIndex: idx, item: itemList[idx], status: "failed" as const, error: message }
+    })
 
     return {
       forked: true,
       branchCount: branches.length,
       branches,
-      json: { forked: true, branchCount: branches.length, items: itemList },
+      json: { forked: true, branchCount: branches.length, items: itemList, branches },
     }
   },
   async merge(node, context) {
@@ -797,12 +833,33 @@ const flowRunners: Record<string, (node: PipelineNode, context: ExecutionContext
       items = Array.from({ length: iterations }, (_, i) => i)
     }
 
-    const results: unknown[] = []
+    // Downstream nodes are owned by this loop: each iteration re-runs them
+    // with the current $loop.item, in sequence.
+    const downstreamIds = getDownstreamNodes(node.id, context.graph).map((n) => n.id)
+
+    const serialize = (map: Map<string, NodeOutput>): Record<string, unknown> => {
+      const out: Record<string, unknown> = {}
+      for (const [key, value] of map) out[key] = value.output
+      return out
+    }
+
+    const results: Array<{ index: number; item: unknown; outputs?: Record<string, unknown>; error?: string }> = []
     for (let i = 0; i < items.length; i++) {
-      context.variables[`$loop.index`] = i
-      context.variables[`$loop.item`] = items[i]
-      context.variables[`$loop.total`] = items.length
-      results.push({ index: i, item: items[i] })
+      context.variables["$loop.index"] = i
+      context.variables["$loop.item"] = items[i]
+      context.variables["$loop.total"] = items.length
+
+      if (downstreamIds.length > 0 && context.executeSubgraph) {
+        try {
+          const outputs = await context.executeSubgraph(downstreamIds)
+          results.push({ index: i, item: items[i], outputs: serialize(outputs) })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          results.push({ index: i, item: items[i], error: message })
+        }
+      } else {
+        results.push({ index: i, item: items[i] })
+      }
     }
 
     return { loop: true, iterations: items.length, items, results, json: { iterations: items.length, items, results } }

@@ -1,3 +1,4 @@
+import cron from "node-cron"
 import type { TriggerHandler, TriggerEvent } from "./types"
 
 type EventCallback = (event: TriggerEvent) => void
@@ -25,16 +26,20 @@ export function createTriggerDaemon(): {
     type: "webhook",
     async start(pipelineId, config, onEvent) {
       const path = (config.webhookUrl as string) ?? `/webhook/${pipelineId}`
+      // The browser daemon listens for a client-dispatched CustomEvent. In Node
+      // there is no window, so a webhook trigger can only be driven server-side
+      // (the API webhooks router). Fail loudly instead of silently no-oping.
+      if (typeof window === "undefined") {
+        throw new Error(
+          "webhook trigger requires a browser context. Server-side webhook triggers are handled by the API webhooks router."
+        )
+      }
       const listener = (event: CustomEvent) => {
         onEvent({ id: `webhook-${Date.now()}`, type: "webhook", source: path, payload: event.detail ?? {}, timestamp: Date.now() })
       }
-      if (typeof window !== "undefined") {
-        window.addEventListener("flowmind-webhook", listener as EventListener)
-      }
+      window.addEventListener("flowmind-webhook", listener as EventListener)
       return () => {
-        if (typeof window !== "undefined") {
-          window.removeEventListener("flowmind-webhook", listener as EventListener)
-        }
+        window.removeEventListener("flowmind-webhook", listener as EventListener)
       }
     },
   })
@@ -43,13 +48,15 @@ export function createTriggerDaemon(): {
     type: "cron",
     async start(pipelineId, config, onEvent) {
       const cronExpr = (config.cronExpression as string) ?? "*/5 * * * *"
-      const parts = cronExpr.split(" ")
-      const intervalMinutes = parseInt(parts[0] ?? "5") ?? 5
-      const intervalMs = Math.max(intervalMinutes * 60 * 1000, 10000)
-      const intervalId = setInterval(() => {
+      if (!cron.validate(cronExpr)) {
+        throw new Error(`Invalid cron expression: ${cronExpr}`)
+      }
+      // Real cron semantics via node-cron (5-field expressions), not a naive
+      // interval that only read the first field.
+      const task = cron.schedule(cronExpr, () => {
         onEvent({ id: `cron-${Date.now()}`, type: "cron", source: cronExpr, payload: { time: new Date().toISOString() }, timestamp: Date.now() })
-      }, intervalMs)
-      return () => clearInterval(intervalId)
+      })
+      return () => task.stop()
     },
   })
 
