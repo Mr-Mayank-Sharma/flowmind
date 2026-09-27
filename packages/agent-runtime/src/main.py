@@ -1,20 +1,30 @@
 from __future__ import annotations
 
+import logging
 import os
+import time
+import uuid
 from typing import Any, AsyncGenerator
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from src.models import StreamChunk
 from src.orchestrator import AgentOrchestrator
 from src.providers import registry, OllamaProvider
+from src.webhooks import extract_channel_id, extract_text, extract_user_id, verify_meta_handshake
 
 AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
+
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "info").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("flowmind.webhook")
 
 app = FastAPI(title="FlowMind Agent Runtime")
 
@@ -31,7 +41,10 @@ app.add_middleware(
 async def auth_middleware(request: Request, call_next):
     if not AGENT_API_KEY:
         return await call_next(request)
-    if request.url.path == "/health":
+    # /health and /webhook/* are public: the API is the trusted ingress for
+    # webhooks (it validates channel secrets before forwarding), and Meta's
+    # verification handshake must be reachable without a bearer token.
+    if request.url.path == "/health" or request.url.path.startswith("/webhook/"):
         return await call_next(request)
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer ") or auth[7:] != AGENT_API_KEY:
@@ -351,3 +364,68 @@ async def chat_send(body: ChatRequest) -> ChatResponse:
     orchestrator = AgentOrchestrator(user_id=body.user_id)
     reply = await orchestrator.send_message(body.message)
     return ChatResponse(session_id=body.session_id, reply=reply)
+
+
+# ── Webhooks ────────────────────────────────────────────────────────
+
+
+class WebhookIngestRequest(BaseModel):
+    channel: str = Field(default="generic", max_length=32)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/webhook/ingest")
+async def webhook_ingest(body: WebhookIngestRequest, request: Request) -> dict:
+    request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex[:12]
+    started = time.perf_counter()
+    channel = body.channel
+
+    text = extract_text(channel, body.payload)
+    if not text:
+        logger.warning(
+            "webhook_ingest request_id=%s channel=%s status=empty_text duration_ms=%.1f",
+            request_id, channel, (time.perf_counter() - started) * 1000,
+        )
+        raise HTTPException(status_code=400, detail="No message text found in payload")
+
+    user_id = extract_user_id(channel, body.payload) or "webhook"
+    channel_id = extract_channel_id(channel, body.payload)
+    session_id = f"webhook:{channel}:{user_id or channel_id or 'anon'}"[:128]
+
+    try:
+        orchestrator = AgentOrchestrator(user_id=user_id[:128])
+        reply = await orchestrator.send_message(text)
+    except Exception as e:
+        logger.error(
+            "webhook_ingest request_id=%s channel=%s status=error duration_ms=%.1f error=%s",
+            request_id, channel, (time.perf_counter() - started) * 1000, str(e),
+        )
+        raise HTTPException(status_code=500, detail="Agent processing failed") from e
+
+    logger.info(
+        "webhook_ingest request_id=%s channel=%s status=ok duration_ms=%.1f text_len=%d",
+        request_id, channel, (time.perf_counter() - started) * 1000, len(text),
+    )
+    return {"received": True, "channel": channel, "session_id": session_id, "reply": reply}
+
+
+@app.get("/webhook/verify")
+async def webhook_verify(
+    request: Request,
+    hub_mode: str | None = None,
+    hub_verify_token: str | None = None,
+    hub_challenge: str | None = None,
+) -> PlainTextResponse:
+    request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex[:12]
+    expected = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+    challenge = verify_meta_handshake(hub_mode, hub_verify_token, hub_challenge, expected)
+
+    if challenge is None:
+        logger.warning(
+            "webhook_verify request_id=%s status=rejected mode=%s",
+            request_id, hub_mode,
+        )
+        raise HTTPException(status_code=403, detail="Verification token mismatch")
+
+    logger.info("webhook_verify request_id=%s status=ok mode=%s", request_id, hub_mode)
+    return PlainTextResponse(challenge)
