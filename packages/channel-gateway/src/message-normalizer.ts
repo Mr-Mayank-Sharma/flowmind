@@ -91,23 +91,54 @@ function normalizeDiscord(payload: RawPayload): ChannelMessage | null {
 }
 
 function normalizeWhatsApp(payload: RawPayload): ChannelMessage | null {
-  const msg = payload.body as Record<string, unknown> | undefined
+  const body = payload.body as Record<string, unknown> | undefined
+  if (!body) return null
+  const entry = (body.entry as Array<Record<string, unknown>> | undefined)?.[0]
+  const change = (entry?.changes as Array<Record<string, unknown>> | undefined)?.[0]
+  const value = change?.value as Record<string, unknown> | undefined
+  const msg = (value?.messages as Array<Record<string, unknown>> | undefined)?.[0]
+  const contact = (value?.contacts as Array<Record<string, unknown>> | undefined)?.[0]
   if (!msg) return null
-  const textEntry =
+
+  const textBody =
     (msg.text as Record<string, unknown> | undefined)?.body ??
     (msg.caption as string | undefined)
-  const key = msg.key as Record<string, unknown> | undefined
+
+  const hasMedia = msg.image ?? msg.video ?? msg.audio ?? msg.document
+  const mediaType = msg.image
+    ? 'image'
+    : msg.video
+      ? 'video'
+      : msg.audio
+        ? 'audio'
+        : 'document'
+  const mediaEntry = msg[mediaType] as Record<string, unknown> | undefined
+
   return {
-    id: String(msg.id ?? key?.id ?? ''),
+    id: String(msg.id ?? ''),
     channelType: 'whatsapp',
-    channelId: String(msg.chatId ?? key?.remoteJid ?? ''),
-    userId: String(msg.author ?? key?.participant ?? msg.from ?? ''),
-    text: textEntry as string | undefined,
-    files: msg.mediaKey
-      ? [{ url: '', mimeType: String(msg.mimetype ?? 'application/octet-stream'), name: (msg.fileName as string | undefined) ?? 'media' }]
+    channelId: String(msg.from ?? ''),
+    userId: String(contact?.wa_id ?? msg.from ?? ''),
+    text: textBody as string | undefined,
+    files: hasMedia
+      ? [
+          {
+            url: '',
+            mimeType: String(mediaEntry?.mime_type ?? 'application/octet-stream'),
+            name: String(mediaEntry?.filename ?? `media.${mediaType}`),
+          },
+        ]
       : undefined,
-    voiceUrl: msg.mediaKey && msg.mimetype === 'audio/ogg; codecs=opus' ? '' : undefined,
-    metadata: msg as Record<string, unknown>,
+    voiceUrl:
+      msg.audio && (msg.audio as Record<string, unknown>).mime_type === 'audio/ogg; codecs=opus'
+        ? ''
+        : undefined,
+    replyTo: (msg.context as Record<string, unknown> | undefined)?.id as string | undefined,
+    metadata: {
+      wamId: entry?.id,
+      profile: contact?.profile,
+      messageType: msg.type,
+    } as Record<string, unknown>,
     receivedAt: new Date(),
   }
 }

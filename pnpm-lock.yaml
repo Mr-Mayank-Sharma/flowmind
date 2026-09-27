@@ -57,6 +57,9 @@ importers:
       '@flowmind/billing':
         specifier: workspace:*
         version: link:../../packages/billing
+      '@flowmind/channel-gateway':
+        specifier: workspace:*
+        version: link:../../packages/channel-gateway
       '@flowmind/context-engine':
         specifier: workspace:*
         version: link:../../packages/context-engine

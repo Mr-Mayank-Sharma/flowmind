@@ -1,6 +1,6 @@
 export interface ChannelMessage {
   id: string
-  channelType: 'telegram' | 'slack' | 'discord' | 'whatsapp' | 'email'
+  channelType: 'telegram' | 'slack' | 'discord' | 'whatsapp' | 'email' | 'openhuman'
   channelId: string
   userId: string
   text?: string
@@ -13,7 +13,7 @@ export interface ChannelMessage {
 
 export interface OutgoingMessage {
   channelId: string
-  userId: string
+  userId?: string
   text?: string
   files?: Array<{ url: string; mimeType: string; name: string }>
   voiceUrl?: string
@@ -61,3 +61,5 @@ export class ChannelGateway {
     return Array.from(this.adapters.keys())
   }
 }
+
+export * from './adapters/index.js'

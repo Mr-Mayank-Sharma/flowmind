@@ -34,6 +34,7 @@ import { startRunRecovery } from "./services/run-recovery";
 import { userGroupRoles } from "./services/group-access";
 import { providerRegistry } from "@flowmind/provider-registry";
 import { decrypt } from "./lib/crypto";
+import { setupChannelWebhooks } from "./services/channel-gateway";
 
 async function loadProviderCredentialsFromDb(): Promise<void> {
   const credentials = await prisma.providerCredential.findMany()
@@ -135,6 +136,21 @@ async function main() {
   await server.register(fastifyTRPCPlugin, {
     prefix: "/trpc",
     trpcOptions: { router: appRouter, createContext },
+  });
+
+  server.get<{
+    Querystring: { "hub.mode"?: string; "hub.verify_token"?: string; "hub.challenge"?: string };
+  }>("/trpc/webhooks.whatsapp", async (req, reply) => {
+    const expected = process.env.WHATSAPP_VERIFY_TOKEN;
+    if (
+      req.query["hub.mode"] === "subscribe" &&
+      req.query["hub.verify_token"] &&
+      expected &&
+      req.query["hub.verify_token"] === expected
+    ) {
+      return reply.type("text/plain").send(req.query["hub.challenge"] ?? "");
+    }
+    return reply.status(403).send({ error: "Verification failed" });
   });
 
   collectDefaultMetrics();
@@ -525,6 +541,16 @@ async function main() {
 
     await server.listen({ port: PORT, host: HOST });
     server.log.info(`FlowMind API running on http://${HOST}:${PORT}`);
+
+    const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
+    if (PUBLIC_BASE_URL) {
+      try {
+        await setupChannelWebhooks(PUBLIC_BASE_URL);
+        server.log.info("Channel webhooks configured");
+      } catch (err) {
+        server.log.warn(err, "Channel webhook setup failed");
+      }
+    }
 
     await cronScheduler.start();
     server.log.info("Cron scheduler started");

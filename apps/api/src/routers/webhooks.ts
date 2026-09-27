@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../middleware/trpc";
+import { getChannelGateway } from "../services/channel-gateway";
 
 const CHANNEL_SECRET_ENV: Record<string, string | undefined> = {
   telegram: process.env.TELEGRAM_WEBHOOK_SECRET,
@@ -27,7 +28,7 @@ function rejectWebhook(channel: string): never {
   throw new TRPCError({ code: "UNAUTHORIZED", message: `Invalid webhook secret for ${channel}` });
 }
 
-async function forwardToAgentRuntime(channel: string, payload: Record<string, unknown>): Promise<void> {
+async function forwardToAgentRuntime(channel: string, payload: Record<string, unknown>): Promise<string | null> {
   const agentUrl = process.env.AGENT_RUNTIME_URL || "http://localhost:8001";
   let response: Response;
   try {
@@ -49,6 +50,19 @@ async function forwardToAgentRuntime(channel: string, payload: Record<string, un
       code: "BAD_GATEWAY",
       message: `Agent runtime rejected ${channel} webhook with status ${response.status}`,
     });
+  }
+  const data = (await response.json().catch(() => null)) as { reply?: string } | null;
+  return data?.reply ?? null;
+}
+
+async function deliverReply(channel: string, channelId: string, userId: string, reply: string): Promise<void> {
+  if (!reply || !channelId) return;
+  const gateway = getChannelGateway();
+  if (!gateway.getAdapter(channel)) return;
+  try {
+    await gateway.sendMessage(channel, { channelId, userId, text: reply });
+  } catch (err) {
+    console.error(`[channel-gateway] failed to deliver ${channel} reply:`, err);
   }
 }
 
@@ -105,7 +119,8 @@ export const webhooksRouter = router({
     .mutation(async ({ input }) => {
       if (!verifyChannelSecret("whatsapp", input.secret)) rejectWebhook("whatsapp");
       const extracted = extractText("whatsapp", input.body);
-      await forwardToAgentRuntime("whatsapp", { ...extracted, raw: input.body });
+      const reply = await forwardToAgentRuntime("whatsapp", { ...extracted, raw: input.body });
+      await deliverReply("whatsapp", extracted.channelId, extracted.userId, reply ?? "");
       return { received: true, text: extracted.text, channelId: extracted.channelId };
     }),
 
@@ -120,7 +135,8 @@ export const webhooksRouter = router({
 
       const extracted = extractText(input.channel, input.body);
 
-      await forwardToAgentRuntime(input.channel, { ...extracted, raw: input.body });
+      const reply = await forwardToAgentRuntime(input.channel, { ...extracted, raw: input.body });
+      await deliverReply(input.channel, extracted.channelId, extracted.userId, reply ?? "");
       return { received: true, channel: input.channel, text: extracted.text.slice(0, 200), userId: extracted.userId, channelId: extracted.channelId };
     }),
 
@@ -130,7 +146,8 @@ export const webhooksRouter = router({
       if (!verifyChannelSecret("telegram", input.secret)) rejectWebhook("telegram");
       const { text, userId, channelId } = extractText("telegram", input.body);
 
-      await forwardToAgentRuntime("telegram", { text, userId, channelId, raw: input.body });
+      const reply = await forwardToAgentRuntime("telegram", { text, userId, channelId, raw: input.body });
+      await deliverReply("telegram", channelId, userId, reply ?? "");
 
       return { received: true, message: text, chatId: channelId };
     }),
@@ -144,7 +161,8 @@ export const webhooksRouter = router({
 
       const { text, userId, channelId } = extractText("slack", body);
 
-      await forwardToAgentRuntime("slack", { text, userId, channelId, raw: body });
+      const reply = await forwardToAgentRuntime("slack", { text, userId, channelId, raw: body });
+      await deliverReply("slack", channelId, userId, reply ?? "");
 
       return { received: true, text, channelId };
     }),
@@ -155,7 +173,8 @@ export const webhooksRouter = router({
       if (!verifyChannelSecret("discord", input.secret)) rejectWebhook("discord");
       const { text, userId, channelId } = extractText("discord", input.body);
 
-      await forwardToAgentRuntime("discord", { text, userId, channelId, raw: input.body });
+      const reply = await forwardToAgentRuntime("discord", { text, userId, channelId, raw: input.body });
+      await deliverReply("discord", channelId, userId, reply ?? "");
 
       return { received: true, text, channelId };
     }),
