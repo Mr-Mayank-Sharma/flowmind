@@ -1,5 +1,14 @@
 import { prisma } from "../index";
 
+// A skill listing stores its executable bundle under `manifest` so the unified
+// catalog can tell a runnable entry from a documentation-only one. The bundle
+// keeps the skill manifest and its code together, mirroring the legacy columns.
+type SkillPayload = { manifest: unknown; code: string };
+
+function skillPayload(manifest: unknown, code: string): SkillPayload {
+  return { manifest, code };
+}
+
 async function migrateMarketplace() {
   console.log("Migrating MarketplaceFlow -> MarketplaceListing (type=PIPELINE)...");
   const flows = await prisma.marketplaceFlow.findMany();
@@ -23,6 +32,10 @@ async function migrateMarketplace() {
         isFeatured: flow.isFeatured,
         isVerified: flow.isVerified,
         publishedAt: flow.publishedAt,
+        // The pipeline graph lives in its own table; the listing points at it
+        // instead of copying it, so clones always track the current graph.
+        payloadRef: { pipelineId: flow.pipelineId },
+        payloadState: "REFERENCE",
       },
     });
     listingCount++;
@@ -36,6 +49,7 @@ async function migrateMarketplace() {
       where: { title: skill.name, type: "SKILL" },
     });
     if (existing) continue;
+    const payload = skillPayload(skill.manifest, skill.code);
     const listing = await prisma.marketplaceListing.create({
       data: {
         type: "SKILL",
@@ -45,12 +59,15 @@ async function migrateMarketplace() {
         downloads: skill.downloads,
         ratingAvg: skill.ratingAvg,
         ratingCount: skill.ratingCount,
+        manifest: payload,
+        payloadState: "INLINE",
       },
     });
     await prisma.marketplaceListingVersion.create({
       data: {
         listingId: listing.id,
         version: 1,
+        manifest: payload,
         changelog: "Initial migration from SkillVersion",
       },
     });
@@ -62,8 +79,12 @@ async function migrateMarketplace() {
   const flowReviews = await prisma.flowReview.findMany();
   let reviewCount = 0;
   for (const r of flowReviews) {
+    // Resolve the review through its flow title. Matching on reviewerId alone
+    // would attach the review to whichever listing that user happened to own.
+    const flow = await prisma.marketplaceFlow.findUnique({ where: { id: r.flowId } });
+    if (!flow) continue;
     const listing = await prisma.marketplaceListing.findFirst({
-      where: { ownerId: r.reviewerId, type: "PIPELINE" },
+      where: { title: flow.title, type: "PIPELINE" },
     });
     if (!listing) continue;
     const existing = await prisma.marketplaceReview.findUnique({
@@ -83,8 +104,10 @@ async function migrateMarketplace() {
 
   const skillReviews = await prisma.skillReview.findMany();
   for (const r of skillReviews) {
+    const skill = await prisma.marketplaceSkill.findUnique({ where: { id: r.skillId } });
+    if (!skill) continue;
     const listing = await prisma.marketplaceListing.findFirst({
-      where: { ownerId: r.reviewerId, type: "SKILL" },
+      where: { title: skill.name, type: "SKILL" },
     });
     if (!listing) continue;
     const existing = await prisma.marketplaceReview.findUnique({

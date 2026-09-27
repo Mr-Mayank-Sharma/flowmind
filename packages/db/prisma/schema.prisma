@@ -98,6 +98,12 @@ enum MarketplaceItemType {
   PLUGIN
 }
 
+enum MarketplacePayloadState {
+  INLINE
+  REFERENCE
+  NONE
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -737,6 +743,7 @@ model MarketplaceListing {
   tags         String[]
   manifest     Json?
   payloadRef   Json?
+  payloadState MarketplacePayloadState @default(NONE)
   version      Int                 @default(1)
   downloads    Int                 @default(0)
   forkCount    Int                 @default(0)
@@ -765,6 +772,7 @@ model MarketplaceListing {
   @@index([category])
   @@index([ownerId])
   @@index([orgId])
+  @@index([payloadState])
   @@map("marketplace_listings")
 }
 

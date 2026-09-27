@@ -62,6 +62,93 @@ export enum MarketplaceItemType {
   PLUGIN = "PLUGIN",
 }
 
+/**
+ * Where a listing's executable payload lives.
+ *
+ * INLINE   - the payload is in `manifest` (a skill's code + entrypoint, a plugin bundle)
+ * REFERENCE- the payload lives elsewhere and `payloadRef` points at it (a flow's pipelineId)
+ * NONE     - there is nothing to execute; the listing is documentation or a prompt document
+ */
+export enum MarketplacePayloadState {
+  INLINE = "INLINE",
+  REFERENCE = "REFERENCE",
+  NONE = "NONE",
+}
+
+/**
+ * Item types that are only useful if a consumer can actually run them. Publishing one
+ * without a payload produces a dead listing, so the API rejects it instead.
+ * PROMPT_PACK is deliberately absent: a pack of prompts is content, not code.
+ */
+export const EXECUTABLE_ITEM_TYPES: readonly MarketplaceItemType[] = [
+  MarketplaceItemType.SKILL,
+  MarketplaceItemType.PIPELINE,
+  MarketplaceItemType.WORKFLOW,
+  MarketplaceItemType.AGENT_TEMPLATE,
+  MarketplaceItemType.MCP_INTEGRATION,
+  MarketplaceItemType.PLUGIN,
+]
+
+export function requiresExecutablePayload(type: MarketplaceItemType): boolean {
+  return EXECUTABLE_ITEM_TYPES.includes(type)
+}
+
+export type PayloadResolution = {
+  state: MarketplacePayloadState
+  executable: boolean
+  /** Set when `executable` is false, so the UI can say why instead of guessing. */
+  reason?: string
+}
+
+/**
+ * Single source of truth for "can this listing be run?". Both payload fields win over the
+ * persisted state so a row whose state drifted still reports the truth about its content.
+ */
+export function resolvePayloadState(
+  type: MarketplaceItemType,
+  payload: { manifest?: unknown; payloadRef?: unknown; state?: MarketplacePayloadState } | null | undefined,
+): PayloadResolution {
+  const hasManifest = payload?.manifest != null
+  const hasRef = payload?.payloadRef != null
+
+  const state = hasManifest
+    ? MarketplacePayloadState.INLINE
+    : hasRef
+      ? MarketplacePayloadState.REFERENCE
+      : (payload?.state ?? MarketplacePayloadState.NONE)
+
+  if (state === MarketplacePayloadState.NONE) {
+    return requiresExecutablePayload(type)
+      ? { state, executable: false, reason: `${type} listings need a manifest or payloadRef to be executable` }
+      : { state, executable: false, reason: `${type} listings are content only` }
+  }
+
+  return { state, executable: true }
+}
+
+/** The three tables the marketplace can read from, normalized onto one shape. */
+export type CatalogSource = "listing" | "skill" | "flow"
+
+export type CatalogEntry = {
+  source: CatalogSource
+  id: string
+  type: MarketplaceItemType
+  title: string
+  description: string
+  category: string | null
+  tags: string[]
+  downloads: number
+  ratingAvg: number
+  ratingCount: number
+  version: string
+  /** ISO timestamp; skills and flows use different columns, so the catalog normalizes them. */
+  publishedAt: string
+  ownerName: string | null
+  /** Only listings carry curation state; skills and flows have no such column. */
+  isVerified: boolean
+  payload: PayloadResolution
+}
+
 export type User = {
   id: string;
   email: string;

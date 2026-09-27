@@ -72,6 +72,7 @@ All 46 models map to snake_case plural table names except `CreatorRevenue` -> `c
 | McpServerTransport | STDIO, STREAMABLE_HTTP, SSE |
 | Visibility | PRIVATE, PUBLIC, TEAM |
 | MarketplaceItemType | SKILL, PIPELINE, WORKFLOW, PROMPT_PACK, AGENT_TEMPLATE, MCP_INTEGRATION, PLUGIN |
+| MarketplacePayloadState | INLINE, REFERENCE, NONE |
 | KnowledgeBaseStatus | READY, INDEXING, ERROR |
 | DocumentStatus | INDEXED, INDEXING, ERROR |
 | DocumentType | PDF, TXT, MD, CSV, JSON |
@@ -121,7 +122,7 @@ All 46 models map to snake_case plural table names except `CreatorRevenue` -> `c
 | RunLog | [runId] |
 | MarketplaceFlow | [category], [creatorId] |
 | FlowExecution | [flowId] |
-| MarketplaceListing | [type], [category], [ownerId], [orgId] |
+| MarketplaceListing | [type], [category], [ownerId], [orgId], [payloadState] |
 | UsageRecord | [subjectType, subjectId, metric], [periodStart, periodEnd] |
 | SystemMetricsLog | [userId, recordedAt] |
 | AuditLog | [orgId], [userId], [createdAt] |
@@ -147,7 +148,7 @@ Many models use `Json` for flexible/nested payloads. See the full inventory in e
 - `Pipeline.graph` (required Json) -- the DAG definition of a pipeline.
 - `PipelineProposal.proposedGraph` (required Json) -- the proposed graph in a merge proposal.
 - `Message.toolCalls` / `Message.toolResults` -- tool invocation payloads and outcomes.
-- `MarketplaceListing.manifest` / `payloadRef` -- package metadata and payload location.
+- `MarketplaceListing.manifest` / `payloadRef` / `payloadState` -- package metadata, payload location, and whether the payload is INLINE, a REFERENCE to a live pipeline/skill, or NONE (non-executable).
 - `User.webauthnCredentials`, `Org.samlConfig` -- auth configuration blobs.
 
 ## BigInt / Other Specialty Columns

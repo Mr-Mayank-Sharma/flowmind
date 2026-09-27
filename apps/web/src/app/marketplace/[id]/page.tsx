@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FlowPreview } from "@/components/marketplace/flow-preview"
-import { Star, Download, Copy, ExternalLink, MessageSquare, User, Puzzle, Box, Bot, Plug, Package, MessageSquare as PromptIcon } from "lucide-react"
+import { Star, Download, Copy, ExternalLink, MessageSquare, User, Puzzle, Box, Bot, Plug, Package, TriangleAlert, MessageSquare as PromptIcon } from "lucide-react"
 import Link from "next/link"
 import { api } from "@/lib/api"
 
@@ -24,6 +24,7 @@ export default function ListingDetailPage() {
   const params = useParams()
   const router = useRouter()
   const [listing, setListing] = useState<any>(null)
+  const [entry, setEntry] = useState<any>(null)
   const [related, setRelated] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showRawJson, setShowRawJson] = useState(false)
@@ -34,8 +35,12 @@ export default function ListingDetailPage() {
     Promise.all([
       api.marketplace.getById(id),
       api.marketplace.list({ limit: 5 }),
-    ]).then(([itemData, listData]) => {
+      // The listing row alone cannot say whether a referenced pipeline still exists,
+      // so the executable payload has to come from the catalog resolver.
+      api.marketplace.catalogEntry("listing", id).catch(() => null),
+    ]).then(([itemData, listData, entryData]) => {
       setListing(itemData)
+      setEntry(entryData)
       setRelated((listData.listings || []).filter((f: any) => f.id !== id).slice(0, 4))
     }).catch(() => {}).finally(() => setLoading(false))
   }, [params.id])
@@ -67,6 +72,19 @@ export default function ListingDetailPage() {
   const typeInfo = typeIconMap[listing.type as keyof typeof typeIconMap] ?? typeIconMap.PIPELINE
   const rating = listing.ratingAvg ?? listing.rating ?? 0
   const reviews = listing.reviews || []
+  // getById already resolves executability, and catalogEntry re-verifies it against
+  // the live pipeline when the payload is a reference. Either answer can veto the clone.
+  const payloadState = entry?.entry?.payload ?? listing.payload ?? null
+  const executable = payloadState?.executable !== false
+  const blockedReason = payloadState?.reason || "This item has no runnable payload attached."
+  const manifest = entry?.payload?.manifest ?? listing.manifest
+  const referenceGraph = entry?.payload?.reference?.graph ?? null
+  const clone = async () => {
+    try {
+      await api.marketplace.clone(listing.id)
+      router.push("/marketplace")
+    } catch {}
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -119,28 +137,33 @@ export default function ListingDetailPage() {
               <p className="text-sm text-muted-foreground leading-relaxed">{listing.description}</p>
             </Card>
 
-            {listing.type === "PIPELINE" && listing.pipeline?.graph && (
+            {referenceGraph && (
               <div>
                 <h2 className="font-semibold mb-3">Flow Preview</h2>
-                <FlowPreview nodes={listing.pipeline.graph.nodes} edges={listing.pipeline.graph.edges} />
+                <FlowPreview nodes={referenceGraph.nodes} edges={referenceGraph.edges} />
               </div>
             )}
 
-            {listing.manifest && (
+            {!executable && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <div>
+                  <p className="font-medium">This item cannot be run yet</p>
+                  <p className="text-amber-300/80">{blockedReason}</p>
+                </div>
+              </div>
+            )}
+
+            {manifest && (
               <Card className="p-6">
                 <h2 className="font-semibold mb-2">Manifest</h2>
                 <pre className="text-xs text-muted-foreground overflow-x-auto max-h-96">
-                  {JSON.stringify(listing.manifest, null, 2)}
+                  {JSON.stringify(manifest, null, 2)}
                 </pre>
               </Card>
             )}
 
-            <Button className="w-full gap-2" onClick={async () => {
-              try {
-                await api.marketplace.clone(listing.id)
-                router.push("/marketplace")
-              } catch {}
-            }}>
+            <Button className="w-full gap-2" onClick={clone} disabled={!executable} title={executable ? undefined : blockedReason}>
               <Copy className="h-4 w-4" /> Clone This Item
             </Button>
           </div>
@@ -151,22 +174,17 @@ export default function ListingDetailPage() {
                 <Copy className="h-4 w-4" /> Clone Item
               </h3>
               <div className="space-y-3">
-                <Button className="w-full gap-2" onClick={async () => {
-                  try {
-                    await api.marketplace.clone(listing.id)
-                    router.push("/marketplace")
-                  } catch {}
-                }}>
+                <Button className="w-full gap-2" onClick={clone} disabled={!executable} title={executable ? undefined : blockedReason}>
                   <Copy className="h-4 w-4" /> Clone to My Items
                 </Button>
-                {listing.manifest && (
+                {manifest && (
                   <>
                     <Button variant="outline" className="w-full gap-2" onClick={() => setShowRawJson((v) => !v)}>
                       <ExternalLink className="h-4 w-4" /> {showRawJson ? "Hide Raw JSON" : "View Raw JSON"}
                     </Button>
                     {showRawJson && (
                       <pre className="mt-3 text-xs text-muted-foreground overflow-x-auto max-h-96 rounded-md bg-muted/50 border border-border p-3">
-                        {JSON.stringify(listing.manifest, null, 2)}
+                        {JSON.stringify(manifest, null, 2)}
                       </pre>
                     )}
                   </>

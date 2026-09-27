@@ -28,11 +28,11 @@ FlowMind is building toward an n8n-class AI workflow and automation platform whe
 - **Visual pipeline builder** 🚧 — Drag-and-drop canvas (React Flow), 24+ node types, real-time SSE streaming.
 - **Agent loop with tools + MCP** ✅ — Real `@modelcontextprotocol/sdk` client (stdio/HTTP/SSE), built-in tools, honest error handling.
 - **Knowledge / RAG** ✅ — Qdrant-backed vector retrieval through both the JS context-engine and the Python runtime.
-- **Marketplace** 🚧 — Skill/flow marketplace with real persistence; two parallel catalogs not yet unified.
+- **Marketplace** 🚧 — One catalog over listings, flows and skills; every entry states whether its payload can actually run, and publish rejects an unrunnable listing.
 - **Skills** 🚧 — Sandboxed JS skill execution, install/publish flows; native runtime + LSP not yet real.
 - **Multi-tenancy & RBAC** ✅ — JWT auth, org roles (OWNER/ADMIN/MEMBER/VIEWER), tenant-isolated resources.
 - **Cron scheduling** 🚧 — node-cron pipeline scheduling exists; webhook/cron triggers not yet end-to-end verified.
-- **Connectors** 🚧 — Generic `http_request`, `sqliteQuery`, `transform`, `fileIo`, `email.send` work; 10 `flowmind.*` tools remain stubs.
+- **Connectors** 🚧 — Generic `http_request`, `sqliteQuery`, `transform`, `fileIo`, `email.send` work, as do the 10 `flowmind.*` MCP tools.
 
 ## Current Status
 

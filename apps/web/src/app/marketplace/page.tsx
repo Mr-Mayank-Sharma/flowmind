@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { Badge, Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from "@flowmind/ui"
-import { Store, Download, Star, Tag, Search, ArrowLeft, Puzzle, Box, MessageSquare, Bot, Plug, Package } from "lucide-react"
+import { Store, Download, Star, Tag, Search, ArrowLeft, Puzzle, Box, MessageSquare, Bot, Plug, Package, TriangleAlert } from "lucide-react"
 import { CardSkeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ErrorState } from "@/components/ui/error-state"
 import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
-import type { MarketplaceItemType } from "@/lib/api/marketplace"
+import type { CatalogEntry, MarketplaceItemType } from "@/lib/api/marketplace"
 
 const ITEM_TABS: { type: MarketplaceItemType; label: string; icon: React.ReactNode; color: string }[] = [
   { type: "PIPELINE", label: "Pipelines", icon: <Box className="h-3.5 w-3.5" />, color: "text-blue-500" },
@@ -21,28 +21,46 @@ const ITEM_TABS: { type: MarketplaceItemType; label: string; icon: React.ReactNo
   { type: "PLUGIN", label: "Plugins", icon: <Package className="h-3.5 w-3.5" />, color: "text-indigo-500" },
 ]
 
+// Each catalog source keeps its own real action. Anything without one gets no button
+// rather than a button that silently fails.
+const SOURCE_ACTIONS: Record<
+  CatalogEntry["source"],
+  { label: string; run: (id: string) => Promise<unknown>; done: string }
+> = {
+  listing: { label: "Clone", run: (id) => api.marketplace.clone(id), done: "Item cloned to your workspace" },
+  flow: { label: "Use flow", run: (id) => api.pipeline.cloneFromMarketplace(id), done: "Flow copied to your pipelines" },
+  skill: { label: "Install", run: (id) => api.skills.install(id), done: "Skill installed" },
+}
+
+const SOURCE_CAPTIONS: Record<CatalogEntry["source"], string | null> = {
+  listing: null,
+  flow: "Published flow",
+  skill: "Published skill",
+}
+
 export default function MarketplacePage() {
   const [tab, setTab] = useState<MarketplaceItemType>("PIPELINE")
-  const [listings, setListings] = useState<any[]>([])
+  const [entries, setEntries] = useState<CatalogEntry[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [pendingId, setPendingId] = useState<string | null>(null)
   const { toast } = useToast()
 
   const loadData = useCallback(async () => {
     setLoaded(false)
     setError(null)
     try {
-      const result = await api.marketplace.list({
+      const result = await api.marketplace.catalog({
         type: tab,
         category: selectedCategory ?? undefined,
         search: searchQuery || undefined,
       })
-      const cats = [...new Set((result.listings ?? []).map((l: any) => l.category).filter(Boolean))]
-      setListings(result.listings ?? [])
-      setCategories(cats as string[])
+      const found = result.entries ?? []
+      setEntries(found)
+      setCategories([...new Set(found.map((e) => e.category).filter(Boolean))] as string[])
     } catch (err: any) {
       console.error("Failed to load marketplace data:", err)
       setError(err?.message || "Failed to load marketplace data")
@@ -58,17 +76,102 @@ export default function MarketplacePage() {
     return () => clearTimeout(t)
   }, [loadData, searchQuery])
 
-  const handleClone = async (id: string) => {
+  const handleAction = async (entry: CatalogEntry) => {
+    setPendingId(entry.id)
     try {
-      await api.marketplace.clone(id)
-      toast({ title: "Item cloned to your workspace", variant: "success" })
+      await SOURCE_ACTIONS[entry.source].run(entry.id)
+      toast({ title: SOURCE_ACTIONS[entry.source].done, variant: "success" })
     } catch (err) {
-      console.error("Clone failed:", err)
-      toast({ title: "Clone failed", variant: "error" })
+      console.error("Marketplace action failed:", err)
+      toast({ title: "Action failed", variant: "error" })
+    } finally {
+      setPendingId(null)
     }
   }
 
   const currentTab = ITEM_TABS.find((t) => t.type === tab)
+
+  const renderCard = (item: CatalogEntry) => {
+    const action = SOURCE_ACTIONS[item.source]
+    const runnable = item.payload.executable
+    const body = (
+      <Card className={item.source === "listing" ? "group hover:border-primary/50 transition-colors" : ""}>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-base flex items-center gap-2">
+                {item.title}
+                {item.isVerified && (
+                  <Badge variant="default" className="text-[9px] px-1 py-0">Verified</Badge>
+                )}
+              </CardTitle>
+              <CardDescription className="text-xs line-clamp-2">
+                {item.description}
+              </CardDescription>
+              {SOURCE_CAPTIONS[item.source] && (
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                  {SOURCE_CAPTIONS[item.source]}
+                </span>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {item.tags?.slice(0, 3).map((tag: string) => (
+              <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
+                <Tag className="h-2.5 w-2.5" />
+                {tag}
+              </span>
+            ))}
+          </div>
+          {!runnable && (
+            <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mb-3">
+              <TriangleAlert className="h-3 w-3 mt-0.5 shrink-0" />
+              {item.payload.reason || "No runnable payload attached"}
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Download className="h-3 w-3" />
+                {item.downloads}
+              </span>
+              {item.ratingAvg > 0 && (
+                <span className="flex items-center gap-1">
+                  <Star className="h-3 w-3 text-yellow-500" />
+                  {item.ratingAvg.toFixed(1)}
+                </span>
+              )}
+              {item.ownerName && (
+                <span className="truncate max-w-[100px]">by {item.ownerName}</span>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-7"
+              disabled={!runnable || pendingId === item.id}
+              title={runnable ? undefined : item.payload.reason}
+              onClick={(e) => { e.preventDefault(); handleAction(item) }}
+            >
+              {runnable && <Download className="h-3 w-3 mr-1" />}
+              {action.label}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+
+    // Only listings have a detail route. Linking a skill or flow to /marketplace/[id]
+    // would 404, so those cards stay unlinked and act from the card itself.
+    if (item.source !== "listing") return <div key={item.id}>{body}</div>
+    return (
+      <Link key={item.id} href={`/marketplace/${item.id}`}>
+        {body}
+      </Link>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -83,7 +186,8 @@ export default function MarketplacePage() {
               Marketplace
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Discover and install community-built items for your workspace
+              Every published item, whether it is a listing, a flow or a skill. Each one says
+              whether it can actually be run.
             </p>
           </div>
         </div>
@@ -142,7 +246,7 @@ export default function MarketplacePage() {
           </div>
         ) : error ? (
           <ErrorState message={error} onRetry={loadData} />
-        ) : listings.length === 0 ? (
+        ) : entries.length === 0 ? (
           <EmptyState
             icon={Store}
             title={`No ${currentTab?.label.toLowerCase() ?? "items"} found`}
@@ -150,63 +254,7 @@ export default function MarketplacePage() {
           />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {listings.map((item) => (
-              <Link key={item.id} href={`/marketplace/${item.id}`}>
-                <Card className="group hover:border-primary/50 transition-colors">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          {item.title}
-                          {item.isVerified && (
-                            <Badge variant="default" className="text-[9px] px-1 py-0">Verified</Badge>
-                          )}
-                        </CardTitle>
-                        <CardDescription className="text-xs line-clamp-2">
-                          {item.description}
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {item.tags?.slice(0, 3).map((tag: string) => (
-                        <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
-                          <Tag className="h-2.5 w-2.5" />
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Download className="h-3 w-3" />
-                          {item.downloads}
-                        </span>
-                        {item.ratingAvg > 0 && (
-                          <span className="flex items-center gap-1">
-                            <Star className="h-3 w-3 text-yellow-500" />
-                            {item.ratingAvg.toFixed(1)}
-                          </span>
-                        )}
-                        {item.owner?.name && (
-                          <span className="truncate max-w-[100px]">by {item.owner.name}</span>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs h-7"
-                        onClick={(e) => { e.preventDefault(); handleClone(item.id) }}
-                      >
-                        <Download className="h-3 w-3 mr-1" />
-                        Clone
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+            {entries.map(renderCard)}
           </div>
         )}
       </main>

@@ -1,32 +1,36 @@
 # Marketplace
 
-- Status: 🚧 (publish / install / fork / clone / versioning are real; seeding was changed — demo data removed and admin bootstrap is env-gated)
+- Status: 🚧 (unified catalog browsing, publish / clone / install / review / versioning are real; every entry now declares whether its payload can actually run, and listings that cannot are hidden by default)
 - Purpose: Provide a public/semi-public catalog of reusable items (skills, pipelines, workflows, prompt packs, agent templates, MCP integrations, plugins) with publish, fork, clone, install, review and versioning flows.
 - User: Any visitor can browse; signed-in users can publish, fork, clone, review and (for skills) install.
-- Input: Listing metadata (`type`, `title`, `description`, `category`, `tags`, optional `manifest`, optional `payloadRef`) for publish; a `listingId` for fork/clone/rate; a `skillId` for skill install.
+- Input: Listing metadata (`type`, `title`, `description`, `category`, `tags`, plus a payload: `manifest` for inline bundles or `payloadRef` for external references) for publish; a `listingId` for fork/clone/rate; a `catalogEntry` address (`source` + `id`) for payload resolution.
 - Processing / Business Logic:
-  - Main router: `apps/api/src/routers/marketplace.ts` — `list` (filter/sort/paginate over `MarketplaceListing`), `getById`, `clone` (creates a fork listing + `MarketplaceFork`, bumps forkCount/downloads), `search`, `publish`, `rate` (upsert `MarketplaceReview`, recompute `ratingAvg`/`ratingCount`), `getTypes` (7 `MarketplaceItemType`), `getByOwner`, `createVersion` (appends a `MarketplaceListingVersion`, increments `version`).
+  - Main router: `apps/api/src/routers/marketplace.ts` — `catalog` (the single browse surface: merges listings, skills and flows into one normalized `CatalogEntry[]`), `catalogEntry` (resolves one entry plus its real payload), `list` (filter/sort/paginate over `MarketplaceListing`), `getById`, `clone` (creates a fork listing + `MarketplaceFork`, bumps forkCount/downloads), `search`, `publish`, `rate` (upsert `MarketplaceReview`, recompute `ratingAvg`/`ratingCount`), `getTypes` (7 `MarketplaceItemType`), `getByOwner`, `createVersion` (appends a `MarketplaceListingVersion`, increments `version`).
+  - **Executability is enforced, not assumed.** `resolvePayloadState(type, payload)` in `@flowmind/shared` maps a payload to one of `INLINE` (bundle in `manifest`), `REFERENCE` (`payloadRef` points at something real, e.g. a pipeline's `pipelineId`) or `NONE`. `publish` and `createVersion` reject an executable type with `NONE` as `BAD_REQUEST`; `PROMPT_PACK` is content, not code, so it is allowed to be payload-free. A `REFERENCE` listing is only executable while its target still exists — `resolveListingPayload` probes the pipeline and downgrades to "referenced pipeline is no longer available" when it is gone. `list` hides dead executable-typed rows unless the caller passes `includeNonExecutable: true`.
   - Skills marketplace: `apps/api/src/routers/skills.ts` — `list/search/getById`, `install` (copies a `MarketplaceSkill` into a user-owned `Skill`, bumps downloads), `publish` (creates/updates a `MarketplaceSkill` + `SkillVersion`, author-guarded), `run`, `delete`, `versions`.
-  - Pipeline marketplace (legacy `MarketplaceFlow`): `apps/api/src/routers/pipeline.ts` — `publishToMarketplace`, `cloneFromMarketplace`, `listMarketplace`, `getMarketplaceById`, `marketplaceCategories`. Deleting a pipeline removes its `MarketplaceFlow` + clones + executions in a transaction.
+  - Pipeline marketplace (legacy `MarketplaceFlow`): `apps/api/src/routers/pipeline.ts` — `publishToMarketplace`, `cloneFromMarketplace`, `listMarketplace`, `getMarketplaceById`, `marketplaceCategories`. Deleting a pipeline removes its `MarketplaceFlow` + clones + executions in a transaction. These rows are surfaced through `marketplace.catalog` with `source: "flow"`, so there is one catalog to browse.
+  - `packages/db/src/scripts/migrate-marketplace.ts` projects both legacy tables into listings **with** their payloads: skills become `INLINE` (manifest + code), flows become `REFERENCE` (`{ pipelineId }`).
 - Database:
-  - `MarketplaceListing` (`type`, `ownerId`/`orgId`, `category`, `tags`, `manifest` Json, `payloadRef` Json, `version`, `downloads`, `forkCount`, `ratingAvg`, `ratingCount`, `visibility`, `forkedFromId` self-relation, `isFeatured`, `isVerified`).
+  - `MarketplaceListing` (`type`, `ownerId`/`orgId`, `category`, `tags`, `manifest` Json, `payloadRef` Json, `payloadState` `MarketplacePayloadState` (indexed), `version`, `downloads`, `forkCount`, `ratingAvg`, `ratingCount`, `visibility`, `forkedFromId` self-relation, `isFeatured`, `isVerified`).
   - `MarketplaceListingVersion`, `MarketplaceReview`, `MarketplaceFork`.
   - `MarketplaceSkill` (`name` unique, `manifest` Json, `code`, `version`, `tags`, `downloads`, `ratingAvg`, `ratingCount`), `SkillVersion`, `SkillReview`, and `Skill` (user-owned).
   - Legacy: `MarketplaceFlow`, `FlowReview`, `FlowClone`, `FlowExecution`, `FlowCategory`.
 - API:
-  - `marketplace.*` (above), `skills.*`, and `pipeline.{publishToMarketplace,cloneFromMarketplace,listMarketplace,getMarketplaceById,marketplaceCategories}`.
+  - `marketplace.{catalog,catalogEntry,list,getById,clone,search,publish,rate,getTypes,getByOwner,createVersion}`, `skills.*`, and `pipeline.{publishToMarketplace,cloneFromMarketplace,listMarketplace,getMarketplaceById,marketplaceCategories}`.
+  - Every catalog entry carries `source` (`listing` | `skill` | `flow`) so the UI can route to the action that actually works for it: clone a listing, use a flow, install a skill.
 - Frontend:
-  - `apps/web/src/app/marketplace/page.tsx`, `apps/web/src/app/marketplace/[id]/page.tsx`, `apps/web/src/components/marketplace/flow-preview.tsx`.
+  - `apps/web/src/app/marketplace/page.tsx` (browses the unified catalog; one action button per source; non-executable entries show the reason and the button is disabled), `apps/web/src/app/marketplace/[id]/page.tsx` (resolves the real payload, previews a referenced flow's graph, blocks cloning when there is nothing runnable to clone), `apps/web/src/components/marketplace/flow-preview.tsx`.
 - Output: Marketplace listings/forks/versions persisted and surfaced to the catalog; installed skills become local `Skill` rows usable by the tool/skill surfaces.
-- Dependencies: `@flowmind/db`, `@flowmind/skill-engine` (skill run), shared `MarketplaceItemType` enum.
+- Dependencies: `@flowmind/db`, `@flowmind/skill-engine` (skill run), shared `MarketplaceItemType` / `MarketplacePayloadState` enums and `resolvePayloadState` from `@flowmind/shared`.
 - Current Status:
-  - Two parallel marketplaces exist: the generic `MarketplaceListing` (7 item types, `marketplace.*`) and the older pipeline `MarketplaceFlow` (`pipeline.listMarketplace` etc.). They are not unified.
+  - One catalog, three sources. `marketplace.catalog` is the browse surface; `marketplace.list` remains available for listings-only callers. A `CatalogEntry` normalizes title, tags, downloads, ratings, version, owner and payload state across all three tables.
+  - A listing that cannot be executed can no longer be published, and any legacy row that is still dead is hidden from the default listing view instead of being presented as runnable.
   - Seeding/purge was changed: demo/demo data was removed; admin/marketplace bootstrap is env-gated (no hard-coded marketplace seed data remains in the API startup path).
 - Known Issues:
-  - `MarketplaceListing` `manifest`/`payloadRef` are stored but not the executable payload for non-skill item types; only skills have a real `run` path.
-  - Pipeline `cloneFromMarketplace` and generic `marketplace.clone` are separate, non-unified clone flows.
-  - No moderation/verification workflow is implemented (`isVerified`/`isFeatured` fields exist but are not administered).
+  - The three sources still live in three tables. The unified catalog is a read-time projection; the legacy `marketplace_skills` / `marketplace_flows` write paths are untouched so existing install and clone history keeps working. A destructive consolidation is still open work.
+  - `manifest` for non-skill listing types is stored but has no per-type interpreter — a `WORKFLOW` or `MCP_INTEGRATION` listing is executable in the sense that it carries a payload, but nothing yet runs it.
+  - No moderation/verification workflow is implemented (`isVerified`/`isFeatured` fields exist but are not administered). The UI only shows the verified badge for listings, because skills and flows have no such column.
 - Future Improvements:
-  - Unify the pipeline marketplace with the generic listing marketplace (single catalog).
-  - Add executable payload referencing for interop, and per-type install semantics.
+  - Consolidate the three tables into one so the projection is no longer needed.
+  - Per-type install/execute semantics for `WORKFLOW`, `AGENT_TEMPLATE`, `MCP_INTEGRATION` and `PLUGIN` payloads.
   - Implement review-moderation and verified-badge workflows.
