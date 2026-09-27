@@ -7,7 +7,8 @@ Source design: thoughts/shared/designs/2026-09-21-production-readiness-design.md
 
 - ✅ **Batch 1 done** — llm-router streamAsync single-stream, resolveProvider model-prefix routing, native tool calling, tests. Verified: tsc clean (apps/api, apps/web), llm-router 28/28 tests pass.
 - ✅ **Batch 2 done** — parallelFork real concurrency + partial failure aggregation, loop with `$loop` vars + iteration cap, server-side webhook trigger, humanApproval pause/resume at exact node on the same run record, subPipeline child-run execution with tenant scoping + depth guard (`MAX_SUB_PIPELINE_DEPTH=5`), node-cron cron trigger. Verified: tsc clean (pipeline-engine, apps/api, apps/web), pipeline-engine 65/66 tests pass (1 skipped).
-- ⏳ **Batches 3–10 pending.**
+- ✅ **Batch 3 done** — agent-runtime POST /webhook/ingest (channel payload normalization for telegram/slack/discord/whatsapp/generic, routes through AgentOrchestrator, returns reply) + GET /webhook/verify (Meta WhatsApp hub handshake against WHATSAPP_VERIFY_TOKEN). /webhook/* exempt from bearer auth (API is the trusted ingress). Structured request_id/channel/duration logging, never payload content. Verified: 6/6 pytest pass, live curl 200/403 on verify, 200 on ingest.
+- ⏳ **Batches 4–10 pending.**
 
 ## Guiding rules
 
