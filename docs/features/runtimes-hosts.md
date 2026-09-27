@@ -1,6 +1,6 @@
 # Runtimes & Hosts
 
-- Status: 🚧 (RuntimeRegistry dispatch + health checks are real; host group management is real; agent deployments are schema/manifest-driven with a "DEPLOYING" status; no actual remote runtime execution is implemented)
+- Status: 🚧 (RuntimeRegistry dispatch + health checks are real; host group management is real; agents are saved config records whose status derives from the last start attempt against the agent runtime — there is no deploy step and no remote agent execution)
 - Purpose: Manage remote runtimes (for executing heavy/agent work), host device groups and pipelines for group publishing, and agent definitions with deployment status.
 - User: Users (list/health), admins (register/unregister/dispatch, runtime probes).
 - Input: `RuntimeManifest` (name, endpoint, capabilities, healthCheckPath, authHeader) for registration; group operations with `groupId`/member emails; agent creation with `AgentInput`.
@@ -8,20 +8,20 @@
   - RuntimeRegistry (`packages/runtime-registry/src/index.ts`): in-memory map of `RegisteredRuntime`. `register` dedupes by endpoint, assigns `rt-<ts>-<rand>` ids, starts a 30s `setInterval` health check that hits `{endpoint}{healthCheckPath}` with the optional auth header (5s timeout) and flips status `online|degraded|offline`. `unregister` clears the interval. `dispatch({nodeType, inputType})` filters online runtimes by capability match, sorts by `currentLoad`, and returns the least-loaded endpoint + auth header, or `null`.
   - Router: `apps/api/src/routers/runtime.ts` — `runtime.list` (public), `runtime.register`, `runtime.unregister`, `runtime.dispatch` (admin), `runtime.healthCheck` (public).
   - Host router (`apps/api/src/routers/host.ts`): group management (`create`, `list`, `get`, members with roles), `connectTokens` (create token → `HostClient` link), `publishPipelines` (owner/admin-gated, writes hostGroupId/hostPipelineId/hostSource), `dashboards`, `approvals`, `upsertKnowledge`/`deleteKnowledge`, `client.searchContext` for host clients. Host-client identity is set up by `host-auth.ts` (`hashConnectToken`, `signHostClientToken`).
-  - Agents (`apps/api/src/routers/agents.ts`): `Agent` rows are created with status `"DEPLOYING"` then transitioned on deploy; agent manifests reference a runtime, but there is no real deployment executor in the API (execution goes through the chat/pipeline surfaces instead).
+  - Agents (`apps/api/src/routers/agents.ts`): an `Agent` row is a saved config record, not a deployed process. `create` yields `STOPPED`; `toggle` probes `GET {AGENT_RUNTIME_URL}/health` and only then sets `RUNNING` (otherwise `ERROR`); `health` reports live runtime reachability plus a status breakdown. There is no deploy executor — execution goes through the chat/pipeline surfaces.
 - Database:
-  - `FrameworkConfig`/`StatusRecord` (system/config records), `HostClient`, `HostGroup` fields on `Pipeline`/`Knowledge`, `Agent` (name, manifest, status `DEPLOYING|RUNNING|...`), plus `UserGroupRole` linking users to groups.
+  - `FrameworkConfig`/`StatusRecord` (system/config records), `HostClient`, `HostGroup` fields on `Pipeline`/`Knowledge`, `Agent` (name, model, status `RUNNING|STOPPED|ERROR`), plus `UserGroupRole` linking users to groups.
 - API:
-  - `runtime.{list,register,unregister,dispatch,healthCheck}`; `host.{group.*,dashboards,approvals.*,upsertKnowledge,deleteKnowledge,client.*}`; `agents.{list,create,deploy,delete,...}`.
+  - `runtime.{list,register,unregister,dispatch,healthCheck}`; `host.{group.*,dashboards,approvals.*,upsertKnowledge,deleteKnowledge,client.*}`; `agents.{list,getById,create,update,delete,toggle,health}`.
 - Frontend:
   - `apps/web/src/app/runtimes/page.tsx` (runtime management/health UI), `apps/web/src/app/host/` (host groups UI), `apps/web/src/app/agents/` (agent UI).
-- Output: Registered runtime list with live status/load; dispatch selections for eligible node types; host group + client records; agent rows with deployment status.
+- Output: Registered runtime list with live status/load; dispatch selections for eligible node types; host group + client records; agent rows whose status reflects the last runtime health probe.
 - Dependencies: `@flowmind/runtime-registry`, `@flowmind/db`, `host-auth.ts` helpers.
 - Current Status:
   - Registry + health-checking is real and tested in-process.
   - Dispatch is real but nothing in the API actually calls `runtime.dispatch` to execute work — it is a capability query only.
   - Host group management is real and gated; host client dispatch/context search is exposed but there is no live client listening in the deployment.
-  - Agent deploy transitions status but no real process is spawned.
+  - Agent status is runtime-derived, not declarative: `create` stores `STOPPED`, and only `toggle` changes it after probing the agent runtime. There is no supervisor — a running agent that loses the runtime keeps its `RUNNING` status until the next start attempt.
 - Known Issues:
   - RuntimeRegistry is process-memory; restart loses registrations (no persistence).
   - Health check hits only the endpoint root + healthCheckPath; a runtime that accepts requests but is unhealthy for specific node types is still "online".

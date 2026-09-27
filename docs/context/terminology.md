@@ -35,7 +35,7 @@ A glossary of terms used in the FlowMind codebase, grounded in the actual Prisma
 | Term | Definition | Schema Location |
 |------|-----------|----------------|
 | **Agent** | A configured AI agent with a model, temperature, max tokens, and tool count. Tracks success rate and message count. | `agents` table |
-| **AgentStatus** | Enum: RUNNING, STOPPED, ERROR, DEPLOYING. | Schema enum |
+| **AgentStatus** | Enum: RUNNING, STOPPED, ERROR. An agent is a saved config record, not a deployed process: creation yields STOPPED, and a start attempt sets RUNNING only when the agent runtime answered its health probe (ERROR otherwise). | Schema enum |
 | **agent loop** | The iterative process where an LLM receives a prompt, decides to CALL_TOOL or return FINAL_ANSWER, and repeats until done. Implemented in `llm-router`. | `packages/llm-router/src/` |
 | **CALL_TOOL** | Agent loop step type: the LLM wants to call a tool (read, write, bash, webFetch, MCP tool, etc.). | `packages/llm-router/src/` |
 | **FINAL_ANSWER** | Agent loop step type: the LLM has finished and is returning the final response. | `packages/llm-router/src/` |

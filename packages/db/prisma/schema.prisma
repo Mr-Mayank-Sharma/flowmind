@@ -994,7 +994,6 @@ enum AgentStatus {
   RUNNING
   STOPPED
   ERROR
-  DEPLOYING
 }
 
 model KnowledgeBase {

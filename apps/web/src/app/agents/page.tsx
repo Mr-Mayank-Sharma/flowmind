@@ -14,7 +14,6 @@ const statusConfig: Record<string, { label: string; color: string; dot: string }
   RUNNING: { label: "Running", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", dot: "bg-emerald-500" },
   STOPPED: { label: "Stopped", color: "bg-muted text-muted-foreground border-border", dot: "bg-muted-foreground" },
   ERROR: { label: "Error", color: "bg-red-500/10 text-red-400 border-red-500/20", dot: "bg-red-500" },
-  DEPLOYING: { label: "Deploying", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", dot: "bg-blue-500" },
 }
 
 export default function AgentsPage() {
@@ -27,6 +26,10 @@ export default function AgentsPage() {
     "agents:list",
     () => api.agents.list(),
   )
+
+  // An agent is a persisted config record, not a deployed process, so the only
+  // external thing worth surfacing is whether the runtime can actually serve one.
+  const { data: health } = useQuery("agents:health", () => api.agents.health())
 
   const { mutate: createAgent } = useMutation(
     (input: typeof newAgent) => api.agents.create(input),
@@ -55,10 +58,34 @@ export default function AgentsPage() {
             <div>
               <h1 className="text-2xl font-bold">Agent Workspace</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Create, deploy, and monitor AI agents
+                Saved agent configs. Starting one requires a reachable agent runtime.
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {health && (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-xs gap-1.5",
+                    health.runtime.reachable
+                      ? "text-emerald-400"
+                      : "text-amber-400"
+                  )}
+                  title={
+                    health.runtime.reachable
+                      ? `Runtime reachable at ${new Date(health.runtime.checkedAt).toLocaleTimeString()}`
+                      : `Runtime unreachable at ${new Date(health.runtime.checkedAt).toLocaleTimeString()}${health.runtime.error ? ` — ${health.runtime.error}` : ""}`
+                  }
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      health.runtime.reachable ? "bg-emerald-500" : "bg-amber-500"
+                    )}
+                  />
+                  runtime {health.runtime.reachable ? "online" : "offline"}
+                </Badge>
+              )}
               <Badge variant="secondary" className="text-xs">{agents.filter((a: any) => a.status === "RUNNING").length}/{agents.length} active</Badge>
               <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => setShowCreate(!showCreate)}>
                 <Plus className="h-3.5 w-3.5" />

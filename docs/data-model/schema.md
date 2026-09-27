@@ -75,7 +75,7 @@ All 46 models map to snake_case plural table names except `CreatorRevenue` -> `c
 | KnowledgeBaseStatus | READY, INDEXING, ERROR |
 | DocumentStatus | INDEXED, INDEXING, ERROR |
 | DocumentType | PDF, TXT, MD, CSV, JSON |
-| AgentStatus | RUNNING, STOPPED, ERROR, DEPLOYING |
+| AgentStatus | RUNNING, STOPPED, ERROR |
 
 ## @@unique Constraints
 

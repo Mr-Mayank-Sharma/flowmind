@@ -9,4 +9,10 @@ export const agentsApi = {
     tRPCMutation<any>("agents.update", input),
   delete: (id: string) => tRPCMutation<{ success: boolean }>("agents.delete", { id }),
   toggle: (id: string) => tRPCMutation<any>("agents.toggle", { id }),
+  health: () =>
+    tRPCQuery<{
+      runtime: { reachable: boolean; checkedAt: string; error?: string }
+      total: number
+      counts: Record<string, number>
+    }>("agents.health"),
 }
