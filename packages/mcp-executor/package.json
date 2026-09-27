@@ -10,15 +10,18 @@
   },
   "dependencies": {
     "@flowmind/db": "workspace:*",
+    "@flowmind/pipeline-engine": "workspace:*",
     "@flowmind/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "nodemailer": "^9.0.3",
+    "pg": "^8.11.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
     "vitest": "^4.1.9",
-    "@types/node": "^20.0.0",
-    "@types/nodemailer": "^8.0.1"
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.11.0"
   }
 }

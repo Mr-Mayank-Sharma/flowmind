@@ -3,6 +3,9 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
 import { McpExecutor, OAUTH_PROVIDERS, getClientId, getClientSecret, assertCommandAllowed, assertMcpRemoteUrl, McpSecurityError } from "@flowmind/mcp-executor";
 import { mcpRegistry, mcpConnectionPool, mcpToolRouter, rowToMcpServerConfig, getUserMcpServer } from "../services/mcp-client";
+import { getContextEngine } from "../services/context-engine";
+import { SkillEngine } from "@flowmind/skill-engine";
+import { triggerPipelineForUser } from "./pipeline";
 
 const tokenStore = {
   getToken: async (userId: string, provider: string) => {
@@ -69,7 +72,11 @@ const tokenStore = {
   },
 };
 
-const executor = new McpExecutor(mcpRegistry, mcpConnectionPool, mcpToolRouter, tokenStore);
+const executor = new McpExecutor(mcpRegistry, mcpConnectionPool, mcpToolRouter, tokenStore, {
+  contextEngine: getContextEngine(),
+  skillEngine: new SkillEngine(),
+  triggerPipeline: triggerPipelineForUser,
+});
 
 const transportEnum = z.enum(["stdio", "streamable-http", "sse"]);
 

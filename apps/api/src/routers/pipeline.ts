@@ -241,6 +241,48 @@ function buildSubPipelineRunner(params: { userId: string; groupId: string | null
   return { run: runSubPipeline };
 }
 
+export async function triggerPipelineForUser(params: {
+  pipelineId: string;
+  input?: Record<string, unknown>;
+  settings?: WorkflowSettings;
+  userId: string;
+}): Promise<{ runId: string; status: "RUNNING" }> {
+  const pipeline = await prisma.pipeline.findUnique({
+    where: { id: params.pipelineId },
+  });
+  if (!pipeline || pipeline.userId !== params.userId) {
+    throw new Error("Pipeline not found");
+  }
+
+  const run = await prisma.pipelineRun.create({
+    data: {
+      pipelineId: params.pipelineId,
+      status: "RUNNING",
+      input: (params.input || {}) as any,
+      startedAt: new Date(),
+    },
+  });
+
+  const runEmitter = getRunEmitter(run.id);
+  runEmitter.clearBuffer();
+
+  const abortController = new AbortController();
+  registerActiveRun(run.id, abortController);
+
+  void executeRunBackground({
+    runId: run.id,
+    pipelineId: params.pipelineId,
+    groupId: pipeline.groupId,
+    userId: params.userId,
+    graph: normalizeGraph(pipeline.graph),
+    input: params.input ?? {},
+    settings: params.settings,
+    controller: abortController,
+  });
+
+  return { runId: run.id, status: "RUNNING" };
+}
+
 export const pipelineRouter = router({
   list: protectedProcedure
     .input(z.object({ cursor: z.string().optional(), limit: z.number().default(20) }).optional())
@@ -449,40 +491,20 @@ export const pipelineRouter = router({
   trigger: protectedProcedure
     .input(z.object({ id: z.string(), input: z.record(z.unknown()).optional(), settings: workflowSettingsSchema }))
     .mutation(async ({ input, ctx }) => {
-      const pipeline = await ctx.prisma.pipeline.findUnique({
-        where: { id: input.id },
-      });
-      if (!pipeline || (pipeline.userId !== ctx.userId)) {
-        throw new TRPCError({ code: "NOT_FOUND" });
-      }
-
-      const run = await ctx.prisma.pipelineRun.create({
-        data: {
+      try {
+        const result = await triggerPipelineForUser({
           pipelineId: input.id,
-          status: "RUNNING",
-          input: (input.input || {}) as any,
-          startedAt: new Date(),
-        },
-      });
-
-      const runEmitter = getRunEmitter(run.id);
-      runEmitter.clearBuffer();
-
-      const abortController = new AbortController();
-      registerActiveRun(run.id, abortController);
-
-      void executeRunBackground({
-        runId: run.id,
-        pipelineId: input.id,
-        groupId: pipeline.groupId,
-        userId: ctx.userId!,
-        graph: normalizeGraph(pipeline.graph),
-        input: input.input ?? {},
-        settings: input.settings,
-        controller: abortController,
-      });
-
-      return { runId: run.id, status: "RUNNING" as const, outputs: [], durationMs: 0 };
+          input: input.input,
+          settings: input.settings,
+          userId: ctx.userId!,
+        });
+        return { ...result, outputs: [], durationMs: 0 };
+      } catch (err) {
+        if (err instanceof Error && err.message === "Pipeline not found") {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        throw err;
+      }
     }),
 
   executeNode: protectedProcedure

@@ -3,6 +3,7 @@ import crypto from "crypto"
 import { prisma } from "@flowmind/db"
 import type { McpServerConfig } from "./types"
 import { McpConnectionPool, mcpErrorMessage } from "./mcp-client"
+import { assertSafeReadOnlySql } from "@flowmind/pipeline-engine"
 
 export * from "./types"
 export * from "./network-guard"
@@ -200,19 +201,19 @@ export const BUILT_IN_TOOLS: BuiltInTool[] = [
   { name: "flowmind.code.lint", category: "Code", description: "Lint and format code with language-specific tools", inputSchema: toolInputSchemas["flowmind.code.lint"]!, outputSchema: z.array(z.object({ line: z.number(), column: z.number(), message: z.string(), severity: z.string() })), implemented: true },
   { name: "flowmind.git.diff", category: "Git", description: "Show git diff for a repository", inputSchema: toolInputSchemas["flowmind.git.diff"]!, outputSchema: z.string(), implemented: true },
   { name: "flowmind.git.commit", category: "Git", description: "Commit staged changes with a message", inputSchema: toolInputSchemas["flowmind.git.commit"]!, outputSchema: z.object({ commitHash: z.string() }), implemented: true },
-  { name: "flowmind.git.pr", category: "Git", description: "Create a pull request on GitHub/GitLab", inputSchema: toolInputSchemas["flowmind.git.pr"]!, outputSchema: z.object({ url: z.string().url(), number: z.number() }), implemented: false },
+  { name: "flowmind.git.pr", category: "Git", description: "Create a pull request on GitHub/GitLab", inputSchema: toolInputSchemas["flowmind.git.pr"]!, outputSchema: z.object({ url: z.string().url(), number: z.number() }), implemented: true },
   { name: "flowmind.web.fetch", category: "Web", description: "Fetch and parse web page content", inputSchema: toolInputSchemas["flowmind.web.fetch"]!, outputSchema: z.object({ status: z.number(), body: z.string(), headers: z.record(z.string()) }), implemented: true },
   { name: "flowmind.web.search", category: "Web", description: "Search the web (self-hosted Searxng)", inputSchema: toolInputSchemas["flowmind.web.search"]!, outputSchema: z.array(z.object({ title: z.string(), url: z.string(), snippet: z.string() })), implemented: true },
-  { name: "flowmind.db.query", category: "Database", description: "Execute SQL query on connected databases", inputSchema: toolInputSchemas["flowmind.db.query"]!, outputSchema: z.array(z.record(z.unknown())), implemented: false },
+  { name: "flowmind.db.query", category: "Database", description: "Execute SQL query on connected databases", inputSchema: toolInputSchemas["flowmind.db.query"]!, outputSchema: z.array(z.record(z.unknown())), implemented: true },
   { name: "flowmind.email.send", category: "Communication", description: "Send email via SMTP (env-configured or per-user 'smtp' provider credential in pipelines)", inputSchema: toolInputSchemas["flowmind.email.send"]!, outputSchema: z.object({ messageId: z.string() }), implemented: true },
-  { name: "flowmind.slack.message", category: "Communication", description: "Post message to Slack channel", inputSchema: toolInputSchemas["flowmind.slack.message"]!, outputSchema: z.object({ ts: z.string(), channel: z.string() }), implemented: false },
-  { name: "flowmind.github.issue", category: "Project", description: "Create or update GitHub issue", inputSchema: toolInputSchemas["flowmind.github.issue"]!, outputSchema: z.object({ id: z.number(), url: z.string(), number: z.number() }), implemented: false },
-  { name: "flowmind.notion.page", category: "Project", description: "Create or update Notion page", inputSchema: toolInputSchemas["flowmind.notion.page"]!, outputSchema: z.object({ id: z.string(), url: z.string() }), implemented: false },
-  { name: "flowmind.memory.search", category: "AI", description: "Search agent memories via vector + FTS", inputSchema: toolInputSchemas["flowmind.memory.search"]!, outputSchema: z.array(z.object({ id: z.string(), content: z.string(), score: z.number() })), implemented: false },
-  { name: "flowmind.skill.run", category: "AI", description: "Execute a stored FlowMind skill", inputSchema: toolInputSchemas["flowmind.skill.run"]!, outputSchema: z.unknown(), implemented: false },
-  { name: "flowmind.pipeline.trigger", category: "AI", description: "Trigger a workflow pipeline by ID", inputSchema: toolInputSchemas["flowmind.pipeline.trigger"]!, outputSchema: z.object({ runId: z.string(), status: z.string() }), implemented: false },
-  { name: "flowmind.image.generate", category: "Media", description: "Generate image (local Stable Diffusion or API)", inputSchema: toolInputSchemas["flowmind.image.generate"]!, outputSchema: z.object({ url: z.string(), format: z.string() }), implemented: false },
-  { name: "flowmind.audio.transcribe", category: "Media", description: "Transcribe audio file (local Whisper)", inputSchema: toolInputSchemas["flowmind.audio.transcribe"]!, outputSchema: z.object({ text: z.string(), segments: z.array(z.unknown()) }), implemented: false },
+  { name: "flowmind.slack.message", category: "Communication", description: "Post message to Slack channel", inputSchema: toolInputSchemas["flowmind.slack.message"]!, outputSchema: z.object({ ts: z.string(), channel: z.string() }), implemented: true },
+  { name: "flowmind.github.issue", category: "Project", description: "Create or update GitHub issue", inputSchema: toolInputSchemas["flowmind.github.issue"]!, outputSchema: z.object({ id: z.number(), url: z.string(), number: z.number() }), implemented: true },
+  { name: "flowmind.notion.page", category: "Project", description: "Create or update Notion page", inputSchema: toolInputSchemas["flowmind.notion.page"]!, outputSchema: z.object({ id: z.string(), url: z.string() }), implemented: true },
+  { name: "flowmind.memory.search", category: "AI", description: "Search agent memories via vector + FTS", inputSchema: toolInputSchemas["flowmind.memory.search"]!, outputSchema: z.array(z.object({ id: z.string(), content: z.string(), score: z.number() })), implemented: true },
+  { name: "flowmind.skill.run", category: "AI", description: "Execute a stored FlowMind skill", inputSchema: toolInputSchemas["flowmind.skill.run"]!, outputSchema: z.unknown(), implemented: true },
+  { name: "flowmind.pipeline.trigger", category: "AI", description: "Trigger a workflow pipeline by ID", inputSchema: toolInputSchemas["flowmind.pipeline.trigger"]!, outputSchema: z.object({ runId: z.string(), status: z.string() }), implemented: true },
+  { name: "flowmind.image.generate", category: "Media", description: "Generate image (local Stable Diffusion or API)", inputSchema: toolInputSchemas["flowmind.image.generate"]!, outputSchema: z.object({ url: z.string(), format: z.string() }), implemented: true },
+  { name: "flowmind.audio.transcribe", category: "Media", description: "Transcribe audio file (local Whisper)", inputSchema: toolInputSchemas["flowmind.audio.transcribe"]!, outputSchema: z.object({ text: z.string(), segments: z.array(z.unknown()) }), implemented: true },
 ]
 
 export class McpServerRegistry {
@@ -292,6 +293,16 @@ export type TokenStore = {
   refreshToken(userId: string, provider: string): Promise<OAuthToken>
 }
 
+export type McpExecutorContext = {
+  contextEngine?: {
+    search(query: { text: string; userId: string; topK?: number; filters?: Record<string, unknown> }): Promise<Array<{ id: string; content: string; score: number; metadata: Record<string, unknown> }>>
+  }
+  skillEngine?: {
+    execute(skillId: string, context: { userId: string; input: string; sessionId?: string }): Promise<{ output: string; success: boolean; durationMs: number }>
+  }
+  triggerPipeline?: (args: { pipelineId: string; input?: Record<string, unknown>; userId: string }) => Promise<{ runId: string; status: string }>
+}
+
 // In-memory store for pending OAuth sessions (short-lived, lost on restart)
 const pendingOAuthSessions = new Map<string, { provider: string; codeVerifier: string; userId: string; expiresAt: number }>()
 
@@ -312,17 +323,20 @@ export class McpExecutor {
   private connectionPool: McpConnectionPool
   private toolRouter: McpToolRouter
   private tokenStore: TokenStore
+  private context: McpExecutorContext
 
   constructor(
     registry: McpServerRegistry,
     connectionPool: McpConnectionPool,
     toolRouter: McpToolRouter,
     tokenStore: TokenStore,
+    context: McpExecutorContext = {},
   ) {
     this.registry = registry
     this.connectionPool = connectionPool
     this.toolRouter = toolRouter
     this.tokenStore = tokenStore
+    this.context = context
   }
 
   async execute(
@@ -643,16 +657,195 @@ export class McpExecutor {
         const hash = execFileSync("git", ["-C", args.repoPath, "rev-parse", "HEAD"], { encoding: "utf-8" }).trim()
         return { commitHash: hash }
       }
-      case "flowmind.memory.search":
-        throw new Error("flowmind.memory.search is not implemented")
-      case "flowmind.pipeline.trigger":
-        throw new Error("flowmind.pipeline.trigger is not implemented")
+      case "flowmind.memory.search": {
+        if (!this.context.contextEngine) {
+          throw new Error("flowmind.memory.search requires a context engine (not injected)")
+        }
+        const results = await this.context.contextEngine.search({
+          text: args.query,
+          userId,
+          topK: args.limit ?? 5,
+        })
+        return {
+          query: args.query,
+          count: results.length,
+          results: results.map((r) => ({ id: r.id, content: r.content, score: r.score })),
+        }
+      }
+      case "flowmind.db.query": {
+        const connectionString = process.env.DATABASE_URL ?? ""
+        if (!connectionString) {
+          throw new Error("flowmind.db.query requires DATABASE_URL to be set")
+        }
+        const guardError = assertSafeReadOnlySql(args.sql)
+        if (guardError) {
+          throw new Error(guardError)
+        }
+        const { Client } = await import("pg")
+        const client = new Client({ connectionString })
+        await client.connect()
+        try {
+          const result = args.params && args.params.length > 0
+            ? await client.query(args.sql, args.params)
+            : await client.query(args.sql)
+          return { sql: args.sql, rowCount: result.rowCount ?? 0, fields: result.fields, rows: result.rows }
+        } finally {
+          await client.end()
+        }
+      }
+      case "flowmind.skill.run": {
+        if (!this.context.skillEngine) {
+          throw new Error("flowmind.skill.run requires a skill engine (not injected)")
+        }
+        const input = args.input ? JSON.stringify(args.input) : ""
+        return this.context.skillEngine.execute(args.skillId, { userId, input })
+      }
+      case "flowmind.pipeline.trigger": {
+        if (!this.context.triggerPipeline) {
+          throw new Error("flowmind.pipeline.trigger requires a pipeline trigger (not injected)")
+        }
+        return this.context.triggerPipeline({ pipelineId: args.pipelineId, input: args.input ?? {}, userId })
+      }
+      case "flowmind.image.generate": {
+        const hfToken = process.env.HF_TOKEN ?? ""
+        if (!hfToken) {
+          throw new Error("flowmind.image.generate requires HF_TOKEN to be set")
+        }
+        const res = await fetch("https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${hfToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ inputs: args.prompt }),
+          signal: AbortSignal.timeout(30_000),
+        })
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "unknown error")
+          throw new Error(`HuggingFace image API error ${res.status}: ${errText.slice(0, 200)}`)
+        }
+        const blob = await res.blob()
+        const url = `data:image/png;base64,${Buffer.from(await blob.arrayBuffer()).toString("base64")}`
+        return { url, format: "png" }
+      }
+      case "flowmind.audio.transcribe": {
+        const hfToken = process.env.HF_TOKEN ?? ""
+        if (!hfToken) {
+          throw new Error("flowmind.audio.transcribe requires HF_TOKEN to be set")
+        }
+        const fs = await import("fs/promises")
+        const audio = await fs.readFile(args.filePath)
+        const res = await fetch("https://api-inference.huggingface.co/models/openai/whisper-large-v3", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${hfToken}`, "Content-Type": "audio/*" },
+          body: new Uint8Array(audio),
+          signal: AbortSignal.timeout(60_000),
+        })
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "unknown error")
+          throw new Error(`HuggingFace transcription API error ${res.status}: ${errText.slice(0, 200)}`)
+        }
+        const data = (await res.json()) as { text?: string }
+        return { text: data.text ?? "", segments: [] }
+      }
+      case "flowmind.git.pr": {
+        const token = process.env.GITHUB_TOKEN ?? ""
+        if (!token) {
+          throw new Error("flowmind.git.pr requires GITHUB_TOKEN to be set")
+        }
+        if (!/^[\w.-]+\/[\w.-]+$/.test(args.repoPath)) {
+          throw new Error("flowmind.git.pr repoPath must be an 'owner/repo' GitHub slug")
+        }
+        const res = await fetch(`https://api.github.com/repos/${args.repoPath}/pulls`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/vnd.github+json" },
+          body: JSON.stringify({ title: args.title, head: args.head, base: args.base, body: args.body ?? "" }),
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "unknown error")
+          throw new Error(`GitHub API error ${res.status}: ${errText.slice(0, 200)}`)
+        }
+        const data = (await res.json()) as { html_url: string; number: number }
+        return { url: data.html_url, number: data.number }
+      }
+      case "flowmind.github.issue": {
+        const token = process.env.GITHUB_TOKEN ?? ""
+        if (!token) {
+          throw new Error("flowmind.github.issue requires GITHUB_TOKEN to be set")
+        }
+        const action = args.action ?? "create"
+        if (action === "create") {
+          const res = await fetch(`https://api.github.com/repos/${args.repo}/issues`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/vnd.github+json" },
+            body: JSON.stringify({ title: args.title, body: args.body ?? "", labels: args.labels ?? [] }),
+            signal: AbortSignal.timeout(15_000),
+          })
+          if (!res.ok) {
+            const errText = await res.text().catch(() => "unknown error")
+            throw new Error(`GitHub API error ${res.status}: ${errText.slice(0, 200)}`)
+          }
+          const data = (await res.json()) as { id: number; html_url: string; number: number }
+          return { id: data.id, url: data.html_url, number: data.number }
+        }
+        if (!args.issueNumber) {
+          throw new Error("flowmind.github.issue update requires issueNumber")
+        }
+        const res = await fetch(`https://api.github.com/repos/${args.repo}/issues/${args.issueNumber}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/vnd.github+json" },
+          body: JSON.stringify({ title: args.title, body: args.body ?? "" }),
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "unknown error")
+          throw new Error(`GitHub API error ${res.status}: ${errText.slice(0, 200)}`)
+        }
+        const data = (await res.json()) as { id: number; html_url: string; number: number }
+        return { id: data.id, url: data.html_url, number: data.number }
+      }
+      case "flowmind.slack.message": {
+        const token = process.env.SLACK_BOT_TOKEN ?? ""
+        if (!token) {
+          throw new Error("flowmind.slack.message requires SLACK_BOT_TOKEN to be set")
+        }
+        const res = await fetch("https://slack.com/api/chat.postMessage", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: args.channel, text: args.text, blocks: args.blocks }),
+          signal: AbortSignal.timeout(10_000),
+        })
+        const data = (await res.json()) as { ok: boolean; error?: string; ts?: string; channel?: string }
+        if (!data.ok) {
+          throw new Error(`Slack API error: ${data.error ?? "unknown"}`)
+        }
+        return { ts: data.ts ?? "", channel: data.channel ?? args.channel }
+      }
+      case "flowmind.notion.page": {
+        const token = process.env.NOTION_TOKEN ?? ""
+        if (!token) {
+          throw new Error("flowmind.notion.page requires NOTION_TOKEN to be set")
+        }
+        const children = args.content && args.content.length > 0
+          ? args.content
+          : [{ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: args.title } }] } }]
+        const res = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Notion-Version": "2022-06-28" },
+          body: JSON.stringify({
+            parent: { page_id: args.parentId },
+            properties: { title: { title: [{ text: { content: args.title } }] } },
+            children,
+          }),
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "unknown error")
+          throw new Error(`Notion API error ${res.status}: ${errText.slice(0, 200)}`)
+        }
+        const data = (await res.json()) as { id: string; url: string }
+        return { id: data.id, url: data.url }
+      }
       case "flowmind.email.send":
         return this.sendEmail(args, userId)
-      case "flowmind.audio.transcribe":
-        throw new Error("flowmind.audio.transcribe is not implemented")
-      case "flowmind.image.generate":
-        throw new Error("flowmind.image.generate is not implemented")
       default:
         throw new Error(`Tool ${toolName} is not implemented`)
     }

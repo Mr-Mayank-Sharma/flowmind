@@ -914,7 +914,7 @@ function evaluateSimpleCondition(condition: string, ctx: { $json: Record<string,
 
 const NON_READONLY_SQL = /^\s*(create|alter|drop|truncate|grant|revoke|insert|update|delete|merge|call|copy|vacuum|reindex|comment|do|import|prepare|execute|create\s+procedure|create\s+function)\b/i
 
-function assertSafeReadOnlySql(query: string): string | null {
+export function assertSafeReadOnlySql(query: string): string | null {
   const trimmed = query.trim()
   if (!trimmed) return "databaseQuery requires a query"
   if (/;/.test(trimmed.replace(/['"`][^'"]*['"`]/g, ""))) {
