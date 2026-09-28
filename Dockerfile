@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-alpine AS base
+FROM node:26-alpine AS base
 RUN apk add --no-cache python3 make g++ libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
@@ -48,7 +48,7 @@ RUN pnpm --filter @flowmind/api build
 
 # -----------------------------------------------------------
 # API runner — minimal production image
-FROM node:22-alpine AS api
+FROM node:26-alpine AS api
 RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
@@ -74,7 +74,7 @@ CMD ["node", "apps/api/dist/index.js"]
 
 # -----------------------------------------------------------
 # Web runner — Next.js standalone
-FROM node:22-alpine AS web
+FROM node:26-alpine AS web
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
 
@@ -94,7 +94,7 @@ RUN pnpm --filter @flowmind/db db:generate && \
     pnpm --filter @flowmind/web build
 
 # Strip down to standalone output only
-FROM node:22-alpine AS web-runner
+FROM node:26-alpine AS web-runner
 WORKDIR /app
 
 ENV NODE_ENV=production
