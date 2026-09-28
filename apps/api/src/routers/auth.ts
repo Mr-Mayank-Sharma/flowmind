@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../middleware/trpc";
+import { resolveEffectiveTier } from "../lib/effective-tier";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -131,7 +132,13 @@ export const authRouter = router({
       const refreshToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
 
       return {
-        user: { id: user.id, email: user.email, name: user.name, role: user.role, tier: user.tier },
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          tier: await resolveEffectiveTier(ctx.prisma, user.id),
+        },
         token,
         refreshToken,
       };
@@ -141,7 +148,13 @@ export const authRouter = router({
     .query(async ({ ctx }) => {
       const user = await ctx.prisma.user.findUnique({ where: { id: ctx.userId! } });
       if (!user) throw new TRPCError({ code: "NOT_FOUND" });
-      return { id: user.id, email: user.email, name: user.name, role: user.role, tier: user.tier };
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tier: await resolveEffectiveTier(ctx.prisma, user.id),
+      };
     }),
 
   refresh: publicProcedure
@@ -156,7 +169,13 @@ export const authRouter = router({
         const newRefreshToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
 
         return {
-          user: { id: user.id, email: user.email, name: user.name, role: user.role, tier: user.tier },
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            tier: await resolveEffectiveTier(ctx.prisma, user.id),
+          },
           token,
           refreshToken: newRefreshToken,
         };

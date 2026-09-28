@@ -13,6 +13,7 @@
   - Team seats: `manageTeamSeats` loads the org + owner subscription, enforces `maxTeamSeats` from the tier config and current member count, then updates the Stripe subscription quantity.
   - Usage: `getUsageMetrics` counts chats (sessions in last 30 days), pipelines, cron jobs, skills, MCP tokens, knowledge storage, and compares against `getTierConfig` limits. `recordUsage`/`getUsageAggregation` persist/aggregate `UsageRecord` rows monthly.
   - Invoices: `getInvoices` lists Stripe invoices for a user's customer.
+  - Effective tier: which tier a user is actually on is decided in one place, `apps/api/src/lib/effective-tier.ts`. `resolveEffectiveTier()` reads all three sources that can grant a tier -- `User.tier`, the `Org.tier` of their workspace, and that org's `OrgSubscription.tier` -- and `highestTier()` returns the most privileged, with FREE as the floor and unrecognised values ignored. Rate limits, usage limits, and the tier reported by `auth.login` / `auth.me` / `auth.refresh` all read that one result, so enforcement and display cannot disagree.
 - Database:
   - `Subscription` (userId unique, stripeId, tier, status, currentPeriodStart/End, cancelAtPeriodEnd), `UsageRecord` (subjectType user|org, subjectId, metric, quantity, periodStart/End, metadata), `Notification` (for payment failures). User has `stripeId` + `tier`.
 - API:

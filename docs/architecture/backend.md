@@ -146,6 +146,17 @@ memory fallback):
 `enforceUsageLimits` checks POST (mutation) limits: chats-per-month and
 pipeline-node counts from `getTierConfig`.
 
+A user's tier is not a single column. Three independent fields can grant one --
+`User.tier`, the `Org.tier` of the workspace they belong to, and that org's
+`OrgSubscription.tier` from a paid plan -- so
+`apps/api/src/lib/effective-tier.ts` is the only place that decides it:
+`resolveEffectiveTier()` reads all three in one query and `highestTier()` takes
+the most privileged, with FREE as the floor and unrecognised values ignored.
+Both `enforceRateLimit` and `enforceUsageLimits` use it, and `auth.login` /
+`auth.me` / `auth.refresh` report it, so what is enforced is exactly what is
+shown. Reading only `OrgSubscription` meant a workspace created with an
+enterprise `Org.tier` and no subscription row was enforced and reported as FREE.
+
 The global `@fastify/rate-limit` (in `index.ts`) defaults to `RATE_LIMIT_MAX`
 (200) per `RATE_LIMIT_WINDOW` (1 minute), keyed by user id when present.
 

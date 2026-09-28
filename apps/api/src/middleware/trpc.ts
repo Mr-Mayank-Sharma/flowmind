@@ -4,6 +4,7 @@ import { prisma } from "@flowmind/db";
 import { getTierConfig } from "@flowmind/billing/tiers";
 import { Tier } from "@flowmind/shared";
 import { getStateStore } from "../lib/redis";
+import { resolveEffectiveTier } from "../lib/effective-tier";
 
 export const t = initTRPC.context<Context>().create();
 
@@ -16,32 +17,10 @@ const isAuthed = t.middleware(({ ctx, next }) => {
   return next({ ctx: { ...ctx, userId: ctx.userId } });
 });
 
-async function resolveEffectiveTier(userId: string): Promise<Tier> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { tier: true, orgId: true },
-  });
-  if (!user) return Tier.FREE;
-
-  let effectiveTier = user.tier as unknown as Tier;
-  if (user.orgId) {
-    const orgSub = await prisma.orgSubscription.findUnique({
-      where: { orgId: user.orgId },
-    });
-    if (orgSub && orgSub.tier !== "FREE") {
-      const tierOrder: Tier[] = [Tier.FREE, Tier.PRO, Tier.TEAM, Tier.ENTERPRISE];
-      const orgIndex = tierOrder.indexOf(orgSub.tier as unknown as Tier);
-      const userIndex = tierOrder.indexOf(effectiveTier);
-      if (orgIndex > userIndex) effectiveTier = orgSub.tier as unknown as Tier;
-    }
-  }
-  return effectiveTier;
-}
-
 const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
   if (!ctx.userId) return next({ ctx });
 
-  const tier = await resolveEffectiveTier(ctx.userId);
+  const tier = await resolveEffectiveTier(prisma, ctx.userId);
   const tierConfig = getTierConfig(tier);
   const windowMs = 60_000;
   const maxRequests = tier === Tier.FREE ? 60 : tier === Tier.PRO ? 200 : 500;
@@ -66,7 +45,7 @@ const enforceUsageLimits = t.middleware(async ({ ctx, next }) => {
   const isMutation = ctx.req.method === "POST";
   if (!isMutation) return next({ ctx });
 
-  const effectiveTier = await resolveEffectiveTier(ctx.userId);
+  const effectiveTier = await resolveEffectiveTier(prisma, ctx.userId);
   const tierConfig = getTierConfig(effectiveTier);
 
   if (tierConfig.features.chatsPerMonth !== "unlimited") {
