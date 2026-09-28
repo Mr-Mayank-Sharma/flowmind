@@ -11,7 +11,7 @@
   },
   "scripts": {
     "start": "electron .",
-    "dev": "ELECTRON_IS_DEV=1 electron .",
+    "dev": "electron .",
     "build": "mkdir -p dist && electron-builder",
     "dist:linux": "mkdir -p dist && electron-builder --linux",
     "dist:mac": "mkdir -p dist && electron-builder --mac",
