@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import type { ChannelAdapter, OutgoingMessage } from "@flowmind/channel-gateway";
 
 const ENV_KEYS = [

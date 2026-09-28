@@ -62,28 +62,6 @@ async function recordServerOutcome(
   });
 }
 
-async function syncServerTools(row: McpServer): Promise<{ tools: string[]; error?: string }> {
-  const config = mcpServerConfigOf(row);
-  if (!config.enabled) {
-    mcpToolRouter.unregisterServer(config.id);
-    return { tools: [], error: "server is disabled" };
-  }
-
-  try {
-    const tools = await mcpConnectionPool.listTools(config);
-    mcpToolRouter.unregisterServer(config.id);
-    for (const tool of tools) {
-      mcpToolRouter.register(tool.name, config.id);
-    }
-    await recordServerOutcome(row, { ok: true, toolCount: tools.length });
-    return { tools: tools.map((t) => t.name) };
-  } catch (err) {
-    const error = serializeError(err);
-    await recordServerOutcome(row, { ok: false, error });
-    return { tools: [], error };
-  }
-}
-
 /**
  * Discover the MCP tools a user can invoke from the agent loop: every enabled,
  * reachable MCP server contributes one AgentTool. A failing server is skipped

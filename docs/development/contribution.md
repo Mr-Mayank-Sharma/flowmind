@@ -17,15 +17,36 @@ How to safely modify FlowMind without breaking the environment, the security mod
 These are non-negotiable per `AGENTS.md`:
 
 ```bash
-pnpm --filter @flowmind/api typecheck   # tsc --noEmit  -> 0 errors
-pnpm --filter @flowmind/web typecheck   # tsc --noEmit  -> 0 errors
-pnpm --filter <pkg> test                # the suite you touched
-pnpm test                               # full unit suite before push
-pnpm test:e2e                           # Playwright (spawns api+web)
-pnpm lint                               # eslint across the repo
+pnpm typecheck      # tsc --noEmit across all 26 workspace packages -> 0 errors
+pnpm lint           # eslint across the repo -> 0 problems
+pnpm test           # full unit suite (350 passing + 1 known skip) before push
 ```
 
-`.github/workflows/ci.yml` runs typecheck, lint, `pnpm audit`, build, and test on every PR to `main` — CI will catch what you miss.
+While iterating, `pnpm --filter <pkg> typecheck` and `pnpm --filter <pkg> test` are the fast
+inner loop — but they are **not** a substitute for the two root commands above.
+`packages/db`, `packages/runtime-registry` and `packages/snapshot` only fail under the root
+`pnpm typecheck`, so an api+web-only check can be green while CI is already red. That is not
+hypothetical: four type errors and two lint errors sat on `main` unnoticed for as long as
+the gate was scoped to those two apps.
+
+### What CI runs
+
+`.github/workflows/ci.yml` is a single `ci` job on every push and PR to `main`: install
+(`--frozen-lockfile`) → `pnpm typecheck` → `pnpm lint` → `pnpm audit` → `pnpm build` →
+`pnpm test`, against Postgres 16 / Redis 7 / Qdrant 1.13 service containers. Two details
+there are deliberate rather than accidental:
+
+- **`pnpm audit` is non-blocking** (`continue-on-error: true`). A new transitive CVE in any of
+  ~25 packages would otherwise make every unrelated open PR unmergeable, and Dependabot
+  already opens the remediation PR. The step still reports as failed in the run, so the
+  finding stays visible — it just does not hold the branch hostage.
+- **The e2e suite does not run in CI.** `e2e/playwright.config.ts` exists and `pnpm test:e2e`
+  works locally, but the job additionally needs a browser install, a migrated database and
+  both dev servers booting. It is the next increment rather than a best-effort addition,
+  which means the browser smoke tests cited in the README are a local claim only.
+
+A locally green gate is strong evidence, not proof. A workflow file is data; only an actual
+Actions run exercises it. Check the run result instead of assuming it passed.
 
 ## Security invariants — do not break
 
@@ -71,9 +92,9 @@ Types used: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`. Scope m
 Before opening a PR, verify:
 
 - [ ] `AGENTS.md` and the philosophy skills were read; the relevant philosophy was applied
-- [ ] `pnpm --filter @flowmind/api typecheck` and `pnpm --filter @flowmind/web typecheck` are both 0 errors
+- [ ] `pnpm typecheck` is 0 errors across **all** packages (api + web alone is not enough — see [The gates](#the-gates))
 - [ ] The touched suites pass (`pnpm --filter <pkg> test`)
-- [ ] `pnpm test` passes (241+1 baseline; all pass, at most the known 1 skip)
+- [ ] `pnpm test` passes (350+1 baseline; all pass, at most the known 1 skip)
 - [ ] `pnpm test:e2e` passes (needs api+web+db up)
 - [ ] `pnpm lint` passes
 - [ ] No security invariant was loosened; security-relevant changes extend the applicable test suite

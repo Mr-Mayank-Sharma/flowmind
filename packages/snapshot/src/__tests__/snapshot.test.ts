@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+// A static default import rather than a dynamic one. The mock below is shaped
+// `{ default: {...} }` to match how the source imports fs, and esModuleInterop is on,
+// so this resolves to the same mock object the dynamic `await import("fs").default`
+// did -- while carrying a type that actually describes it. `typeof import("fs")` has no
+// `default` member, which is what made the annotation need a cast to be correct.
+import fs from "fs"
 import { SnapshotManager } from "../index"
 
 vi.mock("child_process", () => ({
@@ -15,11 +21,8 @@ vi.mock("fs", () => ({
 describe("SnapshotManager", () => {
   let manager: SnapshotManager
   const testDir = "/tmp/test-snapshots"
-  let fs: typeof import("fs").default
-
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks()
-    fs = (await import("fs")).default
     manager = new SnapshotManager(testDir)
     manager.init()
   })

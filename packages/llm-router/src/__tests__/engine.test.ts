@@ -132,8 +132,13 @@ describe("LLMEngine.resolveProvider", () => {
     return result.then((r) => expect(r.provider).toBe("ollama"))
   })
 
-  it("throws a clear error when no providers are configured", () => {
+  it("throws a clear error when no providers are configured", async () => {
     const engine = new LLMEngine({})
-    expect(() => engine.complete({ model: "gpt-4o", messages: [] })).rejects.toThrow("No LLM providers configured")
+    // Awaited explicitly: Vitest currently auto-settles an un-awaited `rejects` at the end
+    // of the test, but warns that it will fail outright in the next major. The assertion
+    // was not actually gating the test body, only the teardown.
+    await expect(engine.complete({ model: "gpt-4o", messages: [] })).rejects.toThrow(
+      "No LLM providers configured",
+    )
   })
 })

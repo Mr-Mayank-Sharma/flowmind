@@ -92,11 +92,11 @@ describe("RuntimeRegistry", () => {
     it("selects runtime with matching capability", () => {
       registry.register(makeManifest({
         endpoint: "http://a:1",
-        capabilities: [{ name: "ai", supportedNodeTypes: ["aiAgent", "summarizer"] }],
+        capabilities: [{ name: "ai", maxConcurrent: 1, supportedNodeTypes: ["aiAgent", "summarizer"] }],
       }))
       registry.register(makeManifest({
         endpoint: "http://b:2",
-        capabilities: [{ name: "data", supportedNodeTypes: ["dataExtractor"] }],
+        capabilities: [{ name: "data", maxConcurrent: 1, supportedNodeTypes: ["dataExtractor"] }],
       }))
 
       const result = registry.dispatch({ nodeType: "aiAgent" })

@@ -7,11 +7,43 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
+    # One weekly PR instead of ten: the lockfile is shared across every workspace package, so
+    # splitting updates across PRs reliably produces conflicting-lockfile branches that have
+    # to be rebased by hand.
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
 
+  # The image refs that actually need bumping. The previous entry pointed at
+  # `/infra/docker`, a directory that does not exist in the repo, so this ecosystem errored
+  # on every run and never scanned anything.
   - package-ecosystem: "docker"
-    directory: "/infra/docker"
+    directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+
+  - package-ecosystem: "docker"
+    directory: "/packages/agent-runtime"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+  # Without this, a new patch of every action shows up as its own PR. The composite images
+  # (checkout, setup-node, pnpm setup) move together, so they are grouped as one.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

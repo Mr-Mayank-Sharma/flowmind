@@ -19,5 +19,9 @@
 - Use Lucide icons, never emoji strings
 
 ## Verification
-- Always run `tsc --noEmit` on both `apps/api` and `apps/web` after changes
-- Keep both projects at zero TypeScript errors
+- The gate is the root command, not a per-package one: `pnpm typecheck`, `pnpm lint`, `pnpm test`
+- `tsc --noEmit` in `apps/api` and `apps/web` is a fast inner-loop check, not the gate
+- CI runs those same root commands; `packages/db`, `packages/runtime-registry` and
+  `packages/snapshot` only fail under `pnpm typecheck`, so an api+web-only check can pass
+  while CI is already red — that is how four type errors and two lint errors reached `main`
+- Keep the repo at zero TypeScript errors, zero lint problems, zero failing tests

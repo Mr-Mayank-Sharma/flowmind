@@ -6,9 +6,37 @@ on:
   pull_request:
     branches: [main]
 
+# A superseded push makes the previous run's results irrelevant. Cancelling it saves runner
+# minutes and stops a stale "red" from being the status the branch reports.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The default token only ever needs to read the repository: nothing in this workflow pushes,
+# comments, or writes back. Least privilege by default, expanded per-job if a job ever needs
+# more.
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # A hung install or a test awaiting a dead port should fail the run rather than occupy a
+    # runner until GitHub's six-hour ceiling.
+    timeout-minutes: 30
+
+    # The service containers below are reachable at these addresses, so the env block points
+    # at them instead of leaving three containers running that nothing connects to. No unit
+    # test currently requires them, but the API and web builds do load Prisma and the
+    # cache/vector clients at module scope, so they are wired up rather than decorative.
+    env:
+      DATABASE_URL: postgresql://flowmind:flowmind@localhost:5432/flowmind
+      REDIS_URL: redis://localhost:6379
+      QDRANT_URL: http://localhost:6333
+      JWT_SECRET: ci-jwt-secret-not-a-real-credential
+      ENCRYPTION_KEY: ci-encryption-key-not-a-real-credential
+      AGENT_API_KEY: ci-agent-key
+      NEXT_TELEMETRY_DISABLED: "1"
 
     services:
       postgres:
@@ -43,9 +71,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here on purpose. `packageManager: pnpm@9.15.4` in the root
+      # package.json is the single source of truth for the pnpm version; passing a second,
+      # looser one (`9`) to this action is how the two drift apart and the lockfile stops
+      # matching what CI installs.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
@@ -58,7 +88,12 @@ jobs:
 
       - run: pnpm lint
 
+      # Advisory scanning reports rather than blocks. A new transitive CVE in any of ~25
+      # packages would otherwise make every open PR unmergeable, including PRs that have
+      # nothing to do with it. Dependabot opens the remediation PR, and the finding still
+      # shows up as a failed-but-continued step here.
       - run: pnpm audit --audit-level=high
+        continue-on-error: true
 
       - run: pnpm build
 

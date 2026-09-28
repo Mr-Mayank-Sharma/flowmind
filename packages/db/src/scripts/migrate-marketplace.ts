@@ -1,12 +1,24 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../index";
 
 // A skill listing stores its executable bundle under `manifest` so the unified
 // catalog can tell a runnable entry from a documentation-only one. The bundle
 // keeps the skill manifest and its code together, mirroring the legacy columns.
-type SkillPayload = { manifest: unknown; code: string };
+type SkillPayload = { manifest: Prisma.InputJsonObject; code: string };
 
-function skillPayload(manifest: unknown, code: string): SkillPayload {
-  return { manifest, code };
+/**
+ * The source column is a required `Json`, so Prisma reads it back as `JsonValue`, which
+ * admits a bare `null` and bare scalars that the *write* type rejects. Typing the field as
+ * `InputJsonObject` keeps both ends of Prisma's JSON types honest instead of laundering
+ * the value through `unknown`, which is what previously made this file fail to compile.
+ *
+ * A manifest is an object by definition, so a non-object value is preserved under `value`
+ * rather than dropped -- this is a migration, and silently discarding a row's payload would
+ * be worse than a slightly different shape.
+ */
+function skillPayload(manifest: Prisma.JsonValue, code: string): SkillPayload {
+  const isObject = typeof manifest === "object" && manifest !== null && !Array.isArray(manifest);
+  return { manifest: isObject ? manifest : { value: manifest }, code };
 }
 
 async function migrateMarketplace() {
