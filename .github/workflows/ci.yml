@@ -69,15 +69,15 @@ jobs:
           - 6333:6333
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # No `version:` here on purpose. `packageManager: pnpm@9.15.4` in the root
       # package.json is the single source of truth for the pnpm version; passing a second,
       # looser one (`9`) to this action is how the two drift apart and the lockfile stops
       # matching what CI installs.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
