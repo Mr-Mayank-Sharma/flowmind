@@ -25,7 +25,7 @@ Everything below is verified against the current source.
 | OS | Linux, macOS, Windows (WSL2 recommended) | Native Windows works but has Prisma quirks (below) |
 | Node.js | **>= 22.x** | Enforced in `package.json` `engines` (`>=22.x`) |
 | pnpm | **>= 9.x** (repo pins `pnpm@9.15.4`) | Enable via `corepack` or `npm i -g pnpm` |
-| PostgreSQL | **16+** | Live dev DB binds to **5433** here |
+| PostgreSQL | **16+** | Live dev DB binds to **5433** here and is **18.4** (see the Prisma note below) |
 | Redis | 7+ | Optional but recommended (rate-limit, sessions, SSE); the API falls back to in-memory if absent |
 | Qdrant | any recent | Optional; vector search / RAG for knowledge bases |
 | Ollama | any recent | Local LLM inference; optional if you use cloud models |
@@ -39,6 +39,25 @@ corepack enable
 corepack prepare pnpm@9.15.4 --activate
 pnpm -v   # 9.15.4
 ```
+
+### Prisma and PostgreSQL 18
+
+The repo pins Prisma **5.22.0** (mid-2024) while the dev database is
+**PostgreSQL 18.4**. The query engine cannot parse a major version that
+predates it, so every API boot logs:
+
+```
+Failed to obtain server version. Unable to check client-server compatibility.
+Set checkCompatibility=false to skip version check.
+```
+
+**This is noise, not a fault** -- the database health check passes and every
+query works, including the nested relation selects the tier resolution relies on.
+Do not silence it by setting `checkCompatibility = false`: that message is a true
+statement about a real version gap, and hiding it would only defer the discovery.
+The honest fix is to move Prisma to a version that knows PostgreSQL 18, or to pin
+the dev database to 17. Neither has been done, so treat the warning as expected on
+a PG18 host.
 
 If corepack is unavailable on your system, `npm install -g pnpm@9` works too.
 
