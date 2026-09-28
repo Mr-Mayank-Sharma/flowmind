@@ -205,7 +205,14 @@ export class ChatService {
     let provider
     try {
       provider = engine.getProvider("openai") || engine.getProvider("anthropic") || engine.getProvider("ollama")
-    } catch {}
+    } catch (err) {
+      // Returning no provider is routine -- it means none is configured. A provider
+      // *lookup that throws* is not: it points at a broken provider registry, and the
+      // fallback below would quietly answer from whichever provider happened to be
+      // first. Recorded at warn so the real fault is visible while the user still gets
+      // a reply.
+      logger.warn({ err, userId: input.userId, sessionId: input.sessionId }, "provider lookup threw; falling back to the first registered provider")
+    }
     if (!provider) {
       const providers = engine.getProviders()
       provider = providers[0]
@@ -270,7 +277,11 @@ export class ChatService {
             const contextStr = chunks.map((c: ContextChunk) => c.content).join("\n\n")
             enhancedInput = { ...input, content: `Context:\n${contextStr}\n\nUser: ${input.content}` }
           }
-        } catch {}
+        } catch (err) {
+          // RAG is an enhancement, not a precondition: a search failure degrades the
+          // answer rather than failing the request. Mirrors the sibling handler above.
+          logger.debug({ err, userId: input.userId, sessionId: input.sessionId }, "context engine search failed, proceeding without context")
+        }
 
         const result = await callAgentRuntimeWithRetry(enhancedInput)
         const reply = result.reply

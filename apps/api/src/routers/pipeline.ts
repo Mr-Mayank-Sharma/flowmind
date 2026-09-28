@@ -9,6 +9,7 @@ import { getRunEmitter, cleanupRunEmitter } from "../services/run-emitters";
 import { getContextEngine } from "../services/context-engine";
 import { userGroupRoles } from "../services/group-access";
 import { registerActiveRun, unregisterActiveRun, getActiveRunController } from "../services/active-runs";
+import { logger } from "../infrastructure";
 
 function getLLM(): LLMProvider | undefined {
   return buildLLMProvider();
@@ -55,7 +56,7 @@ async function executeRunBackground(params: ExecuteRunParams): Promise<void> {
     try {
       await prisma.runLog.createMany({ data: [entry] });
     } catch (err) {
-      console.error("Failed to persist run log:", err);
+      logger.error({ err, runId: entry.runId, nodeId: entry.nodeId }, "failed to persist run log");
     }
   };
 
@@ -168,7 +169,7 @@ async function executeRunBackground(params: ExecuteRunParams): Promise<void> {
       data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
     });
     runEmitter.emit("error", { message: err.message });
-    console.error(`Pipeline run ${params.runId} failed:`, err);
+    logger.error({ err, runId: params.runId }, "pipeline run failed");
   } finally {
     unregisterActiveRun(params.runId);
     setTimeout(() => cleanupRunEmitter(params.runId), 60_000).unref?.();
@@ -931,7 +932,7 @@ export const pipelineRouter = router({
                 data: { status: "FAILED", output: { error: err.message }, completedAt: new Date() },
               });
             } catch (updateErr) {
-              console.error("Failed to mark batch run failed:", updateErr);
+              logger.error({ err: updateErr, runId: run.id }, "failed to mark batch run failed");
             }
             emitter.emit("error", { message: err.message });
           } finally {

@@ -1,5 +1,6 @@
 import crypto from "crypto"
 import { config } from "./config"
+import { logger } from "../infrastructure";
 
 const ALGORITHM = "aes-256-gcm"
 const IV_LENGTH = 12
@@ -12,7 +13,7 @@ function resolveKey(): Buffer {
   if (config.nodeEnv === "production") {
     throw new Error("ENCRYPTION_KEY must be set in production")
   }
-  console.warn("WARNING: ENCRYPTION_KEY not set, using insecure development-derived key")
+  logger.warn("ENCRYPTION_KEY not set; using an insecure development-derived key")
   return crypto.createHash("sha256").update(DEV_KEY).digest()
 }
 

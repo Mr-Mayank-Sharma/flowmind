@@ -4,6 +4,7 @@ import { prisma } from "@flowmind/db";
 import jwt from "jsonwebtoken";
 import { verifyHostClientToken } from "../services/host-auth";
 import { JWT_SECRET } from "../lib/jwt-secret";
+import { logger } from "../infrastructure";
 
 export async function createContext({ req, res }: CreateFastifyContextOptions) {
   const authHeader = req.headers.authorization;
@@ -25,7 +26,12 @@ export async function createContext({ req, res }: CreateFastifyContextOptions) {
         const payload = jwt.verify(token, JWT_SECRET) as unknown as { userId: string };
         userId = payload.userId;
         (req as any).userId = payload.userId;
-      } catch {
+      } catch (err) {
+        // A token that is neither a host token nor a valid JWT means an unauthenticated
+        // request, which is a routine outcome rather than a fault. Debug level only:
+        // logging rejected tokens at warn would let an unauthenticated client flood
+        // the log, and the token itself is never included.
+        logger.debug({ err, requestId: req.id }, "bearer token rejected; treating request as unauthenticated")
       }
     }
   }
@@ -34,6 +40,7 @@ export async function createContext({ req, res }: CreateFastifyContextOptions) {
     prisma,
     userId,
     hostClient,
+    requestId: req.id,
     req,
     res,
   };

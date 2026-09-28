@@ -169,6 +169,71 @@ and production throws if it is missing.
 
 ---
 
+## Request tracing and log redaction
+
+Two invariants the whole API shares. Both are enforced centrally, so a new call
+site cannot opt out of either.
+
+### Request id (`apps/api/src/lib/request-id.ts`, `plugins/request-logging.ts`)
+
+`x-request-id` is the correlation header in both directions.
+
+- **Inbound**: `genRequestId` reads the header through `parseIncomingRequestId`,
+  which accepts a value only if it matches `SAFE_REQUEST_ID`
+  (`[A-Za-z0-9._-]{1,128}`). Anything else — whitespace, a newline, a quote, an
+  over-long value, or a repeated header, of which only the first is read — is
+  **discarded and replaced with a fresh uuid**, not sanitised in place. Reflecting a
+  hostile value into a response header or a log line is a log-injection vector, so the
+  id the caller sent, the id in the response, and the id in the log are only ever the
+  same when the value was safe to begin with.
+- **Outbound**: an `onRequest` hook sets the response header to the resolved id, so a
+  client can quote it in a bug report.
+- **Inherited**: `req.id` is what Fastify binds as `reqId` on the child logger, so
+  every `req.log.*` call inside the request carries the same id without being passed
+  one.
+- **Completion**: an `onResponse` hook emits `event: "request.completed"` with
+  `requestId`, `userId` (read off the request rather than re-verifying the JWT),
+  `operation`, `status`, and `durationMs`. `operation` is the **route template**
+  (`/trpc/pipeline.getById`), not the concrete URL, so one pipeline yields one
+  operation in the logs instead of one line per id. A handler that throws still
+  produces the line, with the real `status`.
+
+These are added to the root instance as **direct** hooks, not a `register`ed plugin:
+Fastify encapsulates a registered plugin, so its hooks would never reach the routes
+declared directly in `main`.
+
+### Redaction (`apps/api/src/lib/log-redaction.ts`)
+
+`buildLoggerOptions()` is the single redaction contract, and **both** the Fastify
+server logger and the standalone `infrastructure/Logger.ts` are built from it — a
+field cannot be masked in one logger and exposed in the other. It has two parts,
+because neither alone is sufficient:
+
+- **`redact.paths`** covers values bound onto a child logger (`req`, `res`, `err`
+  child bindings), which never pass through a call-site hook.
+- **`hooks.logMethod`** (`redactLogArgs`) covers every explicit `.info(obj, msg)`
+  call, so a call site cannot leak by forgetting to sanitise. It walks the object
+  and masks any key that `isSecretField` matches — `authorization`, `password`,
+  `*token*`, `*apiKey*`, `*secret*`, `*signature*` — at any depth, through arrays,
+  and inside an `Error`'s `message`/`stack` (a JWT that ended up in a stack trace
+  would otherwise be printed verbatim). Strings are scrubbed too, so a credential
+  interpolated into the log message is masked as well.
+
+Two non-obvious constraints, both load-bearing:
+
+- The `logMethod` hook **must call the `method` pino passes it**. Returning the
+  rewritten arguments instead writes nothing at all, so the log silently vanishes —
+  worse than leaking, because the request looks like it never happened. See
+  [development/debugging.md](../development/debugging.md#a-request-completes-with-no-log-line).
+- Tests bind the destination at logger **construction** time. Fastify derives
+  `req.log` from the logger it is given, so attaching a destination afterwards
+  leaves every request log going to stdout.
+
+There is no `console.*` left under `apps/api/src`, and no `catch {}` that swallows
+without either logging or a comment explaining why silence is correct.
+
+---
+
 ## Configuration model (`apps/api/src/lib/config.ts`)
 
 `config.ts` loads `.env` from several candidate paths, then parses a typed

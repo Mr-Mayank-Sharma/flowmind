@@ -4,12 +4,9 @@ import { PipelineEngine } from "@flowmind/pipeline-engine"
 import type { LLMProvider } from "@flowmind/pipeline-engine"
 import { buildLLMProvider, normalizeGraph } from "../lib/llm-factory"
 import { registerActiveRun, unregisterActiveRun } from "./active-runs"
+import { logger } from "../infrastructure";
 
-const log = {
-  info: (...args: unknown[]) => console.log("[cron-scheduler]", ...args),
-  warn: (...args: unknown[]) => console.warn("[cron-scheduler]", ...args),
-  error: (...args: unknown[]) => console.error("[cron-scheduler]", ...args),
-}
+const log = logger.child({ component: "cron-scheduler" })
 
 function computeNextRun(expression: string): Date | null {
   try {
@@ -155,9 +152,9 @@ async function executeJob(jobId: string, pipelineId: string, llm: LLMProvider | 
       },
     })
 
-    log.info(`Job ${jobId} completed with status: ${finalStatus} (${result.durationMs}ms)`)
+    log.info({ jobId, status: finalStatus, durationMs: result.durationMs }, "cron job completed")
   } catch (err) {
-    log.error(`Job ${jobId} failed:`, err)
+    log.error({ err, jobId }, "cron job failed")
 
     await prisma.cronJob.update({
       where: { id: jobId },

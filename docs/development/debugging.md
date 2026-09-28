@@ -9,6 +9,65 @@ Practical debugging for the local stack. All paths and ports are verified agains
 - **Agent runtime** — uvicorn logs to its terminal; the repo has seen `agent-runtime.log` / `agent-runtime.err.log` at root from wrapper launches.
 - **Systemd (Linux, after `install.sh`)** — `journalctl -u flowmind-api -f`, `journalctl -u flowmind-web -f`, `journalctl -u flowmind-runtime -f`.
 
+## Tracing a single request
+
+Every API response carries an `x-request-id` header, and every log line emitted
+during that request carries the same value as `reqId`. This is the fastest way to
+pull one request's lines out of a noisy terminal.
+
+```bash
+# Send a request with your own id, so you can grep for it by name
+curl -i -H "x-request-id: debug-abc123" http://localhost:3001/health
+
+# Then, in the API terminal or log file
+grep "debug-abc123" api.log
+```
+
+Omit the header and the server generates a uuid and returns it — read it from the
+response (`curl -i`, or the Network tab in devtools) and use that.
+
+A few things to know about the id:
+
+- A value that is not purely `[A-Za-z0-9._-]` and at most 128 characters is
+  **rejected and replaced** with a fresh uuid. If your id comes back different from
+  the one you sent, that is the validation working, not a bug.
+- Only the first value of a repeated header is read.
+- The `request.completed` line is the summary: `operation` is the route *template*
+  (`/trpc/pipeline.getById`), not the concrete URL, so every id of the same route
+  groups under one operation. `userId` is `null` for unauthenticated requests.
+- A request that throws still produces a `request.completed` line, with the real
+  status. If you have no completion line at all, see below.
+
+### A request completes with no log line
+
+Two silent-failure modes, both of which look identical from the outside (the
+request works, the terminal is quiet):
+
+1. **A `logMethod` hook that returns instead of calling.** Pino's
+   `hooks.logMethod` hands you the original log function and expects you to *call*
+   it. A hook that returns the rewritten argument array writes nothing, so every log
+   line through that logger disappears. If a whole class of logs vanished at once,
+   check that the hook ends in `method.apply(this, args)` and returns nothing.
+2. **A log destination attached too late.** Fastify derives `req.log` from the
+   logger passed to its constructor. Overriding `server.log` afterwards (or
+   attaching a stream after `pino()` was called) leaves request logs going to
+   stdout while the base logger goes to the stream. Bind the destination at
+   construction.
+
+### Credentials in logs
+
+Both the Fastify logger and the standalone `infrastructure` logger are built from
+`buildLoggerOptions()` in `apps/api/src/lib/log-redaction.ts`, so any key matching
+`authorization`, `password`, `*token*`, `*apiKey*`, `*secret*`, or `*signature*` is
+masked to `[redacted]` at any depth, and a credential interpolated into the message
+text is scrubbed too. Use `logger` rather than `console.*` — `console` bypasses the
+contract entirely, which is why there are no `console.*` calls left under
+`apps/api/src`.
+
+If you add a new log line and a secret appears unmasked, the field name is almost
+certainly outside those patterns (e.g. a bare `cred` or `secretValue`); add it to
+`isSecretField` rather than masking it at the call site, so every call site benefits.
+
 ## Health endpoints
 
 **API** (fast):

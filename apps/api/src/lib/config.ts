@@ -2,6 +2,7 @@ import { z } from "zod"
 import * as path from "path"
 import * as fs from "fs"
 import * as dotenv from "dotenv"
+import { logger } from "../infrastructure";
 
 const candidateEnvPaths = [
   path.resolve(process.cwd(), ".env"),
@@ -12,7 +13,7 @@ const candidateEnvPaths = [
 const existingEnvPaths = candidateEnvPaths.filter((p) => fs.existsSync(p))
 if (existingEnvPaths.length > 0) {
   dotenv.config({ path: existingEnvPaths, quiet: true })
-  console.info(`[config] Loaded env from: ${existingEnvPaths.join(", ")}`)
+  logger.info({ paths: existingEnvPaths }, "loaded env files")
 }
 
 const rawEnv = {

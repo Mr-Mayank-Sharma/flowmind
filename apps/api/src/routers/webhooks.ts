@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../middleware/trpc";
 import { getChannelGateway } from "../services/channel-gateway";
+import { logger } from "../infrastructure";
 
 const CHANNEL_SECRET_ENV: Record<string, string | undefined> = {
   telegram: process.env.TELEGRAM_WEBHOOK_SECRET,
@@ -16,7 +17,7 @@ function verifyChannelSecret(channel: string, provided: string | undefined): boo
   const expected = CHANNEL_SECRET_ENV[channel] || process.env.WEBHOOK_SECRET;
   if (!expected) {
     if (process.env.NODE_ENV === "production" && !ALLOW_UNVERIFIED_WEBHOOKS) {
-      console.warn(`webhooks.${channel}: no webhook secret configured; request rejected in production`);
+      logger.warn({ channel }, "no webhook secret configured; request rejected in production");
       return false;
     }
     return true;
@@ -62,7 +63,7 @@ async function deliverReply(channel: string, channelId: string, userId: string, 
   try {
     await gateway.sendMessage(channel, { channelId, userId, text: reply });
   } catch (err) {
-    console.error(`[channel-gateway] failed to deliver ${channel} reply:`, err);
+    logger.error({ err, channel, channelId }, "channel gateway failed to deliver reply");
   }
 }
 

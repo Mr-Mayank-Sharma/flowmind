@@ -1,6 +1,7 @@
 import { prisma } from "@flowmind/db";
 import { getRunEmitter, cleanupRunEmitter } from "./run-emitters";
 import { isRunActive } from "./active-runs";
+import { logger } from "../infrastructure";
 
 const RECOVERY_INTERVAL_MS = 5 * 60 * 1000;
 const EMITTER_CLEANUP_DELAY_MS = 60_000;
@@ -29,16 +30,16 @@ export async function recoverOrphanedRuns(): Promise<void> {
           duration: 0,
         }],
       }).catch((err: unknown) => {
-        console.error(`Failed to persist recovery log for run ${run.id}:`, err);
+        logger.error({ err, runId: run.id }, "failed to persist recovery log for recovered run");
       });
 
       getRunEmitter(run.id).emit("error", { message: RECOVERY_NOTE });
       setTimeout(() => cleanupRunEmitter(run.id), EMITTER_CLEANUP_DELAY_MS).unref?.();
     }
 
-    console.warn(`Recovered ${stale.length} orphaned pipeline run(s)`);
+    logger.warn({ recovered: stale.length }, "recovered orphaned pipeline runs");
   } catch (err) {
-    console.error("Orphaned run recovery failed:", err);
+    logger.error({ err }, "orphaned run recovery failed");
   }
 }
 

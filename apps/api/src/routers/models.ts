@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { router, protectedProcedure } from "../middleware/trpc"
+import { logger } from "../infrastructure"
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
 
@@ -66,7 +67,13 @@ export const modelsRouter = router({
       const ollama = providers.find((p) => p.id === "ollama")!
       ollama.available = true
       ollama.modelCount = data.models?.length ?? 0
-    } catch {}
+    } catch (err) {
+      // Ollama being unreachable is not a fault: the provider is already reported as
+      // unavailable and a chat routed elsewhere is the correct outcome. Swallowing it
+      // silently made "Ollama is down" indistinguishable from "Ollama has no models",
+      // so the reason is recorded at debug level.
+      logger.debug({ err }, "ollama availability probe failed; reporting ollama as unavailable")
+    }
     return providers
   }),
 
@@ -94,7 +101,12 @@ export const modelsRouter = router({
             try {
               const msg = JSON.parse(line)
               if (msg.total && msg.completed) progress = Math.round((msg.completed / msg.total) * 100)
-            } catch {}
+            } catch (err) {
+              // Ollama's pull stream interleaves non-JSON progress lines with model
+              // events. One unparseable line must not abandon a pull that is otherwise
+              // succeeding, so the line is skipped and the last known progress kept.
+              logger.debug({ err, model: input.name }, "skipped unparseable line in ollama pull stream")
+            }
           }
         }
         return { status: "success", name: input.name, progress }

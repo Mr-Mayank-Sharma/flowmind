@@ -35,20 +35,30 @@ import { userGroupRoles } from "./services/group-access";
 import { providerRegistry } from "@flowmind/provider-registry";
 import { decrypt } from "./lib/crypto";
 import { setupChannelWebhooks } from "./services/channel-gateway";
+import { buildLoggerOptions } from "./lib/log-redaction";
+import { genRequestId, registerRequestLogging } from "./plugins/request-logging";
+import { logger } from "./infrastructure";
 
 async function loadProviderCredentialsFromDb(): Promise<void> {
   const credentials = await prisma.providerCredential.findMany()
   let loaded = 0
+  let unreadable = 0
   for (const cred of credentials) {
     try {
       providerRegistry.setApiKey(cred.provider, decrypt(cred.encryptedValue))
       loaded += 1
-    } catch {
-      // Unreadable credential (e.g. key rotation) -> skip; never log plaintext
+    } catch (err) {
+      // A credential we cannot decrypt (e.g. after a key rotation) is skipped, and only
+      // ever reported by provider and id -- never by value, decrypted or encrypted.
+      unreadable += 1
+      logger.warn({ err, provider: cred.provider, credentialId: cred.id }, "provider credential could not be decrypted; provider left unconfigured")
     }
   }
   if (loaded > 0) {
-    console.info(`[provider-registry] Loaded ${loaded} persisted provider credentials from DB`)
+    logger.info({ loaded }, "provider-registry loaded persisted credentials from DB")
+  }
+  if (unreadable > 0) {
+    logger.error({ loaded, unreadable }, "some provider credentials could not be loaded; those providers will be unavailable")
   }
 }
 
@@ -68,14 +78,24 @@ const HOST = process.env.API_HOST || "0.0.0.0";
 async function main() {
   const server = Fastify({
     maxParamLength: 5000,
+    genReqId: genRequestId,
+    // The `onResponse` hook in registerRequestLogging emits a superset of Fastify's
+    // built-in "request completed" line (same reqId, plus userId, the route template
+    // and the status). Leaving the default on would print both, so every request would
+    // cost two nearly identical lines.
+    disableRequestLogging: true,
+    // One redaction contract for every logger, so a field masked here is masked in the
+    // request logger, in the tRPC child loggers, and in the standalone logger.
     logger: {
-      level: process.env.LOG_LEVEL || "info",
+      ...buildLoggerOptions(),
       transport: {
         target: "pino-pretty",
         options: { colorize: true },
       },
     },
   });
+
+  registerRequestLogging(server);
 
   await server.register(helmet, {
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -291,7 +311,11 @@ async function main() {
       }
       try {
         reply.raw.end()
-      } catch {}
+      } catch {
+        // Expected: the client has usually already disconnected, and this runs after
+        // `closed` is set, so there is no handler left to receive an error. Logging
+        // here would emit a line on every ordinary disconnect.
+      }
     }
 
     emitter.on("step", onStep)
@@ -396,7 +420,11 @@ async function main() {
       emitter.off("error", onError)
       try {
         reply.raw.end()
-      } catch {}
+      } catch {
+        // Expected: the client has usually already disconnected, and this runs after
+        // `closed` is set, so there is no handler left to receive an error. Logging
+        // here would emit a line on every ordinary disconnect.
+      }
     }
 
     emitter.on("node", onNode)

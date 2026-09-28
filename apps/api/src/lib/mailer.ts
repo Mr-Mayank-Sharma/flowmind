@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { logger } from "../infrastructure";
 
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
@@ -31,7 +32,7 @@ export async function sendMail(options: { to: string; subject: string; text: str
     await mailer.sendMail({ from: SMTP_FROM, ...options });
     return true;
   } catch (err) {
-    console.error("Failed to send email:", err);
+    logger.error({ err }, "failed to send email");
     return false;
   }
 }

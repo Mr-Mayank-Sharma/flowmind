@@ -1,5 +1,6 @@
 import Redis from "ioredis";
 import { config } from "./config";
+import { logger } from "../infrastructure";
 
 const REDIS_URL = config.redisUrl || "redis://localhost:6379";
 const REDIS_PROBE_INTERVAL_MS = 30_000;
@@ -138,7 +139,7 @@ class RedisBackedKeyValueStore implements KeyValueStore {
     } catch {
       this.nextRedisAttemptAt = now + REDIS_PROBE_INTERVAL_MS;
       dropRedisClient();
-      console.warn("[redis] Unreachable — falling back to in-memory state for this process");
+      logger.warn("redis unreachable; falling back to in-memory state for this process");
       return fallback();
     }
   }

@@ -367,7 +367,12 @@ export class MetricsService {
           const data = (await res.json()) as { models?: Array<{ name: string }> }
           ollama.models = data.models?.length ?? 0
         }
-      } catch {}
+      } catch (err) {
+        // The 3s timeout already bounds this probe. A failure leaves `models` unset,
+        // which renders as unknown rather than zero, so the reason is worth keeping
+        // without being escalated to a warning on a background refresh.
+        logger.debug({ err }, "ollama model count probe failed; leaving model count unknown")
+      }
       ollama.version = run(IS_WIN ? "ollama --version" : "ollama --version 2>/dev/null || echo '0.23.2'", "0.23.2")
     }
 

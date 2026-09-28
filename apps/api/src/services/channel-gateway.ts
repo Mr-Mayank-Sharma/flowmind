@@ -6,6 +6,7 @@ import {
   WhatsAppAdapter,
   OpenHumanAdapter,
 } from '@flowmind/channel-gateway'
+import { logger } from "../infrastructure";
 
 let gateway: ChannelGateway | undefined
 
@@ -44,7 +45,7 @@ export async function setupChannelWebhooks(baseUrl: string): Promise<void> {
     try {
       await g.setupWebhook(channel, url)
     } catch (err) {
-      console.warn(`[channel-gateway] failed to register ${channel} webhook:`, err)
+      logger.warn({ err, channel }, "channel gateway failed to register webhook")
     }
   }
 }
