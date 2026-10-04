@@ -12,18 +12,18 @@
     "@flowmind/llm-router": "workspace:*",
     "@flowmind/provider-registry": "workspace:*",
     "@flowmind/skill-engine": "workspace:*",
-    "isolated-vm": "^7.0.0",
-    "node-cron": "^3.0.3"
+    "isolated-vm": "^7.0.1",
+    "node-cron": "^4.6.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.6.3",
     "@types/node-cron": "^3.0.11",
-    "@types/nodemailer": "^8.0.1",
-    "@types/pg": "^8.11.0",
-    "nodemailer": "^9.0.3",
-    "pg": "^8.11.0",
-    "smtp-server": "^3.13.0",
-    "typescript": "^5.4.0",
-    "vitest": "^4.1.9"
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "nodemailer": "^10.0.13",
+    "pg": "^8.23.1",
+    "smtp-server": "^3.19.16",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
   }
 }
