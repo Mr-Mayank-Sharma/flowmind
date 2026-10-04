@@ -12,12 +12,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@prisma/client": "^5.14.0"
+    "@prisma/client": "^7.10.0"
   },
   "devDependencies": {
-    "bcryptjs": "^2.4.3",
-    "prisma": "^5.14.0",
-    "typescript": "^5.4.0",
-    "tsx": "^4.7.0"
+    "bcryptjs": "^3.0.3",
+    "prisma": "^7.10.0",
+    "typescript": "^7.0.2",
+    "tsx": "^4.23.15"
   }
 }

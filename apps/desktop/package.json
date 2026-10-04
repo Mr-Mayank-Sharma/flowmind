@@ -68,10 +68,10 @@
     }
   },
   "dependencies": {
-    "electron-store": "^8.1.0"
+    "electron-store": "^11.0.2"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
   }
 }

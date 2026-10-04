@@ -12,16 +12,16 @@
     "@flowmind/db": "workspace:*",
     "@flowmind/pipeline-engine": "workspace:*",
     "@flowmind/shared": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "nodemailer": "^9.0.3",
-    "pg": "^8.11.0",
-    "zod": "^3.22.0"
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "nodemailer": "^10.0.13",
+    "pg": "^8.23.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "vitest": "^4.1.9",
-    "@types/node": "^22.0.0",
-    "@types/nodemailer": "^8.0.1",
-    "@types/pg": "^8.11.0"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "@types/node": "^26.6.3",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1"
   }
 }
